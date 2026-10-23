@@ -1,0 +1,30 @@
+# --- Backend (Maven / Java) ---
+target/
+*.class
+*.log
+hs_err_pid*
+.mvn/wrapper/maven-wrapper.jar
+
+# --- Frontend (Node / Vite) ---
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# --- Secrets and local env ---
+.env
+.env.*
+!.env.example
+
+# --- Editors ---
+# VS Code: only the shared extension recommendations are committed.
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+*.swp
+
+# --- OS ---
+.DS_Store
+Thumbs.db
