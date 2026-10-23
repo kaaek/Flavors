@@ -44,7 +44,23 @@ Dockerfile   Builds the frontend and backend into one image
 
 ## Running locally
 
-*Coming in EEC-27 (project foundation).*
+*Full setup (local database, frontend) is coming in EEC-27 (project foundation).*
+
+### Backend tests
+
+```bash
+cd backend
+./mvnw verify    # unit tests + integration tests (*IT) against a throwaway Postgres
+```
+
+The tests start Postgres in Docker through Testcontainers, so Docker must be running and
+your user must be able to use it. On Linux: `sudo usermod -aG docker $USER`, then log out
+and back in. The first run downloads the `postgres:17-alpine` image.
+
+### Run the backend without a local database
+
+`backend/src/test/java/com/flavors/TestFlavorsApplication.java` starts the app against a
+Testcontainers Postgres. Run its `main` from VS Code, or use `./mvnw spring-boot:test-run`.
 
 ## Branch conventions
 
