@@ -32,15 +32,17 @@ EECE 430 course project, Fall 2026–27. Three two-week sprints:
 
 ## Repository layout
 
-The folders below are planned and arrive with EEC-27 (project foundation).
+Paths are relative to the repository root. Entries marked *(planned)* arrive with EEC-27 (project foundation).
 
 ```
-backend/     Spring Boot application (package com.flavors), Flyway migrations
-frontend/    React + TypeScript single-page app
-docs/        Schema diagram, architecture decisions, specification
-.github/     CI/CD workflows and the pull request template
-Dockerfile   Builds the frontend and backend into one image
+backend/      Spring Boot application (package com.flavors), Flyway migrations
+frontend/     React + TypeScript single-page app (planned)
+docs/         This README and Architecture.md (design: schema, security, audit log, CI/CD)
+.github/      Pull request template; CI/CD workflows (planned)
+Dockerfile    Builds the frontend and backend into one image (planned)
 ```
+
+See [Architecture.md](Architecture.md) for how the system is built and why.
 
 ## Running locally
 
@@ -49,7 +51,7 @@ Dockerfile   Builds the frontend and backend into one image
 ### Backend tests
 
 ```bash
-cd backend
+cd backend      # from the repository root
 ./mvnw verify    # unit tests + integration tests (*IT) against a throwaway Postgres
 ```
 
