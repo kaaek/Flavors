@@ -56,9 +56,9 @@ com.flavors
 │   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (planned)
 │   ├── idempotency/     IdempotencyKey, IdempotencyService                       (planned)
 │   ├── money/           Money (USD cents value object)                           (planned)
-│   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handlers      (planned)
+│   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
 │   └── web/             SpaForwardingController, global exception handler        (planned)
-├── account/             AppUser, AdminSeeder, MeController                       (planned)
+├── account/             AppUser, AppUserDetailsService, MeController (built); AdminSeeder (planned)
 └── campaign/, offer/, payment/, …   one package per feature, added by later stories
 ```
 
@@ -243,7 +243,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 | `dispute`, `dispute_evidence` | UC-F8.1 |
 | `notification` | UC-F18.1 |
 
-## 5. Security — planned
+## 5. Security — built
 
 - **Roles:** `CREATOR`, `BRAND`, `ADMIN` (Spring authorities `ROLE_*`). Diners and cashiers have
   no account: diner pages are *public* (unauthenticated), and the cashier's scan page runs inside
@@ -257,7 +257,9 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
   | `/api/brand/**` | BRAND |
   | `/api/admin/**` | ADMIN |
   | other `/api/**` | any logged-in user |
-  | `/actuator/health`, SPA files and routes | everyone |
+  | `/actuator/health` | everyone |
+  | other `/actuator/**` | nobody (not exposed anyway; denied in case one is exposed by mistake) |
+  | everything else (SPA files and routes) | everyone |
 
 - **Finer checks** use method security (`@PreAuthorize`) inside features, e.g. "this campaign
   belongs to the current brand" (NF-1).
@@ -265,9 +267,16 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
   There are no redirects to a login page; the SPA decides what to show.
 - **Sessions:** server-side sessions stored in Postgres (Spring Session JDBC), so users stay logged in
   across redeploys. The cookie is HttpOnly, Secure (staging/prod) and SameSite=Lax.
-- **CSRF:** on, using Spring Security's SPA mode. The token travels in a cookie that the frontend
-  echoes back in a header.
-- **Passwords:** BCrypt (delegating encoder). Suspended users can't log in (FR-F19.12).
+- **CSRF:** on, using Spring Security's SPA mode. The token travels in the `XSRF-TOKEN` cookie (readable by
+  JavaScript) that the frontend echoes back in the `X-XSRF-TOKEN` header on every POST/PUT/PATCH/DELETE.
+- **No request cache, form login, HTTP Basic or default logout:** they are for server-rendered pages. The
+  request cache would also create a session row for every anonymous 401.
+- **Passwords:** BCrypt (delegating encoder, hashes stored as `{bcrypt}...`). `AppUserDetailsService` loads
+  accounts case-insensitively by email; a suspended user loads as disabled, so login is refused (FR-F19.12).
+- **Logged-in user:** `CurrentUser` (id, email, role), injected with `@AuthenticationPrincipal`. It is
+  Java-serialized into the session table, so change its fields with care.
+- **Tests:** `RoleGuardTest` (every role × area, 401/403 bodies, CSRF), `MeControllerTest`, `SecurityIT`
+  (health public, no session on 401, CSRF cookie), `AppUserDetailsServiceIT`.
 - **Scope split:** EEC-27 builds the mechanism, the guards and `GET /api/me`. The login, logout and
   password reset endpoints and screens belong to UC-F19.3.
 

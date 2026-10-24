@@ -28,6 +28,12 @@ spring:
   flyway:
     locations: classpath:db/migration
 
+  # Login sessions live in Postgres (Spring Session JDBC), so users stay logged in across
+  # redeploys. Flyway's V1 creates the tables; Spring must not try to create them itself.
+  session:
+    jdbc:
+      initialize-schema: never
+
 server:
   # Railway tells the app which port to use through PORT.
   port: ${PORT:8080}
@@ -35,6 +41,16 @@ server:
   # trust the X-Forwarded-* headers, so it knows the original request was HTTPS
   # (needed later for Secure cookies and correct redirect URLs).
   forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        # JavaScript can't read the session cookie, so an XSS bug can't steal the session.
+        http-only: true
+        # Sent over HTTPS only. Turned off in application-dev.yml for plain-HTTP localhost.
+        secure: true
+        # Not sent on requests started by other sites (forms, images), except top-level links.
+        # Together with CSRF tokens, this blocks cross-site request forgery.
+        same-site: lax
 
 management:
   endpoints:

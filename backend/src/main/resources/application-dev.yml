@@ -4,3 +4,10 @@ spring:
     url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:flavors}
     username: ${PGUSER:flavors}
     password: ${PGPASSWORD:flavors}
+
+server:
+  servlet:
+    session:
+      cookie:
+        # Local development runs on plain http://localhost.
+        secure: false
