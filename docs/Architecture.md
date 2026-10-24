@@ -87,7 +87,7 @@ Rule: a feature package may use `common`, but `common` never depends on a featur
   migrations against real Postgres, so the triggers, constraints and SQL behave as they do in production.
 - `TestFlavorsApplication` runs the app locally against a Testcontainers database.
 
-## 4. Data model — V1 built, V2–V5 planned
+## 4. Data model — V1–V2 built, V3–V5 planned
 
 ### 4.1 Conventions
 
@@ -113,7 +113,8 @@ The full MVP model is created in EEC-27 so that every story builds on one agreed
 - `idempotency_key`: see §7
 - Spring Session JDBC tables (`spring_session`, `spring_session_attributes`)
 
-**V2 — accounts**
+**V2 — accounts** (built: `V2__accounts.sql`, tested by `AccountsSchemaIT`; the `campaign_id` foreign keys
+of `social_post_metric` and `profile_warning` are added in V3, once `campaign` exists)
 - `creator_profile`: user_id (PK/FK), display_name, bio, food_category, location, price_min_cents,
   price_max_cents (CHECK min ≤ max), verification_status ∈ {PENDING_APPROVAL, APPROVED, REJECTED},
   rejection_reason, reviewed_by, reviewed_at, storefront_slug (unique)
