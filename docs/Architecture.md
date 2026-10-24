@@ -87,7 +87,7 @@ Rule: a feature package may use `common`, but `common` never depends on a featur
   migrations against real Postgres, so the triggers, constraints and SQL behave as they do in production.
 - `TestFlavorsApplication` runs the app locally against a Testcontainers database.
 
-## 4. Data model — V1–V2 built, V3–V5 planned
+## 4. Data model — V1–V3 built, V4–V5 planned
 
 ### 4.1 Conventions
 
@@ -126,7 +126,8 @@ of `social_post_metric` and `profile_warning` are added in V3, once `campaign` e
 - `branch`: brand_id, name, location
 - `profile_warning`: user_id, campaign_id, reason, created_at (F9 cancellation warnings)
 
-**V3 — campaigns**
+**V3 — campaigns** (built: `V3__campaigns.sql`, tested by `CampaignsSchemaIT`; also adds the `campaign_id`
+foreign keys left open in V2. A draft may be incomplete; a CHECK requires creator, price and dates once it leaves `DRAFT`)
 - `campaign`: brand_id, creator_id, name, status ∈ {DRAFT, AWAITING_CREATOR_RESPONSE, COUNTERED,
   REJECTED, DECLINED, EXPIRED, AWAITING_PAYMENT, ACTIVE, PROOF_SUBMITTED, CORRECTIONS_REQUESTED,
   DISPUTED, COMPLETED, CANCELLED, REMOVED}, price_offered_cents, agreed_price_cents, start_date,
