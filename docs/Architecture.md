@@ -87,7 +87,7 @@ Rule: a feature package may use `common`, but `common` never depends on a featur
   migrations against real Postgres, so the triggers, constraints and SQL behave as they do in production.
 - `TestFlavorsApplication` runs the app locally against a Testcontainers database.
 
-## 4. Data model — V1–V3 built, V4–V5 planned
+## 4. Data model — V1–V4 built, V5 planned
 
 ### 4.1 Conventions
 
@@ -141,7 +141,8 @@ foreign keys left open in V2. A draft may be incomplete; a CHECK requires creato
 - `cancellation`: campaign_id, cancelled_by, stage, outcome, created_at
 - `review`: campaign_id (unique), rating (CHECK 1–5), text, created_at
 
-**V4 — offers and redemptions**
+**V4 — offers and redemptions** (built: `V4__offers_redemptions.sql`, tested by `OffersSchemaIT`; a partial
+unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is a keyed HMAC)
 - `offer`: campaign_id (unique), discount_percent (CHECK 1–100), expires_at, valid_days (bitmask),
   valid_from / valid_to (time), all_branches, min_purchase_cents, max_redemptions,
   per_person_limit (default 1)
