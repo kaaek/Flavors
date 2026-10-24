@@ -87,7 +87,7 @@ Rule: a feature package may use `common`, but `common` never depends on a featur
   migrations against real Postgres, so the triggers, constraints and SQL behave as they do in production.
 - `TestFlavorsApplication` runs the app locally against a Testcontainers database.
 
-## 4. Data model — planned
+## 4. Data model — V1 built, V2–V5 planned
 
 ### 4.1 Conventions
 
@@ -105,7 +105,7 @@ Rule: a feature package may use `common`, but `common` never depends on a featur
 
 The full MVP model is created in EEC-27 so that every story builds on one agreed schema.
 
-**V1 — foundation**
+**V1 — foundation** (built: `V1__foundation.sql`, tested by `AuditLogImmutabilityIT` and `FoundationSchemaIT`)
 - `app_user`: email (unique, case-insensitive), password_hash, role ∈ {CREATOR, BRAND, ADMIN},
   status ∈ {ACTIVE, SUSPENDED}, created_at, updated_at
 - `password_reset_token`: user_id, token_hash, expires_at, used_at (UC-F19.3)
