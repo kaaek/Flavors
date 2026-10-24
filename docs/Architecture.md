@@ -87,7 +87,7 @@ Rule: a feature package may use `common`, but `common` never depends on a featur
   migrations against real Postgres, so the triggers, constraints and SQL behave as they do in production.
 - `TestFlavorsApplication` runs the app locally against a Testcontainers database.
 
-## 4. Data model — V1–V4 built, V5 planned
+## 4. Data model — built
 
 ### 4.1 Conventions
 
@@ -153,7 +153,8 @@ unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is 
   campaign_id, creator_id, brand_id, branch_id, bill_cents, discount_cents, redeemed_at
 - `scan_failure`: qr_token, branch_id, bill_cents, reason, created_at (FR-F11.5)
 
-**V5 — payments, proof, disputes, notifications**
+**V5 — payments, proof, disputes, notifications** (built: `V5__payments_proof_disputes.sql`, tested by
+`PaymentsProofDisputesSchemaIT`; proof rounds are 1–3, i.e. the first submission plus up to 2 corrections)
 - `escrow_payment`: campaign_id (unique), status ∈ {PENDING, HELD, RELEASED, FROZEN, REFUNDED},
   amount_cents, fee_cents, creator_net_cents, refunded_cents, provider, provider_payment_id (unique),
   held_at, released_at
@@ -168,7 +169,79 @@ unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is 
   status ∈ {OPEN, DECIDED}, creator_share_percent (CHECK 0–100), decided_by, decided_at
 - `dispute_evidence`, `notification` (user_id, campaign_id, type, message, read_at, created_at)
 
-A Mermaid ER diagram and a table → story map will be added here with V5.
+### 4.3 ER diagram
+
+Tables and their foreign keys (columns are listed in §4.2 and in the migrations). `||--o{` reads
+"one to many", `||--o|` "one to at most one". Left out for readability: the Spring Session tables,
+`idempotency_key` (no foreign keys), the `reviewed_by`/`decided_by`/`cancelled_by` links to `app_user`,
+and the ids `redemption` copies from its claim.
+
+```mermaid
+erDiagram
+    app_user ||--o{ password_reset_token : "resets password with"
+    app_user ||--o{ audit_log : "acts in"
+    app_user ||--o| creator_profile : "is a"
+    app_user ||--o| brand : "is a"
+    app_user ||--o{ profile_warning : "receives"
+    app_user ||--o{ notification : "receives"
+
+    creator_profile ||--o{ social_account : connects
+    social_account ||--o{ social_post_metric : "has posts"
+    brand ||--o{ branch : has
+
+    brand ||--o{ campaign : creates
+    creator_profile ||--o{ campaign : "is hired for"
+    campaign ||--o{ campaign_branch : "runs at"
+    branch ||--o{ campaign_branch : "listed in"
+    campaign ||--o{ campaign_deliverable : requires
+    campaign ||--o| counter_offer : "may get"
+    campaign ||--o{ cancellation : "may have"
+    campaign ||--o| review : "may get"
+    campaign ||--o{ social_post_metric : "is promoted by"
+    campaign ||--o{ profile_warning : "caused"
+
+    campaign ||--o| offer : has
+    offer ||--o{ offer_branch : "valid at"
+    branch ||--o{ offer_branch : "listed in"
+    offer ||--o{ offer_claim : "claimed as"
+    offer_claim ||--o| redemption : "redeemed as"
+    branch ||--o{ redemption : "happens at"
+    branch ||--o{ scan_failure : "logs"
+
+    campaign ||--o| escrow_payment : "paid through"
+    escrow_payment ||--o{ payment_transaction : "moves money by"
+    campaign ||--o{ proof_submission : "proven by"
+    proof_submission ||--o{ proof_link : contains
+    proof_submission ||--o{ proof_file : contains
+    proof_submission ||--o| proof_review : "decided by"
+    campaign ||--o| dispute : "may have"
+    dispute ||--o{ dispute_evidence : collects
+    campaign ||--o{ notification : "is about"
+```
+
+### 4.4 Which story uses which table
+
+Each story writes the JPA entities for its tables (§4.1). Story IDs are from the spec.
+
+| Tables | Stories |
+|---|---|
+| `app_user`, `audit_log`, `idempotency_key`, Spring Session | TECH-1 (EEC-27); then UC-F19.1–F19.3, F21.1 |
+| `password_reset_token` | UC-F19.3 |
+| `creator_profile` | UC-F19.1, F20.1, F1.1, F1.2, F2.1, F17.1 |
+| `social_account`, `social_post_metric` | UC-F19.4, F1.3, F13.1, F14.1 |
+| `brand`, `branch` | UC-F19.2 |
+| `campaign`, `campaign_branch`, `campaign_deliverable` | UC-F3.1, F4.1, F22.1 |
+| `counter_offer` | UC-F4.1 |
+| `cancellation`, `profile_warning` | UC-F9.1 |
+| `review` | UC-F1.4 |
+| `offer`, `offer_branch` | UC-F10.1, F17.1 |
+| `offer_claim` | UC-F10.2 |
+| `redemption`, `scan_failure` | UC-F11.1, F12.1, F13.1, F14.1 |
+| `escrow_payment`, `payment_transaction` | UC-F7.1, F7.2, F23.1, F25.1 |
+| `proof_submission`, `proof_link`, `proof_file` | UC-F5.1 |
+| `proof_review` | UC-F6.1 |
+| `dispute`, `dispute_evidence` | UC-F8.1 |
+| `notification` | UC-F18.1 |
 
 ## 5. Security — planned
 
