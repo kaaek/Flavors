@@ -100,6 +100,77 @@ git push -u origin EEC-31-creator-registration
 # open a PR into develop on GitHub
 ```
 
+## Contributing
+
+Read [Architecture.md](Architecture.md) first: it settles the schema, security and conventions. This
+section covers what you need day to day on top of it.
+
+### Not built yet
+
+The foundation (EEC-27) is partly merged. Until the rest lands:
+
+| Missing | What it means for you | Arrives with |
+|---|---|---|
+| Login endpoint | Nobody can log in to a running app; tests use a mock user (see below) | UC-F19.3 |
+| `AuditLogger` | Stories that must record actions (F8, F20, F21, F22) leave a `// TODO audit` for now | EEC-27 step 5 |
+| Admin account | Admin screens can't be tried in a running app | EEC-27 step 7 (`AdminSeeder`) |
+| Frontend | There is no React app to add screens to yet | EEC-27 step 9 |
+| `docker-compose.yml` | `./mvnw spring-boot:run` has no database; use `./mvnw spring-boot:test-run`, which starts its own | EEC-27 step 10 |
+| CI | Reviewers run `./mvnw verify` locally before approving | EEC-27 step 11 |
+
+### Database changes
+
+- The whole MVP schema already exists (V1–V5). Find your tables in
+  [Architecture.md §4.4](Architecture.md#44-which-story-uses-which-table) and check the comments in the
+  migration files: they say which rules the database enforces and which ones your code must enforce.
+- **Never edit a migration that is merged.** Add a new file `V<n>__<what>.sql`.
+- **Claim your version number in the team chat before you create the file.** Two branches that both add V6
+  make Flyway refuse to start for whoever merges second. If someone merged your number first, rename yours
+  to the next free one before merging.
+- Follow the conventions in [Architecture.md §4.1](Architecture.md#41-conventions) (cents as `bigint`,
+  `timestamptz`, `varchar` + `CHECK` for statuses, indexed foreign keys, no `ON DELETE CASCADE`).
+
+### JPA entities
+
+- Write entities only for the tables your story uses, in your feature's package (e.g. `com.flavors.campaign`).
+  [`AppUser`](../backend/src/main/java/com/flavors/account/AppUser.java) is the example to copy.
+- Hibernate checks every entity against the schema at startup (`ddl-auto: validate`), and every integration
+  test starts the app. **One entity that doesn't match its table breaks every test**, so run
+  `./mvnw verify` before pushing.
+- Type mapping: `timestamptz` → `Instant`, `date` → `LocalDate`, `*_cents` → `long`, status columns →
+  an enum with `@Enumerated(EnumType.STRING)`, `jsonb` → `@JdbcTypeCode(SqlTypes.JSON)`.
+
+### Endpoints and security
+
+- Put each endpoint under the area of the role that may call it: `/api/creator/`, `/api/brand/`,
+  `/api/admin/`, or `/api/public/` for diner pages. `SecurityConfig` then returns 401/403 for you; don't add
+  role checks by hand.
+- Get the logged-in user with `@AuthenticationPrincipal CurrentUser user` (`user.getId()`, `user.getRole()`).
+- The role check doesn't know who owns what. "This campaign belongs to the current brand" (NF-1) is checked
+  in your service, using `user.getId()`.
+- Errors go back as JSON `ProblemDetail` (see [Architecture.md §5](Architecture.md#5-security--built)).
+- Frontend: every POST/PUT/PATCH/DELETE must send the value of the `XSRF-TOKEN` cookie in the
+  `X-XSRF-TOKEN` header, or it gets a 403. The API client in step 9 will do this for you.
+
+### Tests
+
+- **Controller tests** (`*Test`, fast, no database): `@WebMvcTest(YourController.class)` +
+  `@Import(SecurityConfig.class)`, logging in with
+  `.with(user(new CurrentUser(id, email, Role.BRAND, "x", true)))`. See
+  [`MeControllerTest`](../backend/src/test/java/com/flavors/account/MeControllerTest.java).
+- **POST/PUT/DELETE in tests** need the CSRF cookie and header, as in
+  [`RoleGuardTest`](../backend/src/test/java/com/flavors/common/security/RoleGuardTest.java)
+  (`.cookie(new Cookie("XSRF-TOKEN", t)).header("X-XSRF-TOKEN", t)`). Spring's `csrf().asHeader()` helper
+  does **not** work with this setup.
+- **Database tests** (`*IT`): `@SpringBootTest` + `@Import(TestcontainersConfiguration.class)`. All tests share
+  one database and nothing is rolled back, so give each test its own data (e.g. random emails) and never rely
+  on a table being empty. See the tests in `backend/src/test/java/com/flavors/db/`.
+
+### Open decisions
+
+- **SPIKE-1** (which social platform) and **SPIKE-2** (which payment provider) are still open. The `platform`
+  and `provider` columns accept any text until then; don't hard-code one value.
+
 ## Environment variables
 
 Nothing secret is committed. Locally, the `dev` profile has defaults that match `docker-compose.yml`.
