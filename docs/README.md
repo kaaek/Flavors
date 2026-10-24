@@ -32,19 +32,37 @@ EECE 430 course project, Fall 2026–27. Three two-week sprints:
 
 ## Repository layout
 
-The folders below are planned and arrive with EEC-27 (project foundation).
+Paths are relative to the repository root. Entries marked *(planned)* arrive with EEC-27 (project foundation).
 
 ```
-backend/     Spring Boot application (package com.flavors), Flyway migrations
-frontend/    React + TypeScript single-page app
-docs/        Schema diagram, architecture decisions, specification
-.github/     CI/CD workflows and the pull request template
-Dockerfile   Builds the frontend and backend into one image
+backend/      Spring Boot application (package com.flavors), Flyway migrations
+frontend/     React + TypeScript single-page app (planned)
+docs/         This README and Architecture.md (design: schema, security, audit log, CI/CD)
+.github/      Pull request template; CI/CD workflows (planned)
+Dockerfile    Builds the frontend and backend into one image (planned)
 ```
+
+See [Architecture.md](Architecture.md) for how the system is built and why.
 
 ## Running locally
 
-*Coming in EEC-27 (project foundation).*
+*Full setup (local database, frontend) is coming in EEC-27 (project foundation).*
+
+### Backend tests
+
+```bash
+cd backend      # from the repository root
+./mvnw verify    # unit tests + integration tests (*IT) against a throwaway Postgres
+```
+
+The tests start Postgres in Docker through Testcontainers, so Docker must be running and
+your user must be able to use it. On Linux: `sudo usermod -aG docker $USER`, then log out
+and back in. The first run downloads the `postgres:17-alpine` image.
+
+### Run the backend without a local database
+
+`backend/src/test/java/com/flavors/TestFlavorsApplication.java` starts the app against a
+Testcontainers Postgres. Run its `main` from VS Code, or use `./mvnw spring-boot:test-run`.
 
 ## Branch conventions
 
