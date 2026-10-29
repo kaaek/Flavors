@@ -1,5 +1,6 @@
-package com.flavors.account;
+package com.flavors.entity;
  
+import com.flavors.enums.VerificationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

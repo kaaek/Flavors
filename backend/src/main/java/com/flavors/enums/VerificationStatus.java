@@ -1,4 +1,4 @@
-package com.flavors.account;
+package com.flavors.enums;
  
 /** Where a creator is in the admin's approval (FR-F19.4, FR-F20.3). Only APPROVED creators get a portfolio. */
 public enum VerificationStatus {
@@ -6,3 +6,4 @@ public enum VerificationStatus {
     APPROVED,
     REJECTED
 }
+ 

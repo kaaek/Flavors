@@ -1,9 +1,13 @@
-package com.flavors.account;
+package com.flavors.entity;
  
 import static org.assertj.core.api.Assertions.assertThat;
  
 import com.flavors.TestcontainersConfiguration;
-import com.flavors.common.security.Role;
+import com.flavors.enums.Role;
+import com.flavors.enums.SocialAccountStatus;
+import com.flavors.repository.AppUserRepository;
+import com.flavors.repository.CreatorProfileRepository;
+import com.flavors.repository.SocialAccountRepository;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;

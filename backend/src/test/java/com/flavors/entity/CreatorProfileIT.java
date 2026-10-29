@@ -1,9 +1,12 @@
-package com.flavors.account;
+package com.flavors.entity;
  
 import static org.assertj.core.api.Assertions.assertThat;
  
 import com.flavors.TestcontainersConfiguration;
-import com.flavors.common.security.Role;
+import com.flavors.enums.Role;
+import com.flavors.enums.VerificationStatus;
+import com.flavors.repository.AppUserRepository;
+import com.flavors.repository.CreatorProfileRepository;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

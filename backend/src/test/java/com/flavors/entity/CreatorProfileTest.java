@@ -1,8 +1,9 @@
-package com.flavors.account;
+package com.flavors.entity;
  
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
  
+import com.flavors.enums.VerificationStatus;
 import org.junit.jupiter.api.Test;
  
 /** Plain unit tests, no database: the rules for editing portfolio details (UC-F1.2). */

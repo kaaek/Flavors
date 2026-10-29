@@ -1,5 +1,6 @@
-package com.flavors.account;
+package com.flavors.repository;
  
+import com.flavors.entity.SocialAccount;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
  
