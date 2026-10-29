@@ -54,7 +54,7 @@ com.flavors
 ├── FlavorsApplication
 ├── common/              cross-cutting, used by every feature
 │   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (built)
-│   ├── idempotency/     IdempotencyKey, IdempotencyService                       (planned)
+│   ├── idempotency/     IdempotencyService, IdempotencyConflictException        (built)
 │   ├── money/           Money (USD cents value object)                           (planned)
 │   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
 │   └── web/             SpaForwardingController, global exception handler        (planned)
@@ -299,7 +299,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 - **Tests:** `AuditLogImmutabilityIT` (database triggers block UPDATE/DELETE/TRUNCATE) and `AuditLoggerIT`
   (actor, `system`, rollback together, no transaction, JPA cannot change an entry, no delete methods).
 
-## 7. Idempotency (NF-6) — planned
+## 7. Idempotency (NF-6) — built
 
 "A failed payment or decision is retried without creating a duplicate."
 
@@ -311,6 +311,12 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 3. If the fingerprint differs (same key reused for a different request), reject with a conflict.
 4. Otherwise run the action, store its response as JSON and mark the row `COMPLETED`, all in one
    transaction. If the action throws, everything rolls back and a later retry can run it again.
+
+Notes: the service uses plain SQL (`JdbcTemplate`), not JPA, because it relies on `ON CONFLICT` and `FOR UPDATE`;
+the request fingerprint is stored as a SHA-256 hash; and the action runs in the same transaction, so it must only
+do database work (an external call inside it cannot be rolled back). Mapping `IdempotencyConflictException` to an
+HTTP 409 comes with the global exception handler. **Tests:** `IdempotencyServiceIT` (repeat, conflict, other scope,
+retry after failure, 8 concurrent retries).
 
 Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provider webhooks
 (scope `webhook:<provider>`, key = event id, EX-F7.1.3), and release, refund and dispute decisions
