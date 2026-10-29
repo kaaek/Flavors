@@ -150,10 +150,28 @@ The foundation (EEC-27) is partly merged. Until the rest lands:
 - Follow the conventions in [Architecture.md §4.1](Architecture.md#41-conventions) (cents as `bigint`,
   `timestamptz`, `varchar` + `CHECK` for statuses, indexed foreign keys, no `ON DELETE CASCADE`).
 
+### Adding a feature (layers)
+
+The code is organised by layer, with the same package names everywhere (see
+[Architecture.md §3.1](Architecture.md#31-package-layout-n-layered)). For a story that adds, say, campaigns:
+
+| Layer | You add | Example to copy |
+|---|---|---|
+| `entity/` | `Campaign`, matching the table in the migration | `AppUser` |
+| `enums/` | `CampaignStatus` | `UserStatus` |
+| `repository/` | `CampaignRepository extends JpaRepository<Campaign, Long>` | `AppUserRepository` |
+| `service/` + `service/impl/` | `CampaignService` interface and `CampaignServiceImpl` (`@Service`, `@Transactional`) | `AuditLogger` / `AuditLoggerImpl` |
+| `dto/` | request and response records | `MeResponse` |
+| `mapper/` | `CampaignMapper` (`@Component`) | `MeMapper` |
+| `controller/` | `CampaignController` under `/api/brand/...` etc., calling the service and returning DTOs | `MeController` |
+| `exception/` | domain exceptions the service throws | `IdempotencyConflictException` |
+
+Controllers return DTOs, never entities. Tests go in the matching test package.
+
 ### JPA entities
 
-- Write entities only for the tables your story uses, in your feature's package (e.g. `com.flavors.campaign`).
-  [`AppUser`](../backend/src/main/java/com/flavors/account/AppUser.java) is the example to copy.
+- Write entities only for the tables your story uses, in `com.flavors.entity` (enums in `com.flavors.enums`).
+  [`AppUser`](../backend/src/main/java/com/flavors/entity/AppUser.java) is the example to copy.
 - Hibernate checks every entity against the schema at startup (`ddl-auto: validate`), and every integration
   test starts the app. **One entity that doesn't match its table breaks every test**, so run
   `./mvnw verify` before pushing.
@@ -175,11 +193,11 @@ The foundation (EEC-27) is partly merged. Until the rest lands:
 ### Tests
 
 - **Controller tests** (`*Test`, fast, no database): `@WebMvcTest(YourController.class)` +
-  `@Import(SecurityConfig.class)`, logging in with
+  `@Import(SecurityConfig.class)` (plus any mapper the controller uses: `@WebMvcTest` only loads the web layer), logging in with
   `.with(user(new CurrentUser(id, email, Role.BRAND, "x", true)))`. See
-  [`MeControllerTest`](../backend/src/test/java/com/flavors/account/MeControllerTest.java).
+  [`MeControllerTest`](../backend/src/test/java/com/flavors/controller/MeControllerTest.java).
 - **POST/PUT/DELETE in tests** need the CSRF cookie and header, as in
-  [`RoleGuardTest`](../backend/src/test/java/com/flavors/common/security/RoleGuardTest.java)
+  [`RoleGuardTest`](../backend/src/test/java/com/flavors/config/RoleGuardTest.java)
   (`.cookie(new Cookie("XSRF-TOKEN", t)).header("X-XSRF-TOKEN", t)`). Spring's `csrf().asHeader()` helper
   does **not** work with this setup.
 - **Database tests** (`*IT`): `@SpringBootTest` + `@Import(TestcontainersConfiguration.class)`. All tests share
