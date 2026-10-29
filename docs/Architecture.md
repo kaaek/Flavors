@@ -47,22 +47,44 @@ Branch model: `main` ← `release/sprint-N` ← `develop` ← `EEC-NN-short-name
 
 ## 3. Backend
 
-### 3.1 Package layout (by feature)
+### 3.1 Package layout (n-layered)
+
+Code is grouped by **layer**, not by feature: every story puts its classes in the same named packages.
 
 ```
 com.flavors
 ├── FlavorsApplication
-├── common/              cross-cutting, used by every feature
-│   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (built)
-│   ├── idempotency/     IdempotencyService, IdempotencyConflictException        (built)
-│   ├── money/           Money (USD cents value object)                           (built)
-│   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
-│   └── web/             SpaForwardingConfig (built), global exception handler (planned)
-├── account/             AppUser, AppUserDetailsService, MeController, AdminSeeder (built)
-└── campaign/, offer/, payment/, …   one package per feature, added by later stories
+├── controller/     REST endpoints (@RestController): MeController
+├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService
+│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl
+├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository
+├── entity/         JPA entities, one per table: AppUser, AuditLogEntry
+├── enums/          enum types shared by entities and DTOs: Role, UserStatus
+├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser
+├── mapper/         entity/principal <-> DTO converters: MeMapper
+├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder
+├── exception/      domain exceptions and (planned) the @ControllerAdvice: IdempotencyConflictException
+└── util/           helpers and value objects: Money
 ```
 
-Rule: a feature package may use `common`, but `common` never depends on a feature package.
+The package is `enums`, not `enum`, because `enum` is a reserved word in Java.
+
+**Rules** (who may call whom):
+
+- A request flows `controller` → `service` → `repository`. A controller never touches a repository, and a
+  repository never calls up into a service.
+- Controllers and services depend on service **interfaces** (`service/`); the implementation lives in
+  `service/impl/` and is named `<Interface>Impl`. A class Spring already defines the contract for
+  (`UserDetailsService`) only needs the `impl` class.
+- **Entities are never sent to or read from the browser directly.** Controllers accept and return `dto/`
+  objects and `mapper/` converts, so a table change can't leak into the API by accident (and a password hash
+  can't be serialized). A mapper is a plain `@Component`.
+- `@Transactional` goes on service implementations, not on controllers or repositories.
+- `entity/` holds only `@Entity` classes. Their enums go in `enums/`.
+- `util/` and `exception/` depend on nothing else in the app, so any layer may use them.
+- `config/` holds Spring wiring and startup runners (`@Configuration`, `ApplicationRunner`); no business rules.
+- Tests mirror the main packages (`service/impl/AuditLoggerImplIT` tests `service/impl/AuditLoggerImpl`);
+  the schema tests live in `db/`.
 
 ### 3.2 Configuration — built
 
@@ -271,12 +293,12 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
   JavaScript) that the frontend echoes back in the `X-XSRF-TOKEN` header on every POST/PUT/PATCH/DELETE.
 - **No request cache, form login, HTTP Basic or default logout:** they are for server-rendered pages. The
   request cache would also create a session row for every anonymous 401.
-- **Passwords:** BCrypt (delegating encoder, hashes stored as `{bcrypt}...`). `AppUserDetailsService` loads
+- **Passwords:** BCrypt (delegating encoder, hashes stored as `{bcrypt}...`). `AppUserDetailsServiceImpl` loads
   accounts case-insensitively by email; a suspended user loads as disabled, so login is refused (FR-F19.12).
 - **Logged-in user:** `CurrentUser` (id, email, role), injected with `@AuthenticationPrincipal`. It is
   Java-serialized into the session table, so change its fields with care.
 - **Tests:** `RoleGuardTest` (every role × area, 401/403 bodies, CSRF), `MeControllerTest`, `SecurityIT`
-  (health public, no session on 401, CSRF cookie), `AppUserDetailsServiceIT`.
+  (health public, no session on 401, CSRF cookie), `AppUserDetailsServiceImplIT`.
 - **Scope split:** EEC-27 builds the mechanism, the guards and `GET /api/me`. The login, logout and
   password reset endpoints and screens belong to UC-F19.3.
 
@@ -296,7 +318,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
   and the business change commit or roll back together; it uses `Propagation.MANDATORY`, so calling it
   outside a transaction fails instead of auditing something that may roll back. `details` is a
   `Map<String, Object>` stored as jsonb.
-- **Tests:** `AuditLogImmutabilityIT` (database triggers block UPDATE/DELETE/TRUNCATE) and `AuditLoggerIT`
+- **Tests:** `AuditLogImmutabilityIT` (database triggers block UPDATE/DELETE/TRUNCATE) and `AuditLoggerImplIT`
   (actor, `system`, rollback together, no transaction, JPA cannot change an entry, no delete methods).
 
 ## 7. Idempotency (NF-6) — built
@@ -315,7 +337,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 Notes: the service uses plain SQL (`JdbcTemplate`), not JPA, because it relies on `ON CONFLICT` and `FOR UPDATE`;
 the request fingerprint is stored as a SHA-256 hash; and the action runs in the same transaction, so it must only
 do database work (an external call inside it cannot be rolled back). Mapping `IdempotencyConflictException` to an
-HTTP 409 comes with the global exception handler. **Tests:** `IdempotencyServiceIT` (repeat, conflict, other scope,
+HTTP 409 comes with the global exception handler. **Tests:** `IdempotencyServiceImplIT` (repeat, conflict, other scope,
 retry after failure, 8 concurrent retries).
 
 Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provider webhooks
