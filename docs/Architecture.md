@@ -57,7 +57,7 @@ com.flavors
 │   ├── idempotency/     IdempotencyService, IdempotencyConflictException        (built)
 │   ├── money/           Money (USD cents value object)                           (built)
 │   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
-│   └── web/             SpaForwardingController, global exception handler        (planned)
+│   └── web/             SpaForwardingConfig (built), global exception handler (planned)
 ├── account/             AppUser, AppUserDetailsService, MeController, AdminSeeder (built)
 └── campaign/, offer/, payment/, …   one package per feature, added by later stories
 ```
@@ -356,18 +356,22 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
   server failure is its own state, so an outage never looks like being logged out.
 - Route areas: `/creator/*`, `/brand/*`, `/admin/*`; public `/s/:slug` (storefront) and
   `/claim/:token` (diner QR page).
-- In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingController` sends
-  non-API, non-file paths to `index.html` so client-side routes work on reload.
+- In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingConfig` answers non-API,
+  non-file paths with `index.html` so client-side routes work on reload. It is a fallback inside the static-file
+  handler, not a `@GetMapping` controller: controllers are matched before static files, so a catch-all controller
+  would also swallow `/assets/*.js`. A missing file (a path with a dot) or a missing `/api/**` path stays a 404.
+  Tested by `SpaForwardingIT` against a placeholder `static/index.html` in the test resources.
 - Pages are placeholders (`App.tsx`); the UI kit is chosen by the first UI story.
 - **Tests:** `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
   ProblemDetail errors), `money.test.ts`.
 
-## 11. Build, deploy and CI/CD — planned
+## 11. Build, deploy and CI/CD — built (Railway and GitHub setup is manual)
 
 - **Dockerfile** (multi-stage): `node:22` builds the frontend → Maven (Temurin 25) packages the jar
   with the SPA in `static/` → `eclipse-temurin:25-jre` runs it as a non-root user on `$PORT`.
-- **`docker-compose.yml`**: local Postgres 17 only.
-- **`.github/workflows/ci.yml`**, on PRs and pushes to `develop`, `release/**` and `main`:
+- **`docker-compose.yml`**: local Postgres 17 only (built). **`railway.json`** (built): Dockerfile build, health check `/actuator/health`.
+  The image build skips tests (`-DskipTests`); CI runs them separately.
+- **`.github/workflows/ci.yml`**, on PRs and pushes to `develop` and `release/**` (pushes to `main` run it through `deploy-production.yml`, so it doesn't run twice):
   `backend` (`./mvnw -B verify`), `frontend` (lint, test, build) and `docker` (image builds).
   `deploy-staging` runs only on push to `develop`, after all three pass: it runs `railway up` to staging and then a health smoke test.
 - **`.github/workflows/deploy-production.yml`**: on push to `main`, plus `workflow_dispatch` as a

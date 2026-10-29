@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+docs
+CLAUDE.md
+**/node_modules
+**/dist
+backend/target
+backend/.settings
+backend/.classpath
+backend/.project
