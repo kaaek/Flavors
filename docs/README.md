@@ -36,7 +36,7 @@ Paths are relative to the repository root. Entries marked *(planned)* arrive wit
 
 ```
 backend/      Spring Boot application (package com.flavors), Flyway migrations
-frontend/     React + TypeScript single-page app (planned)
+frontend/     React + TypeScript single-page app (Vite)
 docs/         This README and Architecture.md (design: schema, security, audit log, CI/CD)
 .github/      Pull request template; CI/CD workflows (planned)
 Dockerfile    Builds the frontend and backend into one image (planned)
@@ -47,6 +47,18 @@ See [Architecture.md](Architecture.md) for how the system is built and why.
 ## Running locally
 
 *Full setup (local database, frontend) is coming in EEC-27 (project foundation).*
+
+### Frontend
+
+```bash
+cd frontend
+npm install          # first time only
+npm run dev          # http://localhost:5173, proxies /api to the backend on :8080
+npm test             # Vitest
+npm run lint         # oxlint
+npm run format:check # Prettier (npm run format fixes)
+npm run build        # type-check + production build into frontend/dist
+```
 
 ### Backend tests
 
@@ -112,7 +124,6 @@ The foundation (EEC-27) is partly merged. Until the rest lands:
 | Missing | What it means for you | Arrives with |
 |---|---|---|
 | Login endpoint | Nobody can log in to a running app; tests use a mock user (see below) | UC-F19.3 |
-| Frontend | There is no React app to add screens to yet | EEC-27 step 9 |
 | `docker-compose.yml` | `./mvnw spring-boot:run` has no database; use `./mvnw spring-boot:test-run`, which starts its own | EEC-27 step 10 |
 | CI | Reviewers run `./mvnw verify` locally before approving | EEC-27 step 11 |
 

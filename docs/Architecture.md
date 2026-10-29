@@ -335,26 +335,32 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 - **Tests:** `AdminSeederIT` (account + BCrypt hash + `ADMIN_SEEDED` entry, running again changes nothing, fails fast
   without credentials).
 
-## 9. Money and language — backend built, frontend planned
+## 9. Money and language — built
 
 - The API exchanges **integer cents** only. The backend `Money` value object (long cents, HALF_UP percentage
   maths) is used for fees (15%), refunds and ROI.
 - `Money.percent(n)` rounds HALF_UP to the cent. To split an amount, compute one part with `percent` and the other
   with `minus`, so the parts always add up to the total (tested for fee + net). Overflow throws. Test: `MoneyTest`.
 - The frontend formats with `Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'})`, e.g.
-  `formatUSD(123450)` → `$1,234.50`. Locale and currency constants live in `frontend/src/lib/locale.ts`.
+  `formatUSD(123450)` → `$1,234.50`. Locale and currency constants live in `frontend/src/lib/locale.ts`; `money.ts` is tested by `money.test.ts`.
 - The UI is English only, with no i18n framework yet; Arabic is out of the MVP (NF-16).
 
-## 10. Frontend — planned
+## 10. Frontend — built
 
-- Vite + React + TypeScript, React Router, ESLint + Prettier, Vitest + Testing Library.
+- Vite + React + TypeScript, React Router, Vitest + Testing Library, Prettier. The linter is **oxlint**, not ESLint:
+  it is what the current Vite template ships with, and it needs no config files for our rules.
+  Run from `frontend/`: `npm run lint`, `npm test`, `npm run format:check`, `npm run build`.
 - `api/client.ts`: a fetch wrapper that sends credentials and the CSRF header and parses ProblemDetail errors.
-- `useMe()` + `<RequireRole role="...">`: redirect to `/login` on 401 and show "Not allowed" on 403.
+- `<AuthProvider>` asks `GET /api/me` once; `useMe()` returns `{ state, refresh }` (`loading`, `anonymous`, `authenticated`,
+  `error`). `<RequireRole role="...">` redirects to `/login` on 401 and shows "Not allowed" for the wrong role (403). A
+  server failure is its own state, so an outage never looks like being logged out.
 - Route areas: `/creator/*`, `/brand/*`, `/admin/*`; public `/s/:slug` (storefront) and
   `/claim/:token` (diner QR page).
 - In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingController` sends
   non-API, non-file paths to `index.html` so client-side routes work on reload.
-- The UI kit is chosen by the first UI story.
+- Pages are placeholders (`App.tsx`); the UI kit is chosen by the first UI story.
+- **Tests:** `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
+  ProblemDetail errors), `money.test.ts`.
 
 ## 11. Build, deploy and CI/CD — planned
 
