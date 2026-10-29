@@ -58,7 +58,7 @@ com.flavors
 │   ├── money/           Money (USD cents value object)                           (planned)
 │   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
 │   └── web/             SpaForwardingController, global exception handler        (planned)
-├── account/             AppUser, AppUserDetailsService, MeController (built); AdminSeeder (planned)
+├── account/             AppUser, AppUserDetailsService, MeController, AdminSeeder (built)
 └── campaign/, offer/, payment/, …   one package per feature, added by later stories
 ```
 
@@ -322,13 +322,18 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 (scope `webhook:<provider>`, key = event id, EX-F7.1.3), and release, refund and dispute decisions
 (UC-F7.2, F8.1). QR double scans are handled by the `redemption.claim_id` unique constraint instead.
 
-## 8. Admin account seeding — planned
+## 8. Admin account seeding — built
 
 - `AdminSeeder` runs at startup when `FLAVORS_SEED_ADMIN_ENABLED=true`. It reads
   `FLAVORS_ADMIN_EMAIL` / `FLAVORS_ADMIN_PASSWORD`, and creates the ADMIN user (BCrypt hash) plus an
   `ADMIN_SEEDED` audit entry **only if that email doesn't exist yet**, so it is safe to run on every start.
   It fails fast if enabled without credentials.
 - No password is ever in git or in a migration.
+- It uses the Spring property names `flavors.seed.admin.enabled`, `flavors.admin.email` and `flavors.admin.password`
+  (the environment variables above, by Spring's relaxed binding). The account and its audit entry are created in one
+  transaction, and a startup race with another instance is tolerated (the unique email index decides).
+- **Tests:** `AdminSeederIT` (account + BCrypt hash + `ADMIN_SEEDED` entry, running again changes nothing, fails fast
+  without credentials).
 
 ## 9. Money and language — planned
 

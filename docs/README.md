@@ -112,8 +112,6 @@ The foundation (EEC-27) is partly merged. Until the rest lands:
 | Missing | What it means for you | Arrives with |
 |---|---|---|
 | Login endpoint | Nobody can log in to a running app; tests use a mock user (see below) | UC-F19.3 |
-| `AuditLogger` | Stories that must record actions (F8, F20, F21, F22) leave a `// TODO audit` for now | EEC-27 step 5 |
-| Admin account | Admin screens can't be tried in a running app | EEC-27 step 7 (`AdminSeeder`) |
 | Frontend | There is no React app to add screens to yet | EEC-27 step 9 |
 | `docker-compose.yml` | `./mvnw spring-boot:run` has no database; use `./mvnw spring-boot:test-run`, which starts its own | EEC-27 step 10 |
 | CI | Reviewers run `./mvnw verify` locally before approving | EEC-27 step 11 |
