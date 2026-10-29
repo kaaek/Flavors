@@ -36,17 +36,42 @@ Paths are relative to the repository root. Entries marked *(planned)* arrive wit
 
 ```
 backend/      Spring Boot application (package com.flavors), Flyway migrations
-frontend/     React + TypeScript single-page app (planned)
+frontend/     React + TypeScript single-page app (Vite)
 docs/         This README and Architecture.md (design: schema, security, audit log, CI/CD)
-.github/      Pull request template; CI/CD workflows (planned)
-Dockerfile    Builds the frontend and backend into one image (planned)
+.github/      Pull request template; CI/CD workflows (ci.yml, deploy-production.yml)
+Dockerfile    Builds the frontend and backend into one image
+docker-compose.yml  Local Postgres for development
+railway.json  Railway build and health-check settings
 ```
 
 See [Architecture.md](Architecture.md) for how the system is built and why.
 
 ## Running locally
 
-*Full setup (local database, frontend) is coming in EEC-27 (project foundation).*
+Start the database, then the backend, then the frontend (three terminals, from the repository root):
+
+```bash
+docker compose up -d db                                   # Postgres on localhost:5432
+cd backend && SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run     # API on http://localhost:8080
+cd frontend && npm install && npm run dev                 # app on http://localhost:5173
+```
+
+To create the admin account on startup, also set `FLAVORS_SEED_ADMIN_ENABLED=true`, `FLAVORS_ADMIN_EMAIL` and
+`FLAVORS_ADMIN_PASSWORD` for the backend (there is no login screen until UC-F19.3, so this only creates the row).
+
+To try the production image: `docker build -t flavors .`, then run it with the `PG*` variables pointing at a database.
+
+### Frontend
+
+```bash
+cd frontend
+npm install          # first time only
+npm run dev          # http://localhost:5173, proxies /api to the backend on :8080
+npm test             # Vitest
+npm run lint         # oxlint
+npm run format:check # Prettier (npm run format fixes)
+npm run build        # type-check + production build into frontend/dist
+```
 
 ### Backend tests
 
@@ -112,11 +137,6 @@ The foundation (EEC-27) is partly merged. Until the rest lands:
 | Missing | What it means for you | Arrives with |
 |---|---|---|
 | Login endpoint | Nobody can log in to a running app; tests use a mock user (see below) | UC-F19.3 |
-| `AuditLogger` | Stories that must record actions (F8, F20, F21, F22) leave a `// TODO audit` for now | EEC-27 step 5 |
-| Admin account | Admin screens can't be tried in a running app | EEC-27 step 7 (`AdminSeeder`) |
-| Frontend | There is no React app to add screens to yet | EEC-27 step 9 |
-| `docker-compose.yml` | `./mvnw spring-boot:run` has no database; use `./mvnw spring-boot:test-run`, which starts its own | EEC-27 step 10 |
-| CI | Reviewers run `./mvnw verify` locally before approving | EEC-27 step 11 |
 
 ### Database changes
 
@@ -170,6 +190,44 @@ The foundation (EEC-27) is partly merged. Until the rest lands:
 
 - **SPIKE-1** (which social platform) and **SPIKE-2** (which payment provider) are still open. The `platform`
   and `provider` columns accept any text until then; don't hard-code one value.
+
+## Deployment setup (one-time, by the repository admin)
+
+The workflows in `.github/workflows/` deploy to Railway, but they need the following to exist first.
+Nothing here is in git because it is account configuration and secrets.
+
+**Railway** (https://railway.com)
+
+1. Create a project `flavors` with two environments, `staging` and `production`.
+2. In each environment add a **PostgreSQL** service and an **app** service. The app service builds from this
+   GitHub repository using `railway.json` (Dockerfile build, health check `/actuator/health`). Name it `app`, or set
+   the GitHub variable `RAILWAY_SERVICE` to its name.
+3. On each app service set the variables below. Reference the database service's variables rather than copying
+   values, so they follow the database:
+
+   | Variable | Value |
+   |---|---|
+   | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | `${{Postgres.PGHOST}}` etc. (Railway reference variables) |
+   | `FLAVORS_SEED_ADMIN_ENABLED` | `true` (can be switched off after the first start) |
+   | `FLAVORS_ADMIN_EMAIL`, `FLAVORS_ADMIN_PASSWORD` | the first admin's login; use a strong password |
+   | `SPRING_PROFILES_ACTIVE` | `staging` / `prod` (optional: those profiles have no overrides yet) |
+
+4. Generate a public domain for each app service (Settings, Networking).
+5. In each environment create a **project token** (Project settings, Tokens).
+
+**GitHub** (repository Settings)
+
+| Where | Name | Value |
+|---|---|---|
+| Secrets | `RAILWAY_TOKEN_STAGING` | the staging project token |
+| Secrets | `RAILWAY_TOKEN_PRODUCTION` | the production project token |
+| Variables | `STAGING_URL` | e.g. `https://flavors-staging.up.railway.app` (no trailing slash) |
+| Variables | `PRODUCTION_URL` | the production domain |
+| Variables | `RAILWAY_SERVICE` | only if the app service is not named `app` |
+| Environments | `production` | add **Required reviewers**, so a production deploy waits for approval |
+
+After CI has run once, add its checks (`backend`, `frontend`, `docker`) as **required status checks** in the branch
+protection rules of `main` and `develop`.
 
 ## Environment variables
 

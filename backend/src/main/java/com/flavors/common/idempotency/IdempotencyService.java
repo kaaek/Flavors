@@ -1,0 +1,88 @@
+package com.flavors.common.idempotency;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.function.Supplier;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * Makes a retried request run its action only once (NF-6): the Pay button, payment webhooks, and
+ * release/refund/dispute decisions. State lives in {@code idempotency_key} (V1). Design: docs/Architecture.md §7.
+ *
+ * <p>Plain SQL, not JPA: the flow depends on {@code ON CONFLICT} and {@code FOR UPDATE}, and the
+ * row is never edited by application code other than here.
+ */
+@Service
+public class IdempotencyService {
+
+    private final JdbcTemplate jdbc;
+    private final JsonMapper json;
+
+    public IdempotencyService(JdbcTemplate jdbc, JsonMapper json) {
+        this.jdbc = jdbc;
+        this.json = json;
+    }
+
+    private record Row(String requestHash, String status, String response) {
+    }
+
+    /**
+     * Runs {@code action} at most once per (scope, key) and returns its result; a repeat of a completed
+     * request returns the stored result without running the action again.
+     *
+     * <p>Everything happens in one transaction, including the action's own database work. If the
+     * action throws, the key row is rolled back with it, so a later retry can run the action again.
+     * The action must be a database-only change: an external call (e.g. to the payment provider) made
+     * inside it cannot be rolled back.
+     *
+     * @param requestFingerprint describes the request (e.g. its JSON body); reusing a key with a
+     *                           different fingerprint throws {@link IdempotencyConflictException}
+     * @param resultType         must be JSON-serializable, since the result is stored as jsonb
+     */
+    @Transactional
+    public <T> T execute(String scope, String key, String requestFingerprint, Supplier<T> action, Class<T> resultType) {
+        String hash = sha256(requestFingerprint);
+
+        // Claim the key. If another request already holds it, this inserts nothing and (while that
+        // request is still open) waits for it to commit or roll back first.
+        jdbc.update("""
+                INSERT INTO idempotency_key (scope, key, request_hash, status)
+                VALUES (?, ?, ?, 'IN_PROGRESS')
+                ON CONFLICT (scope, key) DO NOTHING
+                """, scope, key, hash);
+
+        // Lock the row so concurrent retries queue up here, one at a time.
+        Row row = jdbc.queryForObject("""
+                SELECT request_hash, status, response::text FROM idempotency_key
+                WHERE scope = ? AND key = ? FOR UPDATE
+                """, (rs, i) -> new Row(rs.getString(1), rs.getString(2), rs.getString(3)), scope, key);
+
+        if (!row.requestHash().equals(hash)) {
+            throw new IdempotencyConflictException(scope, key);
+        }
+        if ("COMPLETED".equals(row.status())) {
+            return row.response() == null ? null : json.readValue(row.response(), resultType);
+        }
+
+        T result = action.get();
+        jdbc.update("""
+                UPDATE idempotency_key SET status = 'COMPLETED', response = ?::jsonb, completed_at = now()
+                WHERE scope = ? AND key = ?
+                """, result == null ? null : json.writeValueAsString(result), scope, key);
+        return result;
+    }
+
+    private static String sha256(String text) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e); // SHA-256 is required on every Java platform
+        }
+    }
+}

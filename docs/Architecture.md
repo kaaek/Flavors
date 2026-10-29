@@ -53,12 +53,12 @@ Branch model: `main` ← `release/sprint-N` ← `develop` ← `EEC-NN-short-name
 com.flavors
 ├── FlavorsApplication
 ├── common/              cross-cutting, used by every feature
-│   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (planned)
-│   ├── idempotency/     IdempotencyKey, IdempotencyService                       (planned)
-│   ├── money/           Money (USD cents value object)                           (planned)
+│   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (built)
+│   ├── idempotency/     IdempotencyService, IdempotencyConflictException        (built)
+│   ├── money/           Money (USD cents value object)                           (built)
 │   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
-│   └── web/             SpaForwardingController, global exception handler        (planned)
-├── account/             AppUser, AppUserDetailsService, MeController (built); AdminSeeder (planned)
+│   └── web/             SpaForwardingConfig (built), global exception handler (planned)
+├── account/             AppUser, AppUserDetailsService, MeController, AdminSeeder (built)
 └── campaign/, offer/, payment/, …   one package per feature, added by later stories
 ```
 
@@ -280,7 +280,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 - **Scope split:** EEC-27 builds the mechanism, the guards and `GET /api/me`. The login, logout and
   password reset endpoints and screens belong to UC-F19.3.
 
-## 6. Audit log (NF-7) — planned
+## 6. Audit log (NF-7) — built
 
 "Every important action stores user, date and time; these records cannot be edited or deleted."
 
@@ -293,9 +293,13 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
   bare `Repository` and exposes only `save` and finders, so there is no delete or update to call.
 - **API:** `AuditLogger.record(action, entityType, entityId, details)` takes the actor from the security
   context (or `system` for jobs and the seeder). It joins the caller's transaction, so the audit row
-  and the business change commit or roll back together.
+  and the business change commit or roll back together; it uses `Propagation.MANDATORY`, so calling it
+  outside a transaction fails instead of auditing something that may roll back. `details` is a
+  `Map<String, Object>` stored as jsonb.
+- **Tests:** `AuditLogImmutabilityIT` (database triggers block UPDATE/DELETE/TRUNCATE) and `AuditLoggerIT`
+  (actor, `system`, rollback together, no transaction, JPA cannot change an entry, no delete methods).
 
-## 7. Idempotency (NF-6) — planned
+## 7. Idempotency (NF-6) — built
 
 "A failed payment or decision is retried without creating a duplicate."
 
@@ -308,43 +312,66 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 4. Otherwise run the action, store its response as JSON and mark the row `COMPLETED`, all in one
    transaction. If the action throws, everything rolls back and a later retry can run it again.
 
+Notes: the service uses plain SQL (`JdbcTemplate`), not JPA, because it relies on `ON CONFLICT` and `FOR UPDATE`;
+the request fingerprint is stored as a SHA-256 hash; and the action runs in the same transaction, so it must only
+do database work (an external call inside it cannot be rolled back). Mapping `IdempotencyConflictException` to an
+HTTP 409 comes with the global exception handler. **Tests:** `IdempotencyServiceIT` (repeat, conflict, other scope,
+retry after failure, 8 concurrent retries).
+
 Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provider webhooks
 (scope `webhook:<provider>`, key = event id, EX-F7.1.3), and release, refund and dispute decisions
 (UC-F7.2, F8.1). QR double scans are handled by the `redemption.claim_id` unique constraint instead.
 
-## 8. Admin account seeding — planned
+## 8. Admin account seeding — built
 
 - `AdminSeeder` runs at startup when `FLAVORS_SEED_ADMIN_ENABLED=true`. It reads
   `FLAVORS_ADMIN_EMAIL` / `FLAVORS_ADMIN_PASSWORD`, and creates the ADMIN user (BCrypt hash) plus an
   `ADMIN_SEEDED` audit entry **only if that email doesn't exist yet**, so it is safe to run on every start.
   It fails fast if enabled without credentials.
 - No password is ever in git or in a migration.
+- It uses the Spring property names `flavors.seed.admin.enabled`, `flavors.admin.email` and `flavors.admin.password`
+  (the environment variables above, by Spring's relaxed binding). The account and its audit entry are created in one
+  transaction, and a startup race with another instance is tolerated (the unique email index decides).
+- **Tests:** `AdminSeederIT` (account + BCrypt hash + `ADMIN_SEEDED` entry, running again changes nothing, fails fast
+  without credentials).
 
-## 9. Money and language — planned
+## 9. Money and language — built
 
 - The API exchanges **integer cents** only. The backend `Money` value object (long cents, HALF_UP percentage
   maths) is used for fees (15%), refunds and ROI.
+- `Money.percent(n)` rounds HALF_UP to the cent. To split an amount, compute one part with `percent` and the other
+  with `minus`, so the parts always add up to the total (tested for fee + net). Overflow throws. Test: `MoneyTest`.
 - The frontend formats with `Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'})`, e.g.
-  `formatUSD(123450)` → `$1,234.50`. Locale and currency constants live in `frontend/src/lib/locale.ts`.
+  `formatUSD(123450)` → `$1,234.50`. Locale and currency constants live in `frontend/src/lib/locale.ts`; `money.ts` is tested by `money.test.ts`.
 - The UI is English only, with no i18n framework yet; Arabic is out of the MVP (NF-16).
 
-## 10. Frontend — planned
+## 10. Frontend — built
 
-- Vite + React + TypeScript, React Router, ESLint + Prettier, Vitest + Testing Library.
+- Vite + React + TypeScript, React Router, Vitest + Testing Library, Prettier. The linter is **oxlint**, not ESLint:
+  it is what the current Vite template ships with, and it needs no config files for our rules.
+  Run from `frontend/`: `npm run lint`, `npm test`, `npm run format:check`, `npm run build`.
 - `api/client.ts`: a fetch wrapper that sends credentials and the CSRF header and parses ProblemDetail errors.
-- `useMe()` + `<RequireRole role="...">`: redirect to `/login` on 401 and show "Not allowed" on 403.
+- `<AuthProvider>` asks `GET /api/me` once; `useMe()` returns `{ state, refresh }` (`loading`, `anonymous`, `authenticated`,
+  `error`). `<RequireRole role="...">` redirects to `/login` on 401 and shows "Not allowed" for the wrong role (403). A
+  server failure is its own state, so an outage never looks like being logged out.
 - Route areas: `/creator/*`, `/brand/*`, `/admin/*`; public `/s/:slug` (storefront) and
   `/claim/:token` (diner QR page).
-- In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingController` sends
-  non-API, non-file paths to `index.html` so client-side routes work on reload.
-- The UI kit is chosen by the first UI story.
+- In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingConfig` answers non-API,
+  non-file paths with `index.html` so client-side routes work on reload. It is a fallback inside the static-file
+  handler, not a `@GetMapping` controller: controllers are matched before static files, so a catch-all controller
+  would also swallow `/assets/*.js`. A missing file (a path with a dot) or a missing `/api/**` path stays a 404.
+  Tested by `SpaForwardingIT` against a placeholder `static/index.html` in the test resources.
+- Pages are placeholders (`App.tsx`); the UI kit is chosen by the first UI story.
+- **Tests:** `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
+  ProblemDetail errors), `money.test.ts`.
 
-## 11. Build, deploy and CI/CD — planned
+## 11. Build, deploy and CI/CD — built (Railway and GitHub setup is manual)
 
 - **Dockerfile** (multi-stage): `node:22` builds the frontend → Maven (Temurin 25) packages the jar
   with the SPA in `static/` → `eclipse-temurin:25-jre` runs it as a non-root user on `$PORT`.
-- **`docker-compose.yml`**: local Postgres 17 only.
-- **`.github/workflows/ci.yml`**, on PRs and pushes to `develop`, `release/**` and `main`:
+- **`docker-compose.yml`**: local Postgres 17 only (built). **`railway.json`** (built): Dockerfile build, health check `/actuator/health`.
+  The image build skips tests (`-DskipTests`); CI runs them separately.
+- **`.github/workflows/ci.yml`**, on PRs and pushes to `develop` and `release/**` (pushes to `main` run it through `deploy-production.yml`, so it doesn't run twice):
   `backend` (`./mvnw -B verify`), `frontend` (lint, test, build) and `docker` (image builds).
   `deploy-staging` runs only on push to `develop`, after all three pass: it runs `railway up` to staging and then a health smoke test.
 - **`.github/workflows/deploy-production.yml`**: on push to `main`, plus `workflow_dispatch` as a
