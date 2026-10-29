@@ -2,7 +2,7 @@
   "recommendations": [
     "vscjava.vscode-java-pack",
     "vmware.vscode-boot-dev-pack",
-    "dbaeumer.vscode-eslint",
+    "oxc.oxc-vscode",
     "esbenp.prettier-vscode",
     "editorconfig.editorconfig",
     "ms-azuretools.vscode-docker"

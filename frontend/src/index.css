@@ -1,0 +1,14 @@
+body {
+  margin: 0;
+  font:
+    16px/1.5 system-ui,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+
+main {
+  max-width: 48rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
