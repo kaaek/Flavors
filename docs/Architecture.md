@@ -55,7 +55,7 @@ com.flavors
 ├── common/              cross-cutting, used by every feature
 │   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (built)
 │   ├── idempotency/     IdempotencyService, IdempotencyConflictException        (built)
-│   ├── money/           Money (USD cents value object)                           (planned)
+│   ├── money/           Money (USD cents value object)                           (built)
 │   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
 │   └── web/             SpaForwardingController, global exception handler        (planned)
 ├── account/             AppUser, AppUserDetailsService, MeController, AdminSeeder (built)
@@ -335,10 +335,12 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 - **Tests:** `AdminSeederIT` (account + BCrypt hash + `ADMIN_SEEDED` entry, running again changes nothing, fails fast
   without credentials).
 
-## 9. Money and language — planned
+## 9. Money and language — backend built, frontend planned
 
 - The API exchanges **integer cents** only. The backend `Money` value object (long cents, HALF_UP percentage
   maths) is used for fees (15%), refunds and ROI.
+- `Money.percent(n)` rounds HALF_UP to the cent. To split an amount, compute one part with `percent` and the other
+  with `minus`, so the parts always add up to the total (tested for fee + net). Overflow throws. Test: `MoneyTest`.
 - The frontend formats with `Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'})`, e.g.
   `formatUSD(123450)` → `$1,234.50`. Locale and currency constants live in `frontend/src/lib/locale.ts`.
 - The UI is English only, with no i18n framework yet; Arabic is out of the MVP (NF-16).
