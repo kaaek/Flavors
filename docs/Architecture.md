@@ -53,7 +53,7 @@ Branch model: `main` ← `release/sprint-N` ← `develop` ← `EEC-NN-short-name
 com.flavors
 ├── FlavorsApplication
 ├── common/              cross-cutting, used by every feature
-│   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (planned)
+│   ├── audit/           AuditLogEntry, AuditLogRepository, AuditLogger           (built)
 │   ├── idempotency/     IdempotencyKey, IdempotencyService                       (planned)
 │   ├── money/           Money (USD cents value object)                           (planned)
 │   ├── security/        SecurityConfig, Role, CurrentUser, 401/403 handler       (built)
@@ -280,7 +280,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 - **Scope split:** EEC-27 builds the mechanism, the guards and `GET /api/me`. The login, logout and
   password reset endpoints and screens belong to UC-F19.3.
 
-## 6. Audit log (NF-7) — planned
+## 6. Audit log (NF-7) — built
 
 "Every important action stores user, date and time; these records cannot be edited or deleted."
 
@@ -293,7 +293,11 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
   bare `Repository` and exposes only `save` and finders, so there is no delete or update to call.
 - **API:** `AuditLogger.record(action, entityType, entityId, details)` takes the actor from the security
   context (or `system` for jobs and the seeder). It joins the caller's transaction, so the audit row
-  and the business change commit or roll back together.
+  and the business change commit or roll back together; it uses `Propagation.MANDATORY`, so calling it
+  outside a transaction fails instead of auditing something that may roll back. `details` is a
+  `Map<String, Object>` stored as jsonb.
+- **Tests:** `AuditLogImmutabilityIT` (database triggers block UPDATE/DELETE/TRUNCATE) and `AuditLoggerIT`
+  (actor, `system`, rollback together, no transaction, JPA cannot change an entry, no delete methods).
 
 ## 7. Idempotency (NF-6) — planned
 
