@@ -12,3 +12,29 @@ main {
   margin: 2rem auto;
   padding: 0 1rem;
 }
+
+form,
+label,
+.branch-fields {
+  display: grid;
+  gap: 0.5rem;
+}
+
+form {
+  gap: 1rem;
+}
+
+input,
+button {
+  font: inherit;
+  padding: 0.5rem;
+}
+
+fieldset {
+  display: grid;
+  gap: 1rem;
+}
+
+[role='alert'] {
+  color: #a40000;
+}
