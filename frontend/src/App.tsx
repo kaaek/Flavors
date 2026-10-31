@@ -1,11 +1,24 @@
 import { Link, Route, Routes } from 'react-router-dom'
+import { ForgotPasswordPage } from './auth/ForgotPasswordPage'
+import { LoginPage } from './auth/LoginPage'
+import { LogoutButton } from './auth/LogoutButton'
 import { RequireRole } from './auth/RequireRole'
+import { ResetPasswordPage } from './auth/ResetPasswordPage'
 
 function Placeholder({ title, note }: { title: string; note: string }) {
   return (
     <main>
       <h1>{title}</h1>
       <p>{note}</p>
+    </main>
+  )
+}
+
+function RoleHome({ title }: { title: string }) {
+  return (
+    <main>
+      <h1>{title}</h1>
+      <LogoutButton />
     </main>
   )
 }
@@ -29,7 +42,9 @@ export function AppRoutes() {
           </main>
         }
       />
-      <Route path="/login" element={<Placeholder title="Log in" note="Arrives with UC-F19.3." />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
         path="/s/:slug"
         element={<Placeholder title="Creator storefront" note="Public page (UC-F17.1)." />}
@@ -42,7 +57,7 @@ export function AppRoutes() {
         path="/creator/*"
         element={
           <RequireRole role="CREATOR">
-            <Placeholder title="Creator portal" note="Coming in later stories." />
+            <RoleHome title="Creator portal" />
           </RequireRole>
         }
       />
@@ -50,7 +65,7 @@ export function AppRoutes() {
         path="/brand/*"
         element={
           <RequireRole role="BRAND">
-            <Placeholder title="Brand dashboard" note="Coming in later stories." />
+            <RoleHome title="Brand dashboard" />
           </RequireRole>
         }
       />
@@ -58,7 +73,7 @@ export function AppRoutes() {
         path="/admin/*"
         element={
           <RequireRole role="ADMIN">
-            <Placeholder title="Admin console" note="Coming in later stories." />
+            <RoleHome title="Admin console" />
           </RequireRole>
         }
       />
