@@ -17,6 +17,15 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Entity
 public class CreatorProfile {
  
+    /** The bio column has no length limit in the database, so the entity sets one. */
+    public static final int MAX_BIO_LENGTH = 1000;
+ 
+    /** Same as {@code food_category varchar(50)} in V2. */
+    public static final int MAX_CATEGORY_LENGTH = 50;
+ 
+    /** Same as {@code location varchar(100)} in V2. */
+    public static final int MAX_LOCATION_LENGTH = 100;
+ 
     @Id
     private Long userId;
  
@@ -64,7 +73,7 @@ public class CreatorProfile {
  
     public CreatorProfile(Long userId, String displayName, String foodCategory, String location,
                           long priceMinCents, long priceMaxCents) {
-        checkDetails(foodCategory, location, priceMinCents, priceMaxCents);
+        checkDetails(null, foodCategory, location, priceMinCents, priceMaxCents);
         this.userId = userId;
         this.displayName = displayName;
         this.foodCategory = foodCategory;
@@ -79,7 +88,7 @@ public class CreatorProfile {
      */
     public void updateDetails(String bio, String foodCategory, String location,
                               long priceMinCents, long priceMaxCents) {
-        checkDetails(foodCategory, location, priceMinCents, priceMaxCents);
+        checkDetails(bio, foodCategory, location, priceMinCents, priceMaxCents);
         this.bio = bio;
         this.foodCategory = foodCategory;
         this.location = location;
@@ -87,12 +96,22 @@ public class CreatorProfile {
         this.priceMaxCents = priceMaxCents;
     }
  
-    private static void checkDetails(String foodCategory, String location, long priceMinCents, long priceMaxCents) {
+    private static void checkDetails(String bio, String foodCategory, String location,
+                                     long priceMinCents, long priceMaxCents) {
         if (foodCategory == null || foodCategory.isBlank()) {
             throw new IllegalArgumentException("Category is required.");
         }
+        if (foodCategory.length() > MAX_CATEGORY_LENGTH) {
+            throw new IllegalArgumentException("Category can't be longer than " + MAX_CATEGORY_LENGTH + " characters.");
+        }
         if (location == null || location.isBlank()) {
             throw new IllegalArgumentException("Location is required.");
+        }
+        if (location.length() > MAX_LOCATION_LENGTH) {
+            throw new IllegalArgumentException("Location can't be longer than " + MAX_LOCATION_LENGTH + " characters.");
+        }
+        if (bio != null && bio.length() > MAX_BIO_LENGTH) {
+            throw new IllegalArgumentException("Bio can't be longer than " + MAX_BIO_LENGTH + " characters.");
         }
         if (priceMinCents < 0) {
             throw new IllegalArgumentException("Minimum price can't be negative.");

@@ -1,18 +1,15 @@
 package com.flavors.dto;
- 
-import java.util.List;
- 
+
 /**
- * Body of {@code PUT /api/creator/portfolio}: her edited details and the campaigns she wants
- * featured. It is saved as one step, so an invalid edit saves nothing (EX-F1.2.2).
- *
- * <p>{@code featuredCampaignIds} is the complete list she wants featured; a missing list means none.
+ * Body of {@code PUT /api/creator/portfolio}: a full replace of her details. Every field is
+ * written, so the page sends all five; a missing {@code bio} clears the bio, and a missing
+ * category, location or price is refused. It never touches the featured campaigns, which have
+ * their own endpoints. An invalid edit saves nothing (EX-F1.2.2).
  */
 public record UpdatePortfolioRequest(
         String bio,
         String foodCategory,
         String location,
         Long priceMinCents,
-        Long priceMaxCents,
-        List<Long> featuredCampaignIds) {
+        Long priceMaxCents) {
 }
