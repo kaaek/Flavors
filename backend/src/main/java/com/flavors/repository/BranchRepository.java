@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface BranchRepository extends JpaRepository<Branch, Long> {
 
     List<Branch> findByBrandId(Long brandId);
+
+    List<Branch> findByBrandIdOrderByIdAsc(Long brandId);
 }

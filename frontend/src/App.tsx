@@ -1,5 +1,6 @@
 import { Link, Route, Routes } from 'react-router-dom'
 import { RequireRole } from './auth/RequireRole'
+import { BrandAccountPage } from './brand/BrandAccountPage'
 import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
 
 function Placeholder({ title, note }: { title: string; note: string }) {
@@ -60,10 +61,21 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/brand/account"
+        element={
+          <RequireRole role="BRAND">
+            <BrandAccountPage />
+          </RequireRole>
+        }
+      />
+      <Route
         path="/brand/*"
         element={
           <RequireRole role="BRAND">
-            <Placeholder title="Brand dashboard" note="Coming in later stories." />
+            <main>
+              <h1>Brand dashboard</h1>
+              <Link to="/brand/account">Manage account and branches</Link>
+            </main>
           </RequireRole>
         }
       />
