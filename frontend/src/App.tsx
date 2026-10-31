@@ -1,5 +1,6 @@
 import { Link, Route, Routes } from 'react-router-dom'
 import { RequireRole } from './auth/RequireRole'
+import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
 
 function Placeholder({ title, note }: { title: string; note: string }) {
   return (
@@ -25,11 +26,23 @@ export function AppRoutes() {
             <h1>Flavors</h1>
             <nav>
               <Link to="/login">Log in</Link>
+              {' · '}
+              <Link to="/register">Register</Link>
             </nav>
           </main>
         }
       />
       <Route path="/login" element={<Placeholder title="Log in" note="Arrives with UC-F19.3." />} />
+      <Route
+        path="/register"
+        element={
+          <main>
+            <h1>Register</h1>
+            <Link to="/register/brand">Register an F&amp;B brand</Link>
+          </main>
+        }
+      />
+      <Route path="/register/brand" element={<BrandRegistrationPage />} />
       <Route
         path="/s/:slug"
         element={<Placeholder title="Creator storefront" note="Public page (UC-F17.1)." />}
