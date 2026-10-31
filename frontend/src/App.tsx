@@ -4,6 +4,8 @@ import { LoginPage } from './auth/LoginPage'
 import { LogoutButton } from './auth/LogoutButton'
 import { RequireRole } from './auth/RequireRole'
 import { ResetPasswordPage } from './auth/ResetPasswordPage'
+import { BrandAccountPage } from './brand/BrandAccountPage'
+import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
 
 function Placeholder({ title, note }: { title: string; note: string }) {
   return (
@@ -38,6 +40,8 @@ export function AppRoutes() {
             <h1>Flavors</h1>
             <nav>
               <Link to="/login">Log in</Link>
+              {' · '}
+              <Link to="/register">Register</Link>
             </nav>
           </main>
         }
@@ -45,6 +49,16 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route
+        path="/register"
+        element={
+          <main>
+            <h1>Register</h1>
+            <Link to="/register/brand">Register an F&amp;B brand</Link>
+          </main>
+        }
+      />
+      <Route path="/register/brand" element={<BrandRegistrationPage />} />
       <Route
         path="/s/:slug"
         element={<Placeholder title="Creator storefront" note="Public page (UC-F17.1)." />}
@@ -62,10 +76,22 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/brand/account"
+        element={
+          <RequireRole role="BRAND">
+            <BrandAccountPage />
+          </RequireRole>
+        }
+      />
+      <Route
         path="/brand/*"
         element={
           <RequireRole role="BRAND">
-            <RoleHome title="Brand dashboard" />
+            <main>
+              <h1>Brand dashboard</h1>
+              <Link to="/brand/account">Manage account and branches</Link>
+              <LogoutButton />
+            </main>
           </RequireRole>
         }
       />

@@ -3,6 +3,7 @@ export interface ProblemDetail {
   title?: string
   status?: number
   detail?: string
+  errors?: Record<string, string>
 }
 
 /** Thrown for any non-2xx response. `status` tells the caller what happened (401 = not logged in, 403 = wrong role). */
