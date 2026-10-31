@@ -57,7 +57,10 @@ cd frontend && npm install && npm run dev                 # app on http://localh
 ```
 
 To create the admin account on startup, also set `FLAVORS_SEED_ADMIN_ENABLED=true`, `FLAVORS_ADMIN_EMAIL` and
-`FLAVORS_ADMIN_PASSWORD` for the backend (there is no login screen until UC-F19.3, so this only creates the row).
+`FLAVORS_ADMIN_PASSWORD` for the backend.
+
+Password-reset email uses SMTP. For local testing, run an SMTP catcher on port 1025 or set the `MAIL_*`
+variables below to another server.
 
 To try the production image: `docker build -t flavors .`, then run it with the `PG*` variables pointing at a database.
 
@@ -129,14 +132,6 @@ git push -u origin EEC-31-creator-registration
 
 Read [Architecture.md](Architecture.md) first: it settles the schema, security and conventions. This
 section covers what you need day to day on top of it.
-
-### Not built yet
-
-The foundation (EEC-27) is partly merged. Until the rest lands:
-
-| Missing | What it means for you | Arrives with |
-|---|---|---|
-| Login endpoint | Nobody can log in to a running app; tests use a mock user (see below) | UC-F19.3 |
 
 ### Database changes
 
@@ -228,6 +223,9 @@ Nothing here is in git because it is account configuration and secrets.
    | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | `${{Postgres.PGHOST}}` etc. (Railway reference variables) |
    | `FLAVORS_SEED_ADMIN_ENABLED` | `true` (can be switched off after the first start) |
    | `FLAVORS_ADMIN_EMAIL`, `FLAVORS_ADMIN_PASSWORD` | the first admin's login; use a strong password |
+   | `FLAVORS_APP_BASE_URL` | the public app URL used in password-reset links |
+   | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | the SMTP server used for password-reset email |
+   | `FLAVORS_MAIL_FROM` | the From address for password-reset email |
    | `SPRING_PROFILES_ACTIVE` | `staging` / `prod` (optional: those profiles have no overrides yet) |
 
 4. Generate a public domain for each app service (Settings, Networking).
@@ -264,5 +262,13 @@ On Railway, the variables are set per environment (staging, production).
 | `FLAVORS_SEED_ADMIN_ENABLED` | Create the admin account on startup if it doesn't exist | `false` |
 | `FLAVORS_ADMIN_EMAIL` | Email of the seeded admin (required when seeding is enabled) | `admin@flavors.local` |
 | `FLAVORS_ADMIN_PASSWORD` | Password of the seeded admin (required when seeding is enabled) | (never commit) |
+| `FLAVORS_APP_BASE_URL` | Public base URL used in password-reset links | `http://localhost:5173` |
+| `MAIL_HOST` | SMTP host | `localhost` |
+| `MAIL_PORT` | SMTP port | `1025` |
+| `MAIL_USERNAME` | SMTP username, when authentication is enabled | (empty) |
+| `MAIL_PASSWORD` | SMTP password, when authentication is enabled | (never commit) |
+| `MAIL_AUTH` | Enable SMTP authentication | `false` |
+| `MAIL_STARTTLS` | Enable SMTP STARTTLS | `false` |
+| `FLAVORS_MAIL_FROM` | From address for password-reset email | `no-reply@flavors.local` |
 
 The `PG*` names match what Railway's Postgres service exposes, so staging and production need no renaming.

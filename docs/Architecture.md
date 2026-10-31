@@ -299,8 +299,8 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
   Java-serialized into the session table, so change its fields with care.
 - **Tests:** `RoleGuardTest` (every role × area, 401/403 bodies, CSRF), `MeControllerTest`, `SecurityIT`
   (health public, no session on 401, CSRF cookie), `AppUserDetailsServiceImplIT`.
-- **Scope split:** EEC-27 builds the mechanism, the guards and `GET /api/me`. The login, logout and
-  password reset endpoints and screens belong to UC-F19.3.
+- **Authentication endpoints:** UC-F19.3 adds session login and logout plus one-use, SHA-256-hashed password-reset
+  tokens that expire after one hour. Reset requests return the same response whether the email exists or not.
 
 ## 6. Audit log (NF-7) — built
 
