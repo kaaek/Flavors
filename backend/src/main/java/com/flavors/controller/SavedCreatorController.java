@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import com.flavors.dto.SavedCreatorResponse;
 @RestController
 @RequestMapping("/api/brand/saved-creators")
 public class SavedCreatorController {
@@ -34,5 +35,4 @@ public class SavedCreatorController {
             .map(saved -> new SavedCreatorResponse(saved.getCreatorId(),saved.getCreatedAt()))
             .toList();
     }
-
 }
