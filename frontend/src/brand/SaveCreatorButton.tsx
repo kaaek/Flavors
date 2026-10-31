@@ -1,5 +1,6 @@
-import { useState } from "react"
-import { saveCreator, removeSavedCreator } from "../api/savedCreators"
+
+import { useState } from 'react'
+import { saveCreator, removeSavedCreator } from '../api/savedCreators'
 
 interface SaveCreatorButtonProps {
   creatorId: number
@@ -10,13 +11,13 @@ interface SaveCreatorButtonProps {
 export function SaveCreatorButton({ creatorId, initiallySaved, onChange }: SaveCreatorButtonProps) {
   const [isSaved, setIsSaved] = useState(initiallySaved)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [error, setError] = useState('')
 
   async function toggleSave() {
     if (loading) return
 
     setLoading(true)
-    setError("")
+    setError('')
 
     try {
       if (isSaved) {
@@ -29,7 +30,7 @@ export function SaveCreatorButton({ creatorId, initiallySaved, onChange }: SaveC
         onChange?.(true)
       }
     } catch {
-      setError("Could not update saved creator. Please try again.")
+      setError('Could not update saved creator. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -37,10 +38,10 @@ export function SaveCreatorButton({ creatorId, initiallySaved, onChange }: SaveC
 
   return (
     <div>
-      <button type='button' onClick={toggleSave} disabled={loading} aria-pressed={isSaved}>
-        {loading ? "Saving..." : isSaved ? "Unsave" : "Save"}
+      <button type="button" onClick={toggleSave} disabled={loading} aria-pressed={isSaved}>
+        {loading ? 'Saving...' : isSaved ? 'Unsave' : 'Save'}
       </button>
-      {error && <p role='alert'>{error}</p>}
+      {error && <p role="alert">{error}</p>}
     </div>
   )
 }
