@@ -96,6 +96,29 @@ public class CreatorProfile {
         this.priceMaxCents = priceMaxCents;
     }
  
+    /**
+     * An admin approves a pending profile (FR-F20.3, FR-F20.4, FR-F20.6). Only now does the creator
+     * get a storefront; the admin and the time of the decision are kept.
+     */
+    public void approve(Long adminId, String storefrontSlug, Instant decidedAt) {
+        this.verificationStatus = VerificationStatus.APPROVED;
+        this.rejectionReason = null;
+        this.reviewedBy = adminId;
+        this.reviewedAt = decidedAt;
+        this.storefrontSlug = storefrontSlug;
+    }
+
+    /** An admin rejects a pending profile; a written reason is required (EX-F20.1.1). */
+    public void reject(Long adminId, String reason, Instant decidedAt) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("A reason is required to reject a profile.");
+        }
+        this.verificationStatus = VerificationStatus.REJECTED;
+        this.rejectionReason = reason;
+        this.reviewedBy = adminId;
+        this.reviewedAt = decidedAt;
+    }
+
     private static void checkDetails(String bio, String foodCategory, String location,
                                      long priceMinCents, long priceMaxCents) {
         if (foodCategory == null || foodCategory.isBlank()) {

@@ -4,8 +4,11 @@ import { LoginPage } from './auth/LoginPage'
 import { LogoutButton } from './auth/LogoutButton'
 import { RequireRole } from './auth/RequireRole'
 import { ResetPasswordPage } from './auth/ResetPasswordPage'
+import { CreatorReviewPage } from './admin/CreatorReviewPage'
 import { BrandAccountPage } from './brand/BrandAccountPage'
+import { CreatorStatusPage } from './creator/CreatorStatusPage'
 import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
+import { CreatorRegistrationPage } from './registration/CreatorRegistrationPage'
 
 function Placeholder({ title, note }: { title: string; note: string }) {
   return (
@@ -54,11 +57,14 @@ export function AppRoutes() {
         element={
           <main>
             <h1>Register</h1>
+            <Link to="/register/creator">Register as a creator</Link>
+            {' · '}
             <Link to="/register/brand">Register an F&amp;B brand</Link>
           </main>
         }
       />
       <Route path="/register/brand" element={<BrandRegistrationPage />} />
+      <Route path="/register/creator" element={<CreatorRegistrationPage />} />
       <Route
         path="/s/:slug"
         element={<Placeholder title="Creator storefront" note="Public page (UC-F17.1)." />}
@@ -66,6 +72,14 @@ export function AppRoutes() {
       <Route
         path="/claim/:token"
         element={<Placeholder title="Your offer" note="Public page (UC-F10.2)." />}
+      />
+      <Route
+        path="/creator/status"
+        element={
+          <RequireRole role="CREATOR">
+            <CreatorStatusPage />
+          </RequireRole>
+        }
       />
       <Route
         path="/creator/*"
@@ -92,6 +106,14 @@ export function AppRoutes() {
               <Link to="/brand/account">Manage account and branches</Link>
               <LogoutButton />
             </main>
+          </RequireRole>
+        }
+      />
+      <Route
+        path="/admin/creators"
+        element={
+          <RequireRole role="ADMIN">
+            <CreatorReviewPage />
           </RequireRole>
         }
       />
