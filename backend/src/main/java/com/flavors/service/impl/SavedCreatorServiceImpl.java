@@ -9,6 +9,8 @@ import com.flavors.service.SavedCreatorService;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.flavors.exception.SavedCreatorNotFoundException;
+import com.flavors.exception.CreatorNotApprovedException;
 @Service
 public class SavedCreatorServiceImpl implements SavedCreatorService {
     private final SavedCreatorRepository savedCreatorRepository;
@@ -24,22 +26,26 @@ public class SavedCreatorServiceImpl implements SavedCreatorService {
     }
     @Override
     @Transactional
+    
+    @Override
+    @Transactional
     public void saveCreator(Long brandId, Long creatorId) {
         if (!brandRepository.existsById(brandId)) {
-            throw new IllegalArgumentException("Brand not found");
+            throw new SavedCreatorNotFoundException("Brand not found");
         }
-        var creator = creatorProfileRepository.findById(creatorId).orElseThrow(() ->new IllegalArgumentException("Creator not found"));
+        var creator = creatorProfileRepository.findById(creatorId)
+                .orElseThrow(() ->
+                        new SavedCreatorNotFoundException("Creator not found"));
         if (creator.getVerificationStatus() != VerificationStatus.APPROVED) {
-            throw new IllegalArgumentException("Creator is not approved");
+            throw new CreatorNotApprovedException();
         }
         SavedCreatorId id = new SavedCreatorId(brandId, creatorId);
         if (savedCreatorRepository.existsById(id)) {
             return;
         }
-        savedCreatorRepository.save(
-                new SavedCreator(brandId, creatorId)
-        );
+        savedCreatorRepository.save(new SavedCreator(brandId, creatorId));
     }
+
     @Override
     @Transactional
     public void removeCreator(Long brandId, Long creatorId) {
