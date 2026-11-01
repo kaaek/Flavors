@@ -54,16 +54,16 @@ Code is grouped by **layer**, not by feature: every story puts its classes in th
 ```
 com.flavors
 ├── FlavorsApplication
-├── controller/     REST endpoints (@RestController): MeController
-├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService
-│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl
-├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository
-├── entity/         JPA entities, one per table: AppUser, AuditLogEntry
-├── enums/          enum types shared by entities and DTOs: Role, UserStatus
-├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser
-├── mapper/         entity/principal <-> DTO converters: MeMapper
+├── controller/     REST endpoints (@RestController): MeController, PortfolioController
+├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService, PortfolioService
+│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl, PortfolioServiceImpl
+├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository, CreatorProfileRepository, SocialAccountRepository, CampaignRepository, PortfolioFeatureRepository
+├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, PortfolioFeature
+├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus
+├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser, PortfolioResponse, UpdatePortfolioRequest
+├── mapper/         entity/principal <-> DTO converters: MeMapper, PortfolioMapper
 ├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder
-├── exception/      domain exceptions and (planned) the @ControllerAdvice: IdempotencyConflictException
+├── exception/      domain exceptions and the @RestControllerAdvice (GlobalExceptionHandler): IdempotencyConflictException, InvalidPortfolioException, PortfolioNotAvailableException, AlreadyFeaturedException, FeatureNotFoundException
 └── util/           helpers and value objects: Money
 ```
 
@@ -191,6 +191,11 @@ unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is 
   status ∈ {OPEN, DECIDED}, creator_share_percent (CHECK 0–100), decided_by, decided_at
 - `dispute_evidence`, `notification` (user_id, campaign_id, type, message, read_at, created_at)
 
+**V6 — portfolio features** (built: `V6__portfolio_features.sql`, tested by `PortfolioFeatureIT`)
+- `portfolio_feature`: campaign_id (PK and FK, so a campaign is featured at most once), creator_id (FK to
+  `creator_profile`), created_at. The rules that span tables (the campaign must be COMPLETED and must belong to the
+  creator) are enforced by `PortfolioServiceImpl`, not by the database.
+
 ### 4.3 ER diagram
 
 Tables and their foreign keys (columns are listed in §4.2 and in the migrations). `||--o{` reads
@@ -219,6 +224,8 @@ erDiagram
     campaign ||--o| counter_offer : "may get"
     campaign ||--o{ cancellation : "may have"
     campaign ||--o| review : "may get"
+    creator_profile ||--o{ portfolio_feature : features
+    campaign ||--o| portfolio_feature : "may be featured as"
     campaign ||--o{ social_post_metric : "is promoted by"
     campaign ||--o{ profile_warning : "caused"
 
@@ -256,6 +263,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 | `counter_offer` | UC-F4.1 |
 | `cancellation`, `profile_warning` | UC-F9.1 |
 | `review` | UC-F1.4 |
+| `portfolio_feature` | UC-F1.2, F1.1 |
 | `offer`, `offer_branch` | UC-F10.1, F17.1 |
 | `offer_claim` | UC-F10.2 |
 | `redemption`, `scan_failure` | UC-F11.1, F12.1, F13.1, F14.1 |
@@ -264,6 +272,9 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 | `proof_review` | UC-F6.1 |
 | `dispute`, `dispute_evidence` | UC-F8.1 |
 | `notification` | UC-F18.1 |
+
+Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and a
+read-only `campaign` (EEC-36). Later stories add columns and methods to these classes instead of writing second copies.
 
 ## 5. Security — built
 
@@ -402,3 +413,27 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 - **Railway** (manual setup): project `flavors` with environments `staging` and `production`, each with a
   Postgres service and an `app` service (Dockerfile build, health check `/actuator/health`). GitHub
   secrets `RAILWAY_TOKEN_STAGING` and `RAILWAY_TOKEN_PRODUCTION` hold the deploy tokens.
+
+## 12. Creator portfolio (UC-F1.2) — backend built, page planned
+
+The creator's Manage Portfolio page (EEC-36). Only an **approved** creator has a portfolio (FR-F20.4); every call below
+returns 409 before approval.
+
+| Method and path | Who | What |
+|---|---|---|
+| `GET /api/creator/portfolio` | CREATOR | Her profile (bio, category, location, price range in cents), connected social accounts with followers, engagement and "last updated", and her COMPLETED campaigns with a `featured` flag |
+| `PUT /api/creator/portfolio` | CREATOR | Full replace of bio, category, location and price range. Never touches the featured campaigns |
+| `PATCH /api/creator/portfolio` | CREATOR | Partial edit: only the fields sent change, and the merged result is validated |
+| `POST /api/creator/portfolio/featured` | CREATOR | Body `{campaignId}`. Features one of her COMPLETED campaigns: 201, 400 if not completed or not hers (EX-F1.2.1), 409 if already featured |
+| `DELETE /api/creator/portfolio/featured/{campaignId}` | CREATOR | Stops featuring one campaign: 204, 404 if she does not feature it |
+
+- The creator is always the logged-in user (`@AuthenticationPrincipal`), never an id from the request, so she can only change her own portfolio.
+- **Featured campaigns are never removed by an edit.** Removal only happens through DELETE. Details are atomic: an invalid PUT or PATCH saves nothing (EX-F1.2.2), and TC-F1.2.1 is two calls (edit, then feature).
+- **PATCH** is bound to a map, so a field that is left out (keeps its value) differs from one sent as null (sets null; only the bio may be empty). Unknown fields and an empty body are refused with 400.
+- **Rules:** minimum price can't be above the maximum or negative; category and location are required; lengths are limited (bio 1000, category 50, location 100, enforced by `CreatorProfile`, because the bio column has no database limit).
+- **Errors** are JSON `ProblemDetail` from `GlobalExceptionHandler`: **400** "Invalid portfolio" (detail has the message), **404** "Not featured", **409** "Portfolio not available", "Already featured" or "Conflict". "Conflict" comes from a database constraint, for example two parallel requests featuring the same campaign; the database message is not sent.
+- `PortfolioFeature` implements `Persistable`, so saving a new row is a plain INSERT and a duplicate fails on the primary key instead of being mistaken for an update.
+- The social-account token is never mapped by `SocialAccount` and never sent.
+- "Verified" (completed **and** at least one redemption, FR-F1.3) is not stored; the brand's view of a portfolio (EEC-35) works it out when it is read.
+- **Tests:** `PortfolioServiceImplIT` (TC-F1.2.1 to TC-F1.2.3, PATCH rules, parallel requests), `PortfolioControllerTest` (every verb: 401, 403, CSRF, JSON shape, error bodies), `CreatorProfileTest`, `CreatorProfileIT`, `SocialAccountIT`, `PortfolioFeatureIT`.
+- **Planned:** the React page under `/creator/portfolio`, and the brand's read-only view (EEC-35).
