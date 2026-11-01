@@ -43,7 +43,7 @@ class SavedCreatorServiceImplTest {
         when(approvedCreator.getVerificationStatus())
                 .thenReturn(VerificationStatus.APPROVED);
         service.saveCreator(brandId, creatorId);
-        verify(savedCreatorRepository).save(any(SavedCreator.class));
+        verify(savedCreatorRepository).saveIfAbsent(brandId, creatorId);
     }
     @Test
     void shouldNotSaveDuplicateCreator() {
@@ -53,12 +53,8 @@ class SavedCreatorServiceImplTest {
                 .thenReturn(Optional.of(approvedCreator));
         when(approvedCreator.getVerificationStatus())
                 .thenReturn(VerificationStatus.APPROVED);
-        when(savedCreatorRepository.existsById(
-                new SavedCreatorId(brandId, creatorId)))
-                .thenReturn(true);
         service.saveCreator(brandId, creatorId);
-        verify(savedCreatorRepository, never())
-                .save(any(SavedCreator.class));
+        verify(savedCreatorRepository).saveIfAbsent(brandId, creatorId);
     }
     @Test
     void shouldRemoveSavedCreator() {
@@ -78,7 +74,6 @@ class SavedCreatorServiceImplTest {
                 .thenReturn(VerificationStatus.PENDING_APPROVAL);
         assertThrows(CreatorNotApprovedException.class,
                 () -> service.saveCreator(brandId, creatorId));
-        verify(savedCreatorRepository, never())
-                .save(any(SavedCreator.class));
+        verify(savedCreatorRepository, never()).saveIfAbsent(anyLong(), anyLong());
     }
 }
