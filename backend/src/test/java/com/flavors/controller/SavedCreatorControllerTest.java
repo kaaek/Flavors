@@ -9,6 +9,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import com.flavors.exception.ApiExceptionHandler;
+import com.flavors.exception.SavedCreatorNotFoundException;
+import com.flavors.exception.CreatorNotApprovedException;
+import static org.mockito.Mockito.doThrow;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -18,7 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SavedCreatorController.class)
-@Import({SecurityConfig.class, SavedCreatorMapper.class})
+@Import({SecurityConfig.class, SavedCreatorMapper.class,ApiExceptionHandler.class})
 class SavedCreatorControllerTest {
 
     @Autowired
@@ -82,5 +86,27 @@ class SavedCreatorControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(service).saveCreator(10L, 8L);
+    }
+    
+    @Test
+    void creatorNotFoundReturns404() throws Exception {
+        doThrow(new SavedCreatorNotFoundException("Creator not found"))
+                .when(service).saveCreator(10L, 99L);
+    
+        mvc.perform(post("/api/brand/saved-creators/99")
+                        .with(user(brand))
+                        .with(csrf()))
+                .andExpect(status().isNotFound());
+    }
+    
+    @Test
+    void unapprovedCreatorReturns409() throws Exception {
+        doThrow(new CreatorNotApprovedException())
+                .when(service).saveCreator(10L, 5L);
+    
+        mvc.perform(post("/api/brand/saved-creators/5")
+                        .with(user(brand))
+                        .with(csrf()))
+                .andExpect(status().isConflict());
     }
 }
