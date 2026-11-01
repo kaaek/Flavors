@@ -26,9 +26,6 @@ public class SavedCreatorServiceImpl implements SavedCreatorService {
     }
     @Override
     @Transactional
-    
-    @Override
-    @Transactional
     public void saveCreator(Long brandId, Long creatorId) {
         if (!brandRepository.existsById(brandId)) {
             throw new SavedCreatorNotFoundException("Brand not found");
