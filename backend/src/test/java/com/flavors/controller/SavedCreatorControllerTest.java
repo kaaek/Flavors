@@ -1,5 +1,5 @@
 package com.flavors.controller;
-
+import com.flavors.mapper.SavedCreatorMapper;
 import com.flavors.config.SecurityConfig;
 import com.flavors.dto.CurrentUser;
 import com.flavors.enums.Role;
@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SavedCreatorController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SavedCreatorMapper.class})
 class SavedCreatorControllerTest {
 
     @Autowired
