@@ -95,6 +95,15 @@ class CreatorRegistrationControllerTest {
         verifyNoInteractions(registration);
     }
 
+    @Test
+    void aBioOver1000CharactersIsRefused() throws Exception {
+        send(validRequest().replace("I eat for a living.", "x".repeat(1001)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.bio").value("Bio must be at most 1000 characters."));
+
+        verifyNoInteractions(registration);
+    }
+
     private ResultActions send(String body) throws Exception {
         return mvc.perform(post("/api/public/auth/register/creator")
                 .contentType(MediaType.APPLICATION_JSON)

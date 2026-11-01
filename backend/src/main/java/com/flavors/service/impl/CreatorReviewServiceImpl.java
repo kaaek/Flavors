@@ -57,7 +57,7 @@ public class CreatorReviewServiceImpl implements CreatorReviewService {
     @Override
     @Transactional
     public CreatorReviewResponse approve(long adminId, long creatorId) {
-        CreatorProfile creator = find(creatorId);
+        CreatorProfile creator = findForUpdate(creatorId);
         requirePending(creator);
         if (CreatorReviewMapper.needsReconnection(socialAccounts.findByCreatorId(creatorId))) {
             throw new ReviewNotAllowedException(
@@ -77,7 +77,7 @@ public class CreatorReviewServiceImpl implements CreatorReviewService {
         if (reason == null || reason.isBlank()) {
             throw new ValidationFailedException("reason", "A reason is required to reject a profile.");
         }
-        CreatorProfile creator = find(creatorId);
+        CreatorProfile creator = findForUpdate(creatorId);
         requirePending(creator);
 
         creator.reject(adminId, reason.trim(), Instant.now());
@@ -88,6 +88,11 @@ public class CreatorReviewServiceImpl implements CreatorReviewService {
 
     private CreatorProfile find(long creatorId) {
         return creators.findById(creatorId).orElseThrow(() -> new CreatorNotFoundException(creatorId));
+    }
+
+    /** Locks the profile while the admin decides, so a second admin waits and then sees it was reviewed. */
+    private CreatorProfile findForUpdate(long creatorId) {
+        return creators.findByIdForUpdate(creatorId).orElseThrow(() -> new CreatorNotFoundException(creatorId));
     }
 
     private static void requirePending(CreatorProfile creator) {

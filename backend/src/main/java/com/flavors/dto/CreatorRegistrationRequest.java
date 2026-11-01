@@ -33,6 +33,7 @@ public record CreatorRegistrationRequest(
         @NotNull(message = "Maximum price is required.")
         @PositiveOrZero(message = "Maximum price can't be negative.")
         Long priceMaxCents,
+        @Size(max = 1000, message = "Bio must be at most 1000 characters.")
         String bio,
         @NotEmpty(message = "Connect at least one social account.")
         List<@Valid SocialAccountRegistrationRequest> socialAccounts) {
