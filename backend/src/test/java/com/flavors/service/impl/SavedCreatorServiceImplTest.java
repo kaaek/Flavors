@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import com.flavors.exception.CreatorNotApprovedException;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
@@ -75,7 +76,7 @@ class SavedCreatorServiceImplTest {
                 .thenReturn(Optional.of(approvedCreator));
         when(approvedCreator.getVerificationStatus())
                 .thenReturn(VerificationStatus.PENDING_APPROVAL);
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(CreatorNotApprovedException.class,
                 () -> service.saveCreator(brandId, creatorId));
         verify(savedCreatorRepository, never())
                 .save(any(SavedCreator.class));
