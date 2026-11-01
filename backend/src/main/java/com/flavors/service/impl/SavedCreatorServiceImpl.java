@@ -36,11 +36,7 @@ public class SavedCreatorServiceImpl implements SavedCreatorService {
         if (creator.getVerificationStatus() != VerificationStatus.APPROVED) {
             throw new CreatorNotApprovedException();
         }
-        SavedCreatorId id = new SavedCreatorId(brandId, creatorId);
-        if (savedCreatorRepository.existsById(id)) {
-            return;
-        }
-        savedCreatorRepository.save(new SavedCreator(brandId, creatorId));
+        savedCreatorRepository.saveIfAbsent(brandId, creatorId);
     }
 
     @Override
