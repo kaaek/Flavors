@@ -20,7 +20,7 @@ public class SavedCreator {
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    public SavedCreator() {
+    protected SavedCreator() {
     }
     public SavedCreator(Long brandId, Long creatorId) {
         this.brandId = brandId;
