@@ -6,4 +6,3 @@ public enum VerificationStatus {
     APPROVED,
     REJECTED
 }
- 

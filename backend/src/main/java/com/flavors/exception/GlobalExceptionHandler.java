@@ -1,0 +1,51 @@
+package com.flavors.exception;
+
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+/**
+ * Turns domain exceptions into JSON {@code ProblemDetail} responses, like the 401 and 403 ones.
+ * Other stories add their own {@code @ExceptionHandler} methods here.
+ */
+@RestControllerAdvice
+class GlobalExceptionHandler {
+
+    @ExceptionHandler(InvalidPortfolioException.class)
+    ResponseEntity<ProblemDetail> invalidPortfolio(InvalidPortfolioException e) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid portfolio", e.getMessage());
+    }
+
+    @ExceptionHandler(PortfolioNotAvailableException.class)
+    ResponseEntity<ProblemDetail> portfolioNotAvailable(PortfolioNotAvailableException e) {
+        return problem(HttpStatus.CONFLICT, "Portfolio not available", e.getMessage());
+    }
+
+    @ExceptionHandler(AlreadyFeaturedException.class)
+    ResponseEntity<ProblemDetail> alreadyFeatured(AlreadyFeaturedException e) {
+        return problem(HttpStatus.CONFLICT, "Already featured", e.getMessage());
+    }
+
+    @ExceptionHandler(FeatureNotFoundException.class)
+    ResponseEntity<ProblemDetail> featureNotFound(FeatureNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Not featured", e.getMessage());
+    }
+
+    /**
+     * A database constraint refused the change, for example two requests inserting the same row at the
+     * same moment. The database message is not sent, because it names tables and columns.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<ProblemDetail> dataIntegrityViolation(DataIntegrityViolationException e) {
+        return problem(HttpStatus.CONFLICT, "Conflict", "Someone changed this at the same time. Please try again.");
+    }
+
+    private static ResponseEntity<ProblemDetail> problem(HttpStatus status, String title, String detail) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setTitle(title);
+        return ResponseEntity.status(status).body(problem);
+    }
+}

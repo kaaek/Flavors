@@ -5,4 +5,3 @@ public enum SocialAccountStatus {
     CONNECTED,
     NEEDS_RECONNECTION
 }
- 

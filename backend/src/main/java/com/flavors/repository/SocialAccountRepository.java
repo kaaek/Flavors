@@ -9,4 +9,3 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
     /** All accounts a creator connected, for her portfolio and her Manage Portfolio page. */
     List<SocialAccount> findByCreatorId(Long creatorId);
 }
- 
