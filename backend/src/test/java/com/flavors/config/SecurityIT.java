@@ -2,15 +2,24 @@ package com.flavors.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.flavors.TestcontainersConfiguration;
+import com.flavors.entity.AppUser;
+import com.flavors.enums.Role;
+import com.flavors.repository.AppUserRepository;
+import jakarta.servlet.http.Cookie;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -25,6 +34,12 @@ class SecurityIT {
 
     @Autowired
     MockMvc mvc;
+
+    @Autowired
+    AppUserRepository users;
+
+    @Autowired
+    PasswordEncoder passwordEncoder;
 
     @Test
     void healthCheckIsPublic() throws Exception {
@@ -49,5 +64,29 @@ class SecurityIT {
         mvc.perform(get("/api/public/anything"))
                 .andExpect(cookie().exists("XSRF-TOKEN"))
                 .andExpect(cookie().httpOnly("XSRF-TOKEN", false));
+    }
+
+    @Test
+    void initialMeRequestSuppliesTheCsrfCookieNeededForFirstLogin() throws Exception {
+        String email = UUID.randomUUID() + "@example.com";
+        users.save(new AppUser(email, passwordEncoder.encode("right-password"), Role.BRAND));
+        MvcResult bootstrap = mvc.perform(get("/api/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(cookie().exists("XSRF-TOKEN"))
+                .andExpect(cookie().httpOnly("XSRF-TOKEN", false))
+                .andReturn();
+        Cookie csrfCookie = bootstrap.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(csrfCookie).isNotNull();
+
+        mvc.perform(post("/api/public/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"right-password"}
+                                """.formatted(email))
+                        .cookie(csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email))
+                .andExpect(jsonPath("$.role").value("BRAND"));
     }
 }

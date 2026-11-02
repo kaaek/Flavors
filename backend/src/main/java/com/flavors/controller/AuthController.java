@@ -11,6 +11,7 @@ import com.flavors.service.AuthService;
 import com.flavors.service.PasswordResetService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -72,8 +73,16 @@ public class AuthController {
     }
 
     @PostMapping("/api/public/auth/password-reset/confirm")
-    MessageResponse resetPassword(@Valid @RequestBody PasswordResetConfirmRequest request) {
+    MessageResponse resetPassword(@Valid @RequestBody PasswordResetConfirmRequest request,
+                                  HttpServletRequest httpRequest) {
         passwordResetService.resetPassword(request.token(), request.password());
+        // The service removes every persisted session. Mark this request's wrapper invalid too,
+        // so Spring Session cannot save the current session again when the response completes.
+        HttpSession currentSession = httpRequest.getSession(false);
+        if (currentSession != null) {
+            currentSession.invalidate();
+        }
+        SecurityContextHolder.clearContext();
         return new MessageResponse("Password changed. You can now log in.");
     }
 }

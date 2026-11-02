@@ -45,7 +45,14 @@ export function ResetPasswordPage() {
             {error && <p role="alert">{error}</p>}
             <label>
               New password
-              <input name="password" type="password" autoComplete="new-password" required />
+              <input
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                maxLength={72}
+                required
+              />
             </label>
             <button type="submit">Change password</button>
           </form>

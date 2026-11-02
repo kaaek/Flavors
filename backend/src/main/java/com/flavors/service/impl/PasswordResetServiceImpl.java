@@ -6,8 +6,9 @@ import com.flavors.exception.InvalidPasswordResetTokenException;
 import com.flavors.repository.AppUserRepository;
 import com.flavors.repository.PasswordResetTokenRepository;
 import com.flavors.service.AuditLogger;
-import com.flavors.service.PasswordResetMailSender;
+import com.flavors.service.PasswordResetMailEvent;
 import com.flavors.service.PasswordResetService;
+import com.flavors.service.UserSessionService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,25 +32,27 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     private final AppUserRepository users;
     private final PasswordResetTokenRepository tokens;
     private final PasswordEncoder passwordEncoder;
-    private final PasswordResetMailSender mailSender;
+    private final ApplicationEventPublisher events;
+    private final UserSessionService userSessions;
     private final AuditLogger auditLogger;
     private final SecureRandom random = new SecureRandom();
     private final Clock clock;
 
     @Autowired
     public PasswordResetServiceImpl(AppUserRepository users, PasswordResetTokenRepository tokens,
-                                    PasswordEncoder passwordEncoder, PasswordResetMailSender mailSender,
-                                    AuditLogger auditLogger) {
-        this(users, tokens, passwordEncoder, mailSender, auditLogger, Clock.systemUTC());
+                                    PasswordEncoder passwordEncoder, ApplicationEventPublisher events,
+                                    UserSessionService userSessions, AuditLogger auditLogger) {
+        this(users, tokens, passwordEncoder, events, userSessions, auditLogger, Clock.systemUTC());
     }
 
     PasswordResetServiceImpl(AppUserRepository users, PasswordResetTokenRepository tokens,
-                             PasswordEncoder passwordEncoder, PasswordResetMailSender mailSender,
-                             AuditLogger auditLogger, Clock clock) {
+                             PasswordEncoder passwordEncoder, ApplicationEventPublisher events,
+                             UserSessionService userSessions, AuditLogger auditLogger, Clock clock) {
         this.users = users;
         this.tokens = tokens;
         this.passwordEncoder = passwordEncoder;
-        this.mailSender = mailSender;
+        this.events = events;
+        this.userSessions = userSessions;
         this.auditLogger = auditLogger;
         this.clock = clock;
     }
@@ -57,13 +61,15 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     @Transactional
     public void requestReset(String email) {
         users.findByEmailIgnoreCase(email.trim()).ifPresent(user -> {
+            Instant now = clock.instant();
+            tokens.invalidateUnusedForUser(user.getId(), now);
             byte[] bytes = new byte[32];
             random.nextBytes(bytes);
             String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
             tokens.save(new PasswordResetToken(user.getId(), sha256(rawToken),
-                    clock.instant().plus(TOKEN_LIFETIME)));
-            mailSender.sendResetLink(user.getEmail(), rawToken);
+                    now.plus(TOKEN_LIFETIME)));
             auditLogger.record("PASSWORD_RESET_REQUESTED", "app_user", user.getId());
+            events.publishEvent(new PasswordResetMailEvent(user.getId(), user.getEmail(), rawToken));
         });
     }
 
@@ -81,6 +87,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
                 .orElseThrow(InvalidPasswordResetTokenException::new);
         user.changePassword(passwordEncoder.encode(newPassword));
         token.markUsed(now);
+        userSessions.invalidateAll(user.getEmail());
         auditLogger.record("PASSWORD_RESET", "app_user", user.getId());
     }
 

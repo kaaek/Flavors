@@ -2,6 +2,7 @@ package com.flavors.controller;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -11,7 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.flavors.config.SecurityConfig;
 import com.flavors.dto.CurrentUser;
 import com.flavors.enums.Role;
-import com.flavors.exception.AuthExceptionHandler;
+import com.flavors.exception.GlobalExceptionHandler;
 import com.flavors.exception.InvalidCredentialsException;
 import com.flavors.exception.SuspendedAccountException;
 import com.flavors.mapper.MeMapper;
@@ -23,11 +24,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, AuthExceptionHandler.class, MeMapper.class})
+@Import({SecurityConfig.class, GlobalExceptionHandler.class, MeMapper.class})
 class AuthControllerTest {
 
     @Autowired
@@ -118,16 +120,36 @@ class AuthControllerTest {
 
     @Test
     void resetConfirmationChangesThePassword() throws Exception {
+        MockHttpSession currentSession = new MockHttpSession();
+
         mvc.perform(post("/api/public/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"token":"one-time-token","password":"new-password"}
                                 """)
+                        .session(currentSession)
                         .cookie(new Cookie("XSRF-TOKEN", "token"))
                         .header("X-XSRF-TOKEN", "token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Password changed. You can now log in."));
 
         verify(passwordResetService).resetPassword("one-time-token", "new-password");
+        org.assertj.core.api.Assertions.assertThat(currentSession.isInvalid()).isTrue();
+    }
+
+    @Test
+    void resetConfirmationUsesTheRegistrationPasswordLengthRules() throws Exception {
+        mvc.perform(post("/api/public/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"token":"one-time-token","password":"short"}
+                                """)
+                        .cookie(new Cookie("XSRF-TOKEN", "token"))
+                        .header("X-XSRF-TOKEN", "token"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.password").value(
+                        "Password must be between 8 and 72 characters."));
+
+        verifyNoInteractions(passwordResetService);
     }
 }
