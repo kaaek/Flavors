@@ -28,7 +28,7 @@ public class SavedCreatorController {
         this.savedCreatorService = savedCreatorService;
         this.savedCreatorMapper = savedCreatorMapper;
     }
-
+    // Use the authenticated brand ID from the session, never an ID supplied in the URL.
     @PostMapping("/{creatorId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void saveCreator(
