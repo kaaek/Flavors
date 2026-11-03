@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flavors: Brand style guide</title>
+<link rel="icon" href="logo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Marcellus&display=swap">
+<!-- Everything below uses tokens only; no hard-coded colors, so this page proves the tokens work. -->
+<link rel="stylesheet" href="tokens/tokens.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: var(--color-bg); color: var(--color-text); font: 400 var(--font-size-md)/var(--line-height-normal) var(--font-body); }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: var(--letter-spacing-display); line-height: var(--line-height-tight); margin: 0; }
+  h1 { font-size: var(--font-size-5xl); }
+  h2 { font-size: var(--font-size-4xl); }
+  h3 { font-size: var(--font-size-2xl); margin-bottom: var(--space-3); }
+  p { margin: 0 0 var(--space-4); max-width: var(--layout-prose-max); }
+  code { font-family: var(--font-mono); font-size: 0.9em; background: var(--color-surface-muted); padding: 0.1em 0.4em; border-radius: var(--radius-sm); }
+  .wrap { max-width: var(--layout-content-max); margin: 0 auto; padding: 0 var(--space-6); }
+  nav.top { background: var(--color-nav-bg); position: sticky; top: 0; z-index: var(--z-nav); }
+  nav.top .wrap { display: flex; gap: var(--space-6); align-items: center; padding-top: var(--space-3); padding-bottom: var(--space-3); overflow-x: auto; }
+  nav.top a { color: var(--color-nav-text); text-decoration: none; font-weight: 700; font-size: var(--font-size-sm); letter-spacing: var(--letter-spacing-caps); text-transform: uppercase; white-space: nowrap; }
+  nav.top a:hover { text-decoration: underline; }
+  nav.top img { height: 28px; margin-right: auto; }
+  header.hero { background: var(--gradient-hero); color: var(--color-nav-text); padding: var(--space-20) 0 var(--space-16); }
+  header.hero img { width: min(640px, 100%); display: block; margin-bottom: var(--space-8); }
+  header.hero p { font-size: var(--font-size-xl); }
+  section { padding: var(--space-16) 0 var(--space-4); border-bottom: 1px solid var(--color-border); }
+  section > .wrap > h2 { margin-bottom: var(--space-3); }
+  .eyebrow { font-weight: 900; font-size: var(--font-size-xs); letter-spacing: var(--letter-spacing-caps); text-transform: uppercase; color: var(--color-link); margin-bottom: var(--space-2); }
+  .lede { font-size: var(--font-size-lg); color: var(--color-text-muted); margin-bottom: var(--space-8); }
+  .grid { display: grid; gap: var(--space-4); margin-bottom: var(--space-10); }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: var(--shadow-sm); }
+  .card h3 { font-family: var(--font-body); font-weight: 700; font-size: var(--font-size-md); letter-spacing: 0; margin-bottom: var(--space-2); }
+  .card p:last-child { margin-bottom: 0; }
+  .sub { font-weight: 900; font-size: var(--font-size-sm); letter-spacing: var(--letter-spacing-caps); text-transform: uppercase; color: var(--color-text-muted); margin: var(--space-10) 0 var(--space-4); }
+
+  /* logo */
+  .stage { border-radius: var(--radius-lg); padding: var(--space-8); display: flex; align-items: center; justify-content: center; min-height: 170px; border: 1px solid var(--color-border); }
+  .stage img { max-width: 100%; }
+  .stage.cream { background: var(--color-bg); } .stage.white { background: var(--color-surface); }
+  .stage.dark { background: var(--palette-teal-900); border-color: transparent; }
+  .stage.teal { background: var(--palette-teal-700); border-color: transparent; }
+  .caption { font-size: var(--font-size-sm); color: var(--color-text-muted); margin-top: var(--space-2); }
+  .clear { position: relative; display: inline-block; padding: 64px; outline: 2px dashed var(--palette-paprika-300); outline-offset: -2px; background: var(--palette-paprika-50); }
+  .clear img { display: block; width: 360px; max-width: 70vw; background: var(--color-bg); }
+  .clear span { position: absolute; font-size: 11px; font-weight: 700; color: var(--palette-paprika-700); }
+  .bad { position: relative; }
+  .bad::after { content: "✕"; position: absolute; top: var(--space-2); right: var(--space-3); font-weight: 900; color: var(--color-danger); font-size: var(--font-size-xl); }
+  .stage.small img { height: 56px; max-width: 80%; }
+
+  /* color */
+  .sw { border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: var(--color-surface); }
+  .sw i { display: block; height: 72px; }
+  .sw b, .sw small { display: block; padding: 0 var(--space-3); }
+  .sw b { padding-top: var(--space-2); font-size: var(--font-size-sm); }
+  .sw small { padding-bottom: var(--space-2); font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--color-text-muted); }
+  .scale { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-4); }
+  .pair { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); font-weight: 700; }
+  .pair small { font-weight: 400; opacity: .9; font-size: var(--font-size-xs); white-space: nowrap; }
+  .bar { height: 88px; border-radius: var(--radius-lg); margin-bottom: var(--space-2); }
+
+  /* type */
+  .spec { display: grid; grid-template-columns: 200px 1fr; gap: var(--space-4); align-items: baseline; padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+  .spec > span { font-size: var(--font-size-xs); color: var(--color-text-muted); font-family: var(--font-mono); }
+  .glyphs { font-family: var(--font-display); font-size: var(--font-size-3xl); letter-spacing: var(--letter-spacing-display); word-break: break-all; }
+
+  /* tokens */
+  .chips { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-8); }
+  .chip { width: 104px; height: 72px; background: var(--color-surface); border: 1px solid var(--color-border); display: grid; place-items: center; font-size: var(--font-size-xs); font-family: var(--font-mono); }
+  .space-row span { white-space: nowrap; }
+  .space-row { display: flex; align-items: center; gap: var(--space-3); font-family: var(--font-mono); font-size: var(--font-size-xs); margin-bottom: var(--space-1); }
+  .space-row i { display: block; height: 14px; background: var(--color-secondary); border-radius: 2px; }
+
+  /* voice */
+  .say { border-radius: var(--radius-lg); padding: var(--space-6); border: 1px solid var(--color-border); background: var(--color-surface); position: relative; }
+  .say.yes { border-left: 6px solid var(--color-success); } .say.no { border-left: 6px solid var(--color-danger); }
+  .say em { font-style: normal; font-weight: 900; font-size: var(--font-size-xs); letter-spacing: var(--letter-spacing-caps); text-transform: uppercase; }
+  .say.yes em { color: var(--color-success); } .say.no em { color: var(--color-danger); }
+  .say q { display: block; font-size: var(--font-size-lg); margin-top: var(--space-2); quotes: none; }
+  .tag { font-family: var(--font-display); font-size: var(--font-size-3xl); color: var(--color-primary); letter-spacing: var(--letter-spacing-display); line-height: var(--line-height-snug); }
+  ul.rules { padding-left: var(--space-5); margin: 0; } ul.rules li { margin-bottom: var(--space-2); }
+  footer { padding: var(--space-12) 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+  @media (max-width: 640px) {
+    h1 { font-size: var(--font-size-4xl); } h2 { font-size: var(--font-size-3xl); }
+    .wrap { padding: 0 var(--space-4); } .spec { grid-template-columns: 1fr; gap: var(--space-1); }
+    header.hero { padding: var(--space-12) 0 var(--space-10); } .clear { padding: 24px; }
+  }
+  :focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+</style>
+</head>
+<body>
+
+<nav class="top"><div class="wrap">
+  <img src="logo/flavors-logo-dark.svg" alt="Flavors">
+  <a href="#brand">Brand</a><a href="#logo">Logo</a><a href="#color">Color</a><a href="#type">Type</a>
+  <a href="#tokens">Tokens</a><a href="#voice">Voice</a><a href="#imagery">Imagery</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <img src="logo/flavors-logo-dark.svg" alt="Flavors">
+  <h1>Brand style guide</h1>
+  <p>Verified food creators, escrow you can trust, and every redemption tracked. This page is the one source for how Flavors looks and sounds.</p>
+</div></header>
+
+<section id="brand"><div class="wrap">
+  <div class="eyebrow">01 · Brand</div>
+  <h2>Who we are</h2>
+  <p class="lede">Flavors connects F&amp;B brands with verified food creators, holds payment safely in escrow, and uses QR codes to show brands the real offline sales a campaign produced.</p>
+  <div class="grid g3">
+    <div class="card"><h3>Trustworthy</h3><p>Money and verification are serious. Teal, clear numbers, no surprises. Escrow states are always spelled out.</p></div>
+    <div class="card"><h3>Appetizing</h3><p>Food is the point. Warm cream, paprika and saffron, and big honest food photography make every screen feel like a menu, not a spreadsheet.</p></div>
+    <div class="card"><h3>Playful, not silly</h3><p>Personality lives in illustration, empty states and celebration moments. Payment, dispute and error screens stay calm and plain.</p></div>
+  </div>
+  <p class="tag">We are not artists, but we can turn this chaos into delicious.</p>
+  <p class="caption">Brand line from the pitch. Use it for marketing, onboarding and the 404 page, not in transactional screens.</p>
+</div></section>
+
+<section id="logo"><div class="wrap">
+  <div class="eyebrow">02 · Logo</div>
+  <h2>The heart is the V</h2>
+  <p class="lede">The heart-shaped V replaces the V in FLAVORS. It never changes color; only the lettering switches between paprika (light backgrounds) and cream (dark ones).</p>
+
+  <div class="grid g2">
+    <div><div class="stage cream"><img src="logo/flavors-logo.svg" alt="" width="460"></div><p class="caption"><code>flavors-logo.svg</code> on Cream, White or Sand.</p></div>
+    <div><div class="stage dark"><img src="logo/flavors-logo-dark.svg" alt="" width="460"></div><p class="caption"><code>flavors-logo-dark.svg</code> on Teal 700 or darker (shown on Teal 900).</p></div>
+  </div>
+  <div class="grid g3">
+    <div><div class="stage white"><img src="logo/flavors-icon.svg" alt="" height="90"></div><p class="caption"><code>flavors-icon.svg</code>: avatars, loading, empty states. Same heart on any background.</p></div>
+    <div><div class="stage teal"><img src="logo/flavors-icon.svg" alt="" height="90"></div><p class="caption">The icon works on dark teal too.</p></div>
+    <div><div class="stage white"><img src="logo/flavors-icon-mono.svg" alt="" height="90"></div><p class="caption"><code>*-mono.svg</code> uses <code>currentColor</code>: shown here in the default black. Inline the SVG in HTML to color it with any brand color; for single-color print and watermarks.</p></div>
+  </div>
+
+  <div class="sub">Clear space and minimum size</div>
+  <div class="grid g2" style="align-items:center">
+    <div class="clear"><span style="top:6px;left:50%">≥ 1/6 height</span><img src="logo/flavors-logo.svg" alt=""></div>
+    <ul class="rules">
+      <li><b>Clear space:</b> keep at least the height of the heart's notch (about 1/6 of the logo height) empty on every side.</li>
+      <li><b>Minimum size:</b> wordmark 96 px wide. Smaller than that, use the icon. Icon 24 px; smaller than that, the favicon.</li>
+      <li><b>Favicon / app icon:</b> <code>favicon.svg</code>, <code>favicon.ico</code>, <code>app-icon.svg</code> (cream rounded square, PWA).</li>
+      <li><b>No stacked version:</b> the heart is the V, so stacking would spell "FLA ORS". Square spaces use the icon.</li>
+    </ul>
+  </div>
+
+  <div class="sub">Don't</div>
+  <div class="grid g3">
+    <div><div class="stage cream bad small"><img src="logo/flavors-logo.svg" alt="" style="transform:scaleX(1.2);transform-origin:center"></div><p class="caption">Stretch or squash it.</p></div>
+    <div><div class="stage cream bad small"><img src="logo/flavors-logo.svg" alt="" style="filter:hue-rotate(110deg) saturate(1.5)"></div><p class="caption">Recolor it or its heart.</p></div>
+    <div><div class="stage teal bad small"><img src="logo/flavors-logo.svg" alt=""></div><p class="caption">Put the light wordmark on teal or orange. Use the dark one.</p></div>
+  </div>
+</div></section>
+
+<section id="color"><div class="wrap">
+  <div class="eyebrow">03 · Color</div>
+  <h2>Paprika, teal and a warm table</h2>
+  <p class="lede">Sampled from the real logo. Teal means trust and money; paprika and saffron mean appetite and action; cream is the table everything sits on.</p>
+
+  <div class="grid g3" id="core"></div>
+
+  <div class="sub">Scales</div>
+  <div id="scales"></div>
+
+  <div class="sub">Gradients (from the logo)</div>
+  <div class="grid g3">
+    <div><div class="bar" style="background:var(--gradient-heart)"></div><p class="caption"><code>--gradient-heart</code>: Saffron → Beet</p></div>
+    <div><div class="bar" style="background:var(--gradient-leaf)"></div><p class="caption"><code>--gradient-leaf</code>: Teal 400 → 700</p></div>
+    <div><div class="bar" style="background:var(--gradient-hero)"></div><p class="caption"><code>--gradient-hero</code>: dark teal sections and banners</p></div>
+  </div>
+
+  <div class="sub">Approved text and background pairs (WCAG AA, measured)</div>
+  <div class="grid g3">
+    <div class="pair" style="background:var(--color-bg);color:var(--color-text);border:1px solid var(--color-border)">Ink on Cream <small>14.8 · AAA</small></div>
+    <div class="pair" style="background:var(--color-bg);color:var(--color-link);border:1px solid var(--color-border)">Link on Cream <small>5.7 · AA</small></div>
+    <div class="pair" style="background:var(--color-primary);color:var(--color-text-on-primary)">White on Paprika <small>5.2 · AA</small></div>
+    <div class="pair" style="background:var(--color-secondary);color:var(--color-text-on-secondary)">White on Teal 500 <small>4.9 · AA</small></div>
+    <div class="pair" style="background:var(--color-accent);color:var(--color-text-on-accent)">Ink on Saffron <small>5.7 · AA</small></div>
+    <div class="pair" style="background:var(--color-nav-bg);color:var(--color-nav-text)">Cream on Teal 700 <small>5.7 · AA</small></div>
+  </div>
+  <div class="card" style="border-left:6px solid var(--color-danger)">
+    <h3>Two rules that come from the contrast numbers</h3>
+    <p>White text on Saffron fails (2.8:1): Saffron fills take Ink text. Saffron on a light background fails too (2.6:1): it is decorative only, never text. When you need orange text, use Saffron 700.</p>
+  </div>
+</div></section>
+
+<section id="type"><div class="wrap">
+  <div class="eyebrow">04 · Typography</div>
+  <h2>Marcellus and Lato</h2>
+  <p class="lede">Marcellus is the closest free match to the light, flared lettering in the logo, so it is used big and sparingly. Lato does all the work: paragraphs, buttons, forms, tables.</p>
+  <div class="grid g2">
+    <div class="card"><h3>Display: Marcellus 400</h3><div class="glyphs">Aa Bb Cc 0123456789 &amp;!?</div><p class="caption" style="margin-top:var(--space-3)">One weight. Headings, hero text, big numbers (ROI, escrow totals). Never for body text or below 24 px.</p></div>
+    <div class="card"><h3>Body and UI: Lato 400 / 700 / 900</h3><div style="font-size:var(--font-size-2xl)">Aa Bb Cc <b>0123456789</b> <b style="font-weight:900">&amp;!?</b></div><p class="caption" style="margin-top:var(--space-3)">Regular for text, Bold for buttons, labels and table headers, Black only for small caps eyebrows.</p></div>
+  </div>
+  <div class="sub">Scale</div>
+  <div class="spec"><span>5xl / 3rem · display</span><div style="font-family:var(--font-display);font-size:var(--font-size-5xl);letter-spacing:var(--letter-spacing-display);line-height:var(--line-height-tight)">Find creators</div></div>
+  <div class="spec"><span>4xl / 2.375rem · display</span><div style="font-family:var(--font-display);font-size:var(--font-size-4xl);letter-spacing:var(--letter-spacing-display)">Campaign overview</div></div>
+  <div class="spec"><span>2xl / 1.5rem · display</span><div style="font-family:var(--font-display);font-size:var(--font-size-2xl);letter-spacing:var(--letter-spacing-display)">Your offers this week</div></div>
+  <div class="spec"><span>xl / 1.25rem · body</span><div style="font-size:var(--font-size-xl)">Lead paragraph: what this screen does and what to do next.</div></div>
+  <div class="spec"><span>md / 1rem · body</span><div>Body text. Verified creators, escrow-protected payments and QR redemption tracking, in one place.</div></div>
+  <div class="spec"><span>sm / 0.875rem · bold</span><div style="font-size:var(--font-size-sm);font-weight:700">Table header · Button label · Form label</div></div>
+  <div class="spec"><span>xs / 0.75rem · black caps</span><div style="font-size:var(--font-size-xs);font-weight:900;letter-spacing:var(--letter-spacing-caps);text-transform:uppercase;color:var(--color-link)">Eyebrow · Status chip</div></div>
+  <div class="spec"><span>numbers</span><div style="font-family:var(--font-display);font-size:var(--font-size-5xl);color:var(--color-secondary)">$1,250.00 <span style="font-family:var(--font-body);font-size:var(--font-size-sm);color:var(--color-text-muted)">held in escrow</span></div></div>
+</div></section>
+
+<section id="tokens"><div class="wrap">
+  <div class="eyebrow">05 · Tokens</div>
+  <h2>Shape, depth and space</h2>
+  <p class="lede">Rounded and soft, like plates and cards. Shadows are tinted with Ink, never black. Spacing is a 4 px grid.</p>
+  <div class="sub">Radius</div>
+  <div class="chips">
+    <div class="chip" style="border-radius:var(--radius-sm)">sm 6</div><div class="chip" style="border-radius:var(--radius-md)">md 10</div>
+    <div class="chip" style="border-radius:var(--radius-lg)">lg 16</div><div class="chip" style="border-radius:var(--radius-xl)">xl 24</div><div class="chip" style="border-radius:var(--radius-pill)">pill</div>
+  </div>
+  <div class="sub">Shadow</div>
+  <div class="chips">
+    <div class="chip" style="box-shadow:var(--shadow-sm);border-radius:var(--radius-md)">sm</div><div class="chip" style="box-shadow:var(--shadow-md);border-radius:var(--radius-md)">md</div>
+    <div class="chip" style="box-shadow:var(--shadow-lg);border-radius:var(--radius-md)">lg</div><div class="chip" style="box-shadow:var(--shadow-focus);border-radius:var(--radius-md)">focus</div>
+  </div>
+  <div class="sub">Spacing</div>
+  <div id="spaces" style="margin-bottom:var(--space-10)"></div>
+  <p class="caption">Components use the semantic <code>--color-*</code> tokens only, never <code>--palette-*</code> directly. That keeps a future dark theme to a remap. Source: <code>tokens/build-tokens.py</code>.</p>
+</div></section>
+
+<section id="voice"><div class="wrap">
+  <div class="eyebrow">06 · Voice</div>
+  <h2>Warm, clear, never cute about money</h2>
+  <p class="lede">Talk like a friendly host who also happens to be good with numbers. Short sentences. Say what happened and what's next.</p>
+  <div class="grid g2">
+    <div class="say yes"><em>Do</em><q>Payment of $500 is held safely in escrow. It's released when you approve the creator's proof.</q></div>
+    <div class="say no"><em>Don't</em><q>Your transaction has been processed successfully.</q></div>
+    <div class="say yes"><em>Do</em><q>No redemptions yet. Once diners scan your QR code, they'll show up here.</q></div>
+    <div class="say no"><em>Don't</em><q>Oops!! Nothing here 🍕🍕</q></div>
+    <div class="say yes"><em>Do</em><q>We couldn't verify this account. Check the profile link and try again.</q></div>
+    <div class="say no"><em>Don't</em><q>Uh oh, we're not feeling the vibes of that link 😬</q></div>
+  </div>
+  <ul class="rules">
+    <li><b>Personality belongs in:</b> empty states, onboarding, success moments, marketing.</li>
+    <li><b>Plain language belongs in:</b> payments, escrow, disputes, errors, anything legal. No emoji, no food puns.</li>
+    <li>Sentence case everywhere, including buttons ("Approve proof", not "Approve Proof").</li>
+    <li>Say what the button does ("Release payment"), not "Submit" or "OK".</li>
+    <li>Money: currency symbol first, two decimals, thousands separators: <b>$1,250.00</b>.</li>
+  </ul>
+</div></section>
+
+<section id="imagery"><div class="wrap">
+  <div class="eyebrow">07 · Imagery and icons</div>
+  <h2>Real food, simple shapes</h2>
+  <div class="grid g3">
+    <div class="card"><h3>Photography</h3><p>Real food, real people, real tables: like the pitch. Warm light, close crops, creators mid-bite. No stock-handshake office photos.</p></div>
+    <div class="card"><h3>Illustration</h3><p>Flat shapes with the brand palette and the heart-V motif. Friendly, a little chaotic ("delicious chaos"), always on Cream or white. Built in step 6.</p></div>
+    <div class="card"><h3>Icons</h3><p>Outline icons, 2 px stroke, rounded caps and joins, drawn on a 24 px grid. Teal by default, Paprika for the single main action. Always paired with a text label for anything that moves money.</p></div>
+  </div>
+  <div class="card" style="border-left:6px solid var(--color-danger)">
+    <h3>Third-party characters</h3>
+    <p>The pitch deck uses a licensed cartoon cat mascot as decoration. It is not part of the Flavors identity and must not ship in the product. Our own sticker set replaces it.</p>
+  </div>
+</div></section>
+
+<footer><div class="wrap">Flavors brand identity · EEC-86 · Colors sampled from the logo in the pitch deck · Source of truth: <code>design/foundations/palette.md</code> and <code>design/tokens/</code></div></footer>
+
+<script>
+  // Swatches read their hex from the tokens, so this page can't drift from tokens.css.
+  const css = getComputedStyle(document.documentElement);
+  const hex = n => css.getPropertyValue('--palette-' + n).trim();
+  const sw = (n, label, role) => `<div class="sw"><i style="background:var(--palette-${n})"></i><b>${label}</b><small>${hex(n)}</small>${role ? `<small style="font-family:var(--font-body)">${role}</small>` : ''}</div>`;
+  document.getElementById('core').innerHTML = [
+    ['paprika-500', 'Paprika', 'Brand red-orange · primary action'],
+    ['saffron-500', 'Saffron', 'Highlights · decorative only'],
+    ['beet-500', 'Beet', 'Gradient end · rare accent'],
+    ['teal-500', 'Teal 500', 'Primary UI · trust and money'],
+    ['teal-700', 'Teal 700', 'Hover · dark surfaces · links'],
+    ['cream', 'Cream', 'Page background'],
+    ['sand', 'Sand', 'Muted surfaces'],
+    ['ink', 'Ink', 'Text (not pure black)'],
+  ].map(a => sw(...a)).join('');
+  const scales = { Teal: ['50','100','300','400','500','600','700','800','900'], Paprika: ['50','300','500','700'], Saffron: ['100','500','700'] };
+  document.getElementById('scales').innerHTML = Object.entries(scales).map(([k, v]) =>
+    `<h3 style="font-size:var(--font-size-md);font-family:var(--font-body);margin-top:var(--space-4)">${k}</h3><div class="scale">${v.map(s => sw(k.toLowerCase() + '-' + s, s)).join('')}</div>`).join('');
+  document.getElementById('spaces').innerHTML = [1,2,3,4,6,8,12,16].map(n =>
+    `<div class="space-row"><span style="width:9ch">space-${n}</span><i style="width:var(--space-${n})"></i>${css.getPropertyValue('--space-' + n).trim()}</div>`).join('');
+</script>
+</body>
+</html>
