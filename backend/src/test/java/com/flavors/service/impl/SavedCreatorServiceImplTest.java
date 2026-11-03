@@ -1,7 +1,6 @@
 package com.flavors.service.impl;
-import com.flavors.entity.Brand;
 import com.flavors.entity.CreatorProfile;
-import com.flavors.entity.SavedCreator;
+import java.time.Instant;
 import com.flavors.entity.SavedCreatorId;
 import com.flavors.enums.VerificationStatus;
 import com.flavors.repository.BrandRepository;
@@ -32,7 +31,7 @@ class SavedCreatorServiceImplTest {
     private CreatorProfile approvedCreator;
     @BeforeEach
     void setUp() {
-        approvedCreator = mock(CreatorProfile.class);
+        approvedCreator = new CreatorProfile(creatorId, "Test Creator", "Food", "Beirut", 1000L, 5000L);
     }
     @Test
     void shouldSaveApprovedCreator() {
@@ -40,8 +39,7 @@ class SavedCreatorServiceImplTest {
                 .thenReturn(true);
         when(creatorProfileRepository.findById(creatorId))
                 .thenReturn(Optional.of(approvedCreator));
-        when(approvedCreator.getVerificationStatus())
-                .thenReturn(VerificationStatus.APPROVED);
+        approvedCreator.approve(1L, "test-creator", Instant.now());
         service.saveCreator(brandId, creatorId);
         verify(savedCreatorRepository).saveIfAbsent(brandId, creatorId);
     }
@@ -59,8 +57,6 @@ class SavedCreatorServiceImplTest {
                 .thenReturn(true);
         when(creatorProfileRepository.findById(creatorId))
                 .thenReturn(Optional.of(approvedCreator));
-        when(approvedCreator.getVerificationStatus())
-                .thenReturn(VerificationStatus.PENDING_APPROVAL);
         assertThrows(CreatorNotApprovedException.class,
                 () -> service.saveCreator(brandId, creatorId));
         verify(savedCreatorRepository, never()).saveIfAbsent(anyLong(), anyLong());
