@@ -50,6 +50,23 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
+    @ExceptionHandler(ValidationFailedException.class)
+    ProblemDetail validationFailed(ValidationFailedException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        problem.setProperty("errors", Map.of(exception.getField(), exception.getMessage()));
+        return problem;
+    }
+
+    @ExceptionHandler(CreatorNotFoundException.class)
+    ProblemDetail creatorNotFound(CreatorNotFoundException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(ReviewNotAllowedException.class)
+    ProblemDetail reviewNotAllowed(ReviewNotAllowedException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
     @ExceptionHandler(InvalidPortfolioException.class)
     ResponseEntity<ProblemDetail> invalidPortfolio(InvalidPortfolioException e) {
         return problem(HttpStatus.BAD_REQUEST, "Invalid portfolio", e.getMessage());
