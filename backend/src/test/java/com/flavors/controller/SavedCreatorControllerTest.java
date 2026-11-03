@@ -9,7 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import com.flavors.exception.ApiExceptionHandler;
+import com.flavors.exception.GlobalExceptionHandler;
 import com.flavors.exception.SavedCreatorNotFoundException;
 import com.flavors.exception.CreatorNotApprovedException;
 import static org.mockito.Mockito.doThrow;
@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SavedCreatorController.class)
-@Import({SecurityConfig.class, SavedCreatorMapper.class,ApiExceptionHandler.class})
+@Import({SecurityConfig.class, SavedCreatorMapper.class,GlobalExceptionHandler.class})
 class SavedCreatorControllerTest {
 
     @Autowired
