@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flavors: Component sheet</title>
+<link rel="icon" href="logo/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Marcellus&display=swap">
+<link rel="stylesheet" href="tokens/tokens.css">
+<link rel="stylesheet" href="components.css">
+<style>
+  /* Sheet layout only. The components themselves live in components.css. */
+  body { margin: 0; background: var(--color-bg); color: var(--color-text); font: 400 var(--font-size-md)/var(--line-height-normal) var(--font-body); }
+  h1, h2 { font-family: var(--font-display); font-weight: 400; letter-spacing: var(--letter-spacing-display); line-height: var(--line-height-tight); margin: 0; }
+  h1 { font-size: var(--font-size-5xl); } h2 { font-size: var(--font-size-4xl); margin-bottom: var(--space-2); }
+  .wrap { max-width: var(--layout-content-max); margin: 0 auto; padding: 0 var(--space-6); }
+  header.top { background: var(--gradient-hero); color: var(--color-nav-text); padding: var(--space-12) 0; }
+  header.top img { height: 48px; display: block; margin-bottom: var(--space-6); }
+  header.top p { max-width: 60ch; font-size: var(--font-size-lg); margin: var(--space-3) 0 0; }
+  header.top a { color: var(--color-nav-text); }
+  header.top code { background: rgba(255, 255, 255, 0.18); color: var(--color-nav-text); }
+  section { padding: var(--space-12) 0 var(--space-4); border-bottom: 1px solid var(--color-border); }
+  .eyebrow { font-weight: 900; font-size: var(--font-size-xs); letter-spacing: var(--letter-spacing-caps); text-transform: uppercase; color: var(--color-link); margin-bottom: var(--space-1); }
+  .lede { color: var(--color-text-muted); max-width: 70ch; margin: 0 0 var(--space-6); }
+  .sub { font-weight: 900; font-size: var(--font-size-sm); letter-spacing: var(--letter-spacing-caps); text-transform: uppercase; color: var(--color-text-muted); margin: var(--space-8) 0 var(--space-3); }
+  .row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin-bottom: var(--space-4); }
+  .grid { display: grid; gap: var(--space-4); margin-bottom: var(--space-6); }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .g4 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .cap { font-size: var(--font-size-sm); color: var(--color-text-muted); margin: var(--space-1) 0 0; }
+  code { font-family: var(--font-mono); font-size: 0.88em; background: var(--color-surface-muted); padding: 0.1em 0.4em; border-radius: var(--radius-sm); }
+  .frame { border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; background: var(--color-bg); margin-bottom: var(--space-3); }
+  .frame > .pad { padding: var(--space-4); }
+  .rulebox { border-left: 6px solid var(--color-secondary); background: var(--color-surface); border-radius: var(--radius-md); padding: var(--space-4) var(--space-5); margin-bottom: var(--space-6); font-size: var(--font-size-sm); }
+  .rulebox b { display: block; margin-bottom: var(--space-1); }
+  .iconcell { display: grid; justify-items: center; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); font-family: var(--font-mono); font-size: var(--font-size-xs); color: var(--color-link); }
+  .iconcell .fl-icon { width: 28px; height: 28px; }
+  .iconcell span { color: var(--color-text-muted); }
+  footer { padding: var(--space-10) 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+  @media (max-width: 640px) { h1 { font-size: var(--font-size-4xl); } h2 { font-size: var(--font-size-3xl); } .wrap { padding: 0 var(--space-4); } }
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol><symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 3 3 5-6"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol><symbol id="i-x-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></symbol><symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4L12 4Z"/><path d="M12 10v4.5M12 17.5v.01"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol><symbol id="i-qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h2.5v2.5H14zM18 14h2.5M14 19v1.5M17.5 18.5h3v2"/></symbol><symbol id="i-dollar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.2c-.4-1-1.4-1.6-2.6-1.6-1.5 0-2.6.8-2.6 2s1 1.7 2.7 2.1 2.7.9 2.7 2.1-1.2 2-2.7 2c-1.3 0-2.3-.6-2.7-1.7M12 6v1.6M12 16.4V18"/></symbol><symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3.1 8 7.5 9.5 4.4-1.5 7.5-5 7.5-9.5V6L12 3Z"/><path d="m8.8 12 2.4 2.4 4-4.6"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M4.5 15v3.5a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol><symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15L6 16.5ZM10 20.5h4"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 19.5c.6-3.2 3.1-4.8 6.5-4.8s5.9 1.6 6.5 4.8M16 5.3a3.5 3.5 0 0 1 0 6.4M18 14.9c1.9.6 3.1 2 3.5 4.6"/></symbol><symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16"/><path d="m7.5 15 3.5-4 3 2.5 4.5-6"/></symbol><symbol id="i-tag" viewBox="0 0 24 24"><path d="M3.5 12.5V4.5a1 1 0 0 1 1-1h8l8 8a1.4 1.4 0 0 1 0 2l-6.6 6.6a1.4 1.4 0 0 1-2 0l-8.4-7.6Z"/><circle cx="8" cy="8" r="1.4"/></symbol><symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 1 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.4"/></symbol><symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2.5h6L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-9Z"/><circle cx="12" cy="13" r="3.5"/></symbol><symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol><symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9 6.6 19.8l1.1-6.1L3.2 9.4l6.1-.8L12 3Z" fill="currentColor" stroke="none"/></symbol></svg>
+
+<header class="top"><div class="wrap">
+  <img src="logo/flavors-logo-dark.svg" alt="Flavors">
+  <h1>Component sheet</h1>
+  <p>Every building block the app needs, using the real states and wording from the spec. Styles live in <code>components.css</code>; see <a href="screens.html">screens.html</a> for them composed into role screens, and <a href="styleguide.html">styleguide.html</a> for the rules behind them.</p>
+</div></header>
+
+<section id="buttons"><div class="wrap">
+  <div class="eyebrow">01 · Buttons</div><h2>One main action per screen</h2>
+  <p class="lede">Paprika is the single call to action. Teal is for everything else that matters, outline and ghost for the rest. Labels say what happens ("Release payment"), never "Submit".</p>
+  <div class="sub">Variants</div>
+  <div class="row">
+    <button class="fl-btn fl-btn--primary">Send campaign request</button>
+    <button class="fl-btn fl-btn--secondary">Save changes</button>
+    <button class="fl-btn fl-btn--outline">Save creator</button>
+    <button class="fl-btn fl-btn--ghost">Cancel</button>
+    <button class="fl-btn fl-btn--danger">Cancel campaign</button>
+  </div>
+  <div class="sub">States</div>
+  <div class="row">
+    <button class="fl-btn fl-btn--primary" disabled>Release payment</button>
+    <button class="fl-btn fl-btn--primary" aria-busy="true">Paying…</button>
+    <button class="fl-btn fl-btn--secondary"><svg class="fl-icon" aria-hidden="true"><use href="#i-arrow-right"/></svg> With icon</button>
+    <button class="fl-iconbtn" aria-label="Search"><svg class="fl-icon" aria-hidden="true"><use href="#i-search"/></svg></button>
+    <button class="fl-iconbtn" aria-label="Notifications"><svg class="fl-icon" aria-hidden="true"><use href="#i-bell"/></svg><span class="fl-count" style="position:absolute;top:2px;right:0">3</span></button>
+  </div>
+  <p class="cap">Disabled buttons should say why nearby ("Approval blocked: needs reconnection"). Loading buttons keep their label and set <code>aria-busy</code>.</p>
+  <div class="sub">Sizes</div>
+  <div class="row">
+    <button class="fl-btn fl-btn--primary fl-btn--sm">Small · 36px (dense tables only)</button>
+    <button class="fl-btn fl-btn--primary">Default · 44px</button>
+    <button class="fl-btn fl-btn--primary fl-btn--lg">Large · 52px</button>
+  </div>
+  <div style="max-width:360px;margin-bottom:var(--space-6)"><button class="fl-btn fl-btn--primary fl-btn--lg fl-btn--block">Claim this offer</button><p class="cap">Full width on phones (diner and cashier pages).</p></div>
+</div></section>
+
+<section id="forms"><div class="wrap">
+  <div class="eyebrow">02 · Forms</div><h2>Inputs that are easy to see</h2>
+  <div class="rulebox"><b>Why the borders are darker than cards</b>Form controls use <code>--color-border-strong</code> (3:1 or better against the page) so they stay visible. The soft <code>--color-border</code> is only for dividers and card edges.</div>
+  <div class="grid g3">
+    <div class="fl-field"><label class="fl-label" for="a1">Campaign name</label><input id="a1" class="fl-input" placeholder="e.g. Summer burger launch"><span class="fl-hint">Creators see this name in the request.</span></div>
+    <div class="fl-field is-invalid"><label class="fl-label" for="a2">Phone number</label><input id="a2" class="fl-input" value="03 12" aria-invalid="true" aria-describedby="e2"><span class="fl-error" id="e2"><svg class="fl-icon" aria-hidden="true"><use href="#i-alert"/></svg> Enter a valid phone number.</span></div>
+    <div class="fl-field"><label class="fl-label" for="a3">Account email</label><input id="a3" class="fl-input" value="karim@example.com" disabled></div>
+    <div class="fl-field"><label class="fl-label" for="a4">Creator price</label><div class="fl-affix"><span>$</span><input id="a4" class="fl-input" inputmode="decimal" value="200.00"></div><span class="fl-hint">USD. Flavors takes 15% from the creator's payment.</span></div>
+    <div class="fl-field"><label class="fl-label" for="a5">Discount</label><div class="fl-affix"><input id="a5" class="fl-input" inputmode="numeric" value="20"><span>%</span></div></div>
+    <div class="fl-field"><label class="fl-label" for="a6">Category</label><select id="a6" class="fl-select"><option>Burgers</option><option>Pizza</option><option>Desserts</option></select></div>
+  </div>
+  <div class="grid g2">
+    <div class="fl-field"><label class="fl-label" for="a7">Message to the creator <small>(optional)</small></label><textarea id="a7" class="fl-textarea" placeholder="Tell her what you have in mind."></textarea></div>
+    <div>
+      <div class="fl-label" style="margin-bottom:var(--space-2)">Choices</div>
+      <label class="fl-check" style="margin-bottom:var(--space-3)"><input type="checkbox" checked><span class="fl-check__box"></span><span>I agree to receive this offer and have my number used to verify the redemption.</span></label>
+      <label class="fl-check" style="margin-bottom:var(--space-3)"><input type="checkbox"><span class="fl-check__box"></span><span>One redemption per person</span></label>
+      <label class="fl-check fl-check--radio" style="margin-bottom:var(--space-2)"><input type="radio" name="pl" checked><span class="fl-check__box"></span><span>Instagram</span></label>
+      <label class="fl-check fl-check--radio" style="margin-bottom:var(--space-4)"><input type="radio" name="pl"><span class="fl-check__box"></span><span>TikTok</span></label>
+      <label class="fl-switch"><input type="checkbox" checked><span class="fl-switch__track"></span>Offer is live</label>
+    </div>
+  </div>
+  <div class="sub">Proof upload (creators)</div>
+  <div class="grid g2"><div class="fl-dropzone" tabindex="0" role="button"><svg class="fl-icon" aria-hidden="true"><use href="#i-upload"/></svg><span><b>Choose files</b> or drop screenshots and post links here</span><span style="font-size:var(--font-size-sm)">Proof is saved as soon as you upload it.</span></div></div>
+</div></section>
+
+<section id="chips"><div class="wrap">
+  <div class="eyebrow">03 · Status chips</div><h2>Every state in the spec</h2>
+  <div class="rulebox"><b>Never color alone</b>Each tone has its own leading symbol: ✓ good, ● in progress, ◷ needs action or time is running, ! failed or disputed, – ended. Anyone who can't tell teal from orange still reads the state.</div>
+  <div class="sub">Campaign status</div>
+  <div class="row">
+    <span class="fl-chip fl-chip--neutral">Draft</span><span class="fl-chip fl-chip--warning">Awaiting creator response</span><span class="fl-chip fl-chip--warning">Countered</span>
+    <span class="fl-chip fl-chip--warning">Awaiting payment</span><span class="fl-chip fl-chip--success">Active</span><span class="fl-chip fl-chip--info">Proof submitted</span>
+    <span class="fl-chip fl-chip--warning">Corrections requested</span><span class="fl-chip fl-chip--success">Approved</span><span class="fl-chip fl-chip--success">Completed</span>
+    <span class="fl-chip fl-chip--danger">Disputed</span><span class="fl-chip fl-chip--neutral">Closed</span><span class="fl-chip fl-chip--danger">Rejected</span>
+    <span class="fl-chip fl-chip--danger">Declined</span><span class="fl-chip fl-chip--neutral">Expired</span><span class="fl-chip fl-chip--neutral">Cancelled</span><span class="fl-chip fl-chip--danger">Removed</span>
+  </div>
+  <div class="sub">Escrow status</div>
+  <div class="row"><span class="fl-chip fl-chip--warning">Pending</span><span class="fl-chip fl-chip--info">Held</span><span class="fl-chip fl-chip--success">Released</span><span class="fl-chip fl-chip--danger">Frozen</span><span class="fl-chip fl-chip--neutral">Refunded</span></div>
+  <div class="sub">Creator account</div>
+  <div class="row"><span class="fl-chip fl-chip--warning">Pending approval</span><span class="fl-chip fl-chip--success">Verified</span><span class="fl-chip fl-chip--danger">Needs reconnection</span><span class="fl-chip fl-chip--danger">Rejected</span><span class="fl-chip fl-chip--danger">Suspended</span></div>
+  <div class="sub">Offer and QR code</div>
+  <div class="row"><span class="fl-chip fl-chip--success">Live</span><span class="fl-chip fl-chip--info">Unused</span><span class="fl-chip fl-chip--success">Redeemed</span><span class="fl-chip fl-chip--neutral">Expired</span><span class="fl-chip fl-chip--neutral">Full</span></div>
+</div></section>
+
+<section id="cards"><div class="wrap">
+  <div class="eyebrow">04 · Cards and numbers</div><h2>Creators, results, ratings</h2>
+  <div class="grid g3">
+    <article class="fl-card fl-card--interactive">
+      <div class="row" style="flex-wrap:nowrap;align-items:flex-start;margin-bottom:var(--space-3)">
+        <div class="fl-avatar fl-avatar--lg" style="width:64px;height:64px;font-size:var(--font-size-2xl)">L</div>
+        <div><h3 class="fl-card__title" style="margin:0">Lara H.</h3><span class="fl-verified"><svg class="fl-icon" aria-hidden="true"><use href="#i-shield"/></svg> Verified</span></div>
+      </div>
+      <p class="cap" style="margin:0 0 var(--space-3)"><svg class="fl-icon" aria-hidden="true"><use href="#i-pin"/></svg> Beirut · Burgers · Instagram</p>
+      <div class="row" style="gap:var(--space-5);margin-bottom:var(--space-3)"><div><b>52.4K</b><div class="cap">followers</div></div><div><b>3.8%</b><div class="cap">engagement</div></div><div><b>$150–400</b><div class="cap">per campaign</div></div></div>
+      <div class="row" style="margin-bottom:var(--space-4)"><span class="fl-stars" aria-hidden="true"><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg></span><b>4.8</b><span class="cap" style="margin:0">(23 reviews)</span></div>
+      <button class="fl-btn fl-btn--outline fl-btn--block">View portfolio</button>
+    </article>
+    <div>
+      <div class="fl-stat fl-stat--highlight" style="margin-bottom:var(--space-3)"><div class="fl-stat__label">ROI</div><div class="fl-stat__value">67%</div><div class="fl-stat__note">revenue $500.00 vs cost $300.00</div></div>
+      <div class="fl-stat" style="margin-bottom:var(--space-3)"><div class="fl-stat__label">Cost per redemption</div><div class="fl-stat__value">$60.00</div><div class="fl-stat__note">5 redemptions</div></div>
+      <div class="fl-stat"><div class="fl-stat__label">ROI · no redemptions yet</div><div class="fl-stat__value is-empty">—</div><div class="fl-stat__note">Shows once a diner redeems.</div></div>
+    </div>
+    <div class="fl-card">
+      <h3 class="fl-card__title">Reviews</h3>
+      <div class="row" style="margin-bottom:var(--space-3)"><span class="fl-stars" aria-hidden="true"><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg></span><b>4.8 average</b></div>
+      <p style="margin:0 0 var(--space-2)"><b>"On time, great content, and people really came in."</b></p>
+      <p class="cap" style="margin:0 0 var(--space-4)">Karim · Beirut Burger Co.</p>
+      <div class="fl-chip fl-chip--success">Verified result: 5 redemptions</div>
+      <p class="cap">A result is marked verified only when the campaign was completed on Flavors and has at least one tracked redemption.</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="nav"><div class="wrap">
+  <div class="eyebrow">05 · Navigation</div><h2>Where am I, what's next</h2>
+  <div class="sub">Top bar by role</div>
+  <div class="frame"><nav class="fl-nav" aria-label="Brand"><span class="fl-nav__brand"><img src="logo/flavors-logo-dark.svg" alt="Flavors"></span><a class="fl-navlink" href="#" aria-current="page">Campaigns</a><a class="fl-navlink" href="#">Find creators</a><a class="fl-navlink" href="#">Saved</a><a class="fl-navlink" href="#">Scan</a><button class="fl-iconbtn" aria-label="Notifications"><svg class="fl-icon" aria-hidden="true"><use href="#i-bell"/></svg><span class="fl-count">2</span></button><span class="fl-role">Brand</span></nav></div>
+  <div class="frame"><nav class="fl-nav" aria-label="Creator"><span class="fl-nav__brand"><img src="logo/flavors-logo-dark.svg" alt="Flavors"></span><a class="fl-navlink" href="#" aria-current="page">Requests</a><a class="fl-navlink" href="#">My portfolio</a><a class="fl-navlink" href="#">Payments</a><a class="fl-navlink" href="#">Storefront</a><button class="fl-iconbtn" aria-label="Notifications"><svg class="fl-icon" aria-hidden="true"><use href="#i-bell"/></svg></button><span class="fl-role">Creator</span></nav></div>
+  <div class="frame"><nav class="fl-nav" aria-label="Admin"><span class="fl-nav__brand"><img src="logo/flavors-logo-dark.svg" alt="Flavors"></span><a class="fl-navlink" href="#" aria-current="page">Approvals</a><a class="fl-navlink" href="#">Disputes</a><a class="fl-navlink" href="#">Payments</a><a class="fl-navlink" href="#">Users</a><span class="fl-role">Admin</span></nav></div>
+  <p class="cap">Current page = cream underline in Saffron plus <code>aria-current="page"</code>. The notification bell exists only because F18 is in the MVP as "cut first": drop it without redesigning the bar.</p>
+  <div class="grid g2">
+    <div><div class="sub">Tabs</div><div class="fl-tabs" role="tablist"><button class="fl-tab" role="tab" aria-selected="true">Overview</button><button class="fl-tab" role="tab" aria-selected="false">Redemptions</button><button class="fl-tab" role="tab" aria-selected="false">Offers and QR</button><button class="fl-tab" role="tab" aria-selected="false">Payment</button></div>
+      <div class="sub">Breadcrumbs</div><ol class="fl-crumbs"><li><a href="#">Campaigns</a></li><li><a href="#">Summer burger launch</a></li><li aria-current="page">Redemptions</li></ol></div>
+    <div><div class="sub">Campaign progress (happy path)</div><ol class="fl-steps" aria-label="Campaign progress"><li class="is-done">Request sent</li><li class="is-done">Accepted</li><li class="is-done">Paid, held in escrow</li><li class="is-current">Proof</li><li>Approved</li><li>Payment released</li></ol>
+      <p class="cap" style="margin-top:var(--space-3)">Side exits (Rejected, Disputed, Cancelled) don't appear as steps: they replace the bar with a chip and an explanation.</p></div>
+  </div>
+  <div class="sub">Timers (A: 3 days to respond · B: 3 days to pay · C: 5 days for proof)</div>
+  <div class="grid g3">
+    <div class="fl-card fl-timer"><div class="fl-timer__row"><span>Respond to request</span><span>2 days left</span></div><div class="fl-progress" role="progressbar" aria-valuenow="33" aria-valuemin="0" aria-valuemax="100"><i style="width:33%"></i></div></div>
+    <div class="fl-card fl-timer is-urgent"><div class="fl-timer__row"><span>Pay to start the campaign</span><span><svg class="fl-icon" aria-hidden="true"><use href="#i-clock"/></svg> 9 hours left</span></div><div class="fl-progress" role="progressbar" aria-valuenow="88" aria-valuemin="0" aria-valuemax="100"><i style="width:88%"></i></div></div>
+    <div class="fl-card fl-timer"><div class="fl-timer__row"><span>Brand review of proof</span><span>4 days left</span></div><div class="fl-progress" role="progressbar" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100"><i style="width:20%"></i></div></div>
+  </div>
+</div></section>
+
+<section id="tables"><div class="wrap">
+  <div class="eyebrow">06 · Tables</div><h2>Redemptions at a glance</h2>
+  <div class="rulebox"><b>Privacy built in</b>Diner phone numbers are always masked to the brand and never shown to the creator (NF-14). Money columns right-align with tabular figures so they line up.</div>
+  <div class="fl-tablewrap"><table class="fl-table">
+    <thead><tr><th aria-sort="descending">Date and time</th><th>Branch</th><th>Diner</th><th>Offer</th><th class="num">Bill</th><th class="num">Discount</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Nov 3 · 20:14</td><td>Hamra</td><td class="mask">••• ••• 4821</td><td>20% off</td><td class="num">$100.00</td><td class="num">$20.00</td><td><span class="fl-chip fl-chip--success">Redeemed</span></td></tr>
+      <tr><td>Nov 3 · 19:02</td><td>Achrafieh</td><td class="mask">••• ••• 7710</td><td>20% off</td><td class="num">$100.00</td><td class="num">$20.00</td><td><span class="fl-chip fl-chip--success">Redeemed</span></td></tr>
+      <tr><td>Nov 2 · 21:40</td><td>Hamra</td><td class="mask">••• ••• 0236</td><td>20% off</td><td class="num">$100.00</td><td class="num">$20.00</td><td><span class="fl-chip fl-chip--success">Redeemed</span></td></tr>
+    </tbody></table>
+    <div class="fl-pager"><span>Showing 3 of 5 redemptions</span><span class="row" style="margin:0;gap:var(--space-2)"><button class="fl-btn fl-btn--outline fl-btn--sm" disabled>Previous</button><button class="fl-btn fl-btn--outline fl-btn--sm">Next</button></span></div>
+  </div>
+  <p class="cap">Rejected scan attempts are logged but never appear here or in any figure (spec EX-F13.1.2).</p>
+</div></section>
+
+<section id="feedback"><div class="wrap">
+  <div class="eyebrow">07 · Feedback</div><h2>Calm when it involves money</h2>
+  <div class="grid g2">
+    <div class="fl-alert fl-alert--info"><svg class="fl-icon" aria-hidden="true"><use href="#i-info"/></svg><div><b>Payment is held safely in escrow</b>It is released to the creator when you approve her proof.</div></div>
+    <div class="fl-alert fl-alert--success"><svg class="fl-icon" aria-hidden="true"><use href="#i-check-circle"/></svg><div><b>Proof approved</b>Payment of $170.00 is on its way to Lara.</div></div>
+    <div class="fl-alert fl-alert--warning"><svg class="fl-icon" aria-hidden="true"><use href="#i-clock"/></svg><div><b>9 hours left to pay</b>If you don't pay in time, the request expires and Lara is told.</div></div>
+    <div class="fl-alert fl-alert--danger"><svg class="fl-icon" aria-hidden="true"><use href="#i-alert"/></svg><div><b>Payment didn't go through</b>Nothing was charged. Check your card details and try again.</div></div>
+  </div>
+  <div class="sub">Toasts</div>
+  <div class="row" style="align-items:flex-start;flex-direction:column">
+    <div class="fl-toast" role="status"><svg class="fl-icon" aria-hidden="true"><use href="#i-check-circle"/></svg>Creator saved<button>Undo</button></div>
+    <div class="fl-toast fl-toast--danger" role="alert"><svg class="fl-icon" aria-hidden="true"><use href="#i-x-circle"/></svg>Couldn't save. Try again.<button>Retry</button></div>
+  </div>
+  <div class="sub">Confirm dialogs</div>
+  <div class="grid g2">
+    <div class="fl-scrim"><div class="fl-modal" role="dialog" aria-labelledby="m1">
+      <h3 id="m1">Release payment?</h3><p style="margin:0">Lara gets paid for this campaign. This can't be undone.</p>
+      <div class="fl-summary"><div><span>Agreed price</span><span>$200.00</span></div><div><span>Flavors fee (15%)</span><span>−$30.00</span></div><div><span>Lara receives</span><span>$170.00</span></div></div>
+      <div class="fl-modal__actions"><button class="fl-btn fl-btn--ghost">Not yet</button><button class="fl-btn fl-btn--primary">Release payment</button></div></div></div>
+    <div class="fl-scrim"><div class="fl-modal" role="dialog" aria-labelledby="m2">
+      <h3 id="m2">Reject this profile</h3><p style="margin:0 0 var(--space-3)">The creator will see your reason and can correct and resubmit.</p>
+      <div class="fl-field is-invalid" style="margin:0"><label class="fl-label" for="rr">Reason <small>(required)</small></label><textarea id="rr" class="fl-textarea" aria-invalid="true" aria-describedby="rre"></textarea><span class="fl-error" id="rre"><svg class="fl-icon" aria-hidden="true"><use href="#i-alert"/></svg> Write a reason before rejecting.</span></div>
+      <div class="fl-modal__actions"><button class="fl-btn fl-btn--ghost">Back</button><button class="fl-btn fl-btn--danger">Reject profile</button></div></div></div>
+  </div>
+  <p class="cap">Confirm buttons repeat the action ("Release payment"), not "OK". Money dialogs always show the full breakdown first.</p>
+  <div class="sub">Empty and loading</div>
+  <div class="grid g2">
+    <div class="fl-card"><div class="fl-empty"><div class="fl-empty__art"><svg class="fl-icon" aria-hidden="true"><use href="#i-qr"/></svg></div><h3>No redemptions yet</h3><p>Once diners scan your QR code at the till, they'll show up here.</p><button class="fl-btn fl-btn--outline">View offers and QR codes</button></div></div>
+    <div class="fl-card" aria-busy="true" aria-label="Loading"><div class="fl-skel" style="height:20px;width:40%;margin-bottom:var(--space-3)"></div><div class="fl-skel" style="height:48px;width:70%;margin-bottom:var(--space-4)"></div><div class="fl-skel" style="height:14px;margin-bottom:var(--space-2)"></div><div class="fl-skel" style="height:14px;width:85%;margin-bottom:var(--space-2)"></div><div class="fl-skel" style="height:14px;width:60%"></div></div>
+  </div>
+</div></section>
+
+<section id="icons"><div class="wrap">
+  <div class="eyebrow">08 · Icons</div><h2>Outline, 2px, rounded</h2>
+  <p class="lede">24 px grid, <code>currentColor</code>, always with a text label near anything that moves money. Source: <code>icons/icons.svg</code>; each page here inlines the same sprite so it also works when opened from disk.</p>
+  <div class="grid g4" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+    <div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-search"/></svg><span>search</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-check"/></svg><span>check</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-check-circle"/></svg><span>check-circle</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-x"/></svg><span>x</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-x-circle"/></svg><span>x-circle</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-alert"/></svg><span>alert</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-info"/></svg><span>info</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-clock"/></svg><span>clock</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-qr"/></svg><span>qr</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-dollar"/></svg><span>dollar</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-shield"/></svg><span>shield</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-lock"/></svg><span>lock</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-upload"/></svg><span>upload</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-bell"/></svg><span>bell</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-user"/></svg><span>user</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-users"/></svg><span>users</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-chart"/></svg><span>chart</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-tag"/></svg><span>tag</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-pin"/></svg><span>pin</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-phone"/></svg><span>phone</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-plus"/></svg><span>plus</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-camera"/></svg><span>camera</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-arrow-right"/></svg><span>arrow-right</span></div><div class="iconcell"><svg class="fl-icon" aria-hidden="true"><use href="#i-star"/></svg><span>star</span></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">Flavors brand identity · EEC-86 · Styles: <code>design/components.css</code> · Tokens: <code>design/tokens/</code> · Names, numbers and businesses on this sheet are made-up placeholders.</div></footer>
+</body>
+</html>

@@ -399,7 +399,12 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
   handler, not a `@GetMapping` controller: controllers are matched before static files, so a catch-all controller
   would also swallow `/assets/*.js`. A missing file (a path with a dot) or a missing `/api/**` path stays a 404.
   Tested by `SpaForwardingIT` against a placeholder `static/index.html` in the test resources.
-- Pages are placeholders (`App.tsx`); the UI kit is chosen by the first UI story.
+- **Brand and styling (EEC-86):** no UI framework; the design system in `design/` is the UI kit. `index.css` imports
+  `styles/tokens.css` (semantic tokens) and `styles/components.css` (`fl-` classes), and styles bare elements as a safety
+  net. These two files and the logo/icons in `public/` are **copies** made by `design/sync-to-frontend.sh`, because the
+  Docker build context is `frontend/` only. Fonts (Lato, Marcellus) load from Google Fonts in `index.html`; offline they fall
+  back to system fonts. Usage rules: `docs/README.md`, "Styling pages".
+- Most pages are still plain placeholders (`App.tsx`); only the auth, registration, brand-account and admin-review pages exist.
 - **Tests:** `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
   ProblemDetail errors), `money.test.ts`.
 
