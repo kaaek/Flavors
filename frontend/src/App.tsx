@@ -40,7 +40,9 @@ export function AppRoutes() {
         path="/"
         element={
           <main>
-            <h1>Flavors</h1>
+            <h1>
+              <img src="/flavors-logo.svg" alt="Flavors" height="56" />
+            </h1>
             <nav>
               <Link to="/login">Log in</Link>
               {' · '}
