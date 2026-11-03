@@ -67,6 +67,16 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
+    @ExceptionHandler(SavedCreatorNotFoundException.class)
+    ProblemDetail savedCreatorNotFound(SavedCreatorNotFoundException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(CreatorNotApprovedException.class)
+    ProblemDetail creatorNotApproved(CreatorNotApprovedException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
     @ExceptionHandler(InvalidPortfolioException.class)
     ResponseEntity<ProblemDetail> invalidPortfolio(InvalidPortfolioException e) {
         return problem(HttpStatus.BAD_REQUEST, "Invalid portfolio", e.getMessage());
