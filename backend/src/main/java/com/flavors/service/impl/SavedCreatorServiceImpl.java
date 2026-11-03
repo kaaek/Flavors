@@ -28,7 +28,7 @@ public class SavedCreatorServiceImpl implements SavedCreatorService {
     @Transactional
     public void saveCreator(Long brandId, Long creatorId) {
         if (!brandRepository.existsById(brandId)) {
-            throw new SavedCreatorNotFoundException("Brand not found");
+            throw new SavedCreatorNotFoundException("Cannot save creator: brand account not found");
         }
         var creator = creatorProfileRepository.findById(creatorId)
                 .orElseThrow(() ->
