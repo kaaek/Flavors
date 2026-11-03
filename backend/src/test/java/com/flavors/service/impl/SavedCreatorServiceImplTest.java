@@ -46,17 +46,6 @@ class SavedCreatorServiceImplTest {
         verify(savedCreatorRepository).saveIfAbsent(brandId, creatorId);
     }
     @Test
-    void shouldNotSaveDuplicateCreator() {
-        when(brandRepository.existsById(brandId))
-                .thenReturn(true);
-        when(creatorProfileRepository.findById(creatorId))
-                .thenReturn(Optional.of(approvedCreator));
-        when(approvedCreator.getVerificationStatus())
-                .thenReturn(VerificationStatus.APPROVED);
-        service.saveCreator(brandId, creatorId);
-        verify(savedCreatorRepository).saveIfAbsent(brandId, creatorId);
-    }
-    @Test
     void shouldRemoveSavedCreator() {
         SavedCreatorId id = new SavedCreatorId(brandId, creatorId);
         when(savedCreatorRepository.existsById(id))
