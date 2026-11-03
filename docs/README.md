@@ -38,6 +38,7 @@ Paths are relative to the repository root. Entries marked *(planned)* arrive wit
 backend/      Spring Boot application (package com.flavors), Flyway migrations
 frontend/     React + TypeScript single-page app (Vite)
 docs/         This README and Architecture.md (design: schema, security, audit log, CI/CD)
+design/       Brand identity: logo, tokens, components, illustrations, style guide (open the .html files in a browser)
 .github/      Pull request template; CI/CD workflows (ci.yml, deploy-production.yml)
 Dockerfile    Builds the frontend and backend into one image
 docker-compose.yml  Local Postgres for development
@@ -45,6 +46,27 @@ railway.json  Railway build and health-check settings
 ```
 
 See [Architecture.md](Architecture.md) for how the system is built and why.
+
+## Styling pages (brand identity, EEC-86)
+
+The brand lives in `design/`. Open `design/styleguide.html`, `design/components.html` (every component, with its markup)
+and `design/screens.html` (sample role screens) in a browser. Rules when you build a page:
+
+- Use the `fl-` classes from `design/components.html` (`fl-btn fl-btn--primary`, `fl-field`, `fl-chip`, `fl-card`, ...).
+  Copy the markup pattern from the sheet.
+- No hard-coded colors, fonts or spacing. If you need a value, use a `--color-*`, `--space-*` or `--font-*` token.
+  Never use `--palette-*` in components.
+- Plain elements already look right (`index.css` styles bare `<input>`, `<label>`, `<table>`, headings). A bare `<button>`
+  is the **primary** action (paprika); use `fl-btn--outline` or `fl-btn--secondary` for the others.
+- Status chips carry a symbol so meaning never depends on color alone. Use the existing tone for each state.
+- Playful art (stickers, spot illustrations) only in empty states, success and the 404 page. Never on payment, escrow,
+  dispute or error screens.
+- Marcellus (display) is for headings and big numbers only; Lato does everything else.
+
+**Changing the design:** edit the sources in `design/` (`tokens/build-tokens.py`, `components.css`), then run
+`design/sync-to-frontend.sh` and commit both. The script copies them into `frontend/src/styles/` and `frontend/public/`
+because the Docker build only sees `frontend/`. Never edit the copies by hand. Illustrations regenerate with
+`python3 design/illustrations/build-illustrations.py`.
 
 ## Running locally
 
