@@ -17,6 +17,7 @@ public class SavedCreator {
     @Id
     @Column(name = "creator_id")
     private Long creatorId;
+    // PostgreSQL sets created_at automatically; JPA must not insert or update it.
     @Column(name = "created_at", insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
