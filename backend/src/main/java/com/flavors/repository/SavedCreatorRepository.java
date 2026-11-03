@@ -9,6 +9,8 @@ import org.springframework.data.repository.query.Param;
 public interface SavedCreatorRepository
         extends JpaRepository<SavedCreator, SavedCreatorId> {
     List<SavedCreator> findByBrandIdOrderByCreatedAtDesc(Long brandId);
+    // Use a native ON CONFLICT insert so simultaneous Save requests
+    // do not cause duplicate-key errors.
     @Modifying
     @Query(value = """
             INSERT INTO saved_creator (brand_id, creator_id)
