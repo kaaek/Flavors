@@ -8,6 +8,8 @@ python3 design/tokens/build-tokens.py
 for f in tokens/tokens.css components.css; do
   { echo "/* COPIED from design/$f by design/sync-to-frontend.sh. Do not edit here. */"; cat "design/$f"; } > "frontend/src/styles/$(basename "$f")"
 done
+# CI runs prettier --check on src, so format the copies here; otherwise every sync fails CI.
+(cd frontend && npx --no-install prettier --write src/styles/tokens.css src/styles/components.css >/dev/null)
 cp design/logo/favicon.svg frontend/public/favicon.svg
 cp design/logo/flavors-logo.svg frontend/public/flavors-logo.svg
 cp design/logo/flavors-logo-dark.svg frontend/public/flavors-logo-dark.svg

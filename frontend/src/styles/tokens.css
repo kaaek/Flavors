@@ -4,30 +4,30 @@
 /* <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Marcellus&display=swap"> */
 :root {
   /* Primitives: raw palette. Don't use directly in components. */
-  --palette-teal-50: #E6F5F3;
-  --palette-teal-100: #C2E7E2;
-  --palette-teal-300: #4DB8AC;
+  --palette-teal-50: #e6f5f3;
+  --palette-teal-100: #c2e7e2;
+  --palette-teal-300: #4db8ac;
   --palette-teal-400: #009383;
-  --palette-teal-500: #007F7C;
-  --palette-teal-600: #00776F;
-  --palette-teal-700: #006D6B;
-  --palette-teal-800: #00504F;
+  --palette-teal-500: #007f7c;
+  --palette-teal-600: #00776f;
+  --palette-teal-700: #006d6b;
+  --palette-teal-800: #00504f;
   --palette-teal-900: #003836;
-  --palette-paprika-50: #FDEBE5;
-  --palette-paprika-300: #F0907A;
-  --palette-paprika-500: #CC3300;
+  --palette-paprika-50: #fdebe5;
+  --palette-paprika-300: #f0907a;
+  --palette-paprika-500: #cc3300;
   --palette-paprika-700: #992600;
-  --palette-saffron-100: #FBE3CF;
-  --palette-saffron-500: #E58039;
-  --palette-saffron-700: #A94E0C;
-  --palette-beet-500: #8E1341;
-  --palette-cream: #FBF6EE;
-  --palette-sand: #F1E9DB;
-  --palette-sand-dark: #E4D8C4;
-  --palette-stone-500: #74807E;
-  --palette-ink: #1B2422;
-  --palette-ink-soft: #4A5755;
-  --palette-white: #FFFFFF;
+  --palette-saffron-100: #fbe3cf;
+  --palette-saffron-500: #e58039;
+  --palette-saffron-700: #a94e0c;
+  --palette-beet-500: #8e1341;
+  --palette-cream: #fbf6ee;
+  --palette-sand: #f1e9db;
+  --palette-sand-dark: #e4d8c4;
+  --palette-stone-500: #74807e;
+  --palette-ink: #1b2422;
+  --palette-ink-soft: #4a5755;
+  --palette-white: #ffffff;
 
   /* Semantic colors: what components use. */
   --color-bg: var(--palette-cream);
@@ -114,14 +114,14 @@
 
   /* shadow */
   --shadow-sm: 0 1px 2px rgba(27, 36, 34, 0.08);
-  --shadow-md: 0 4px 12px rgba(27, 36, 34, 0.10);
+  --shadow-md: 0 4px 12px rgba(27, 36, 34, 0.1);
   --shadow-lg: 0 12px 32px rgba(27, 36, 34, 0.14);
   --shadow-focus: 0 0 0 3px rgba(0, 127, 124, 0.35);
 
   /* gradient */
-  --gradient-heart: linear-gradient(160deg, #E58039 0%, #B5433D 55%, #8E1341 100%);
-  --gradient-leaf: linear-gradient(135deg, #009383 0%, #006D6B 100%);
-  --gradient-hero: linear-gradient(135deg, #00776F 0%, #003836 100%);
+  --gradient-heart: linear-gradient(160deg, #e58039 0%, #b5433d 55%, #8e1341 100%);
+  --gradient-leaf: linear-gradient(135deg, #009383 0%, #006d6b 100%);
+  --gradient-hero: linear-gradient(135deg, #00776f 0%, #003836 100%);
 
   /* overlay */
   --overlay-scrim: rgba(27, 36, 34, 0.55);
