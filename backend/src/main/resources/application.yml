@@ -28,6 +28,15 @@ spring:
   flyway:
     locations: classpath:db/migration
 
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_AUTH:false}
+      mail.smtp.starttls.enable: ${MAIL_STARTTLS:false}
+
   # Login sessions live in Postgres (Spring Session JDBC), so users stay logged in across
   # redeploys. Flyway's V1 creates the tables; Spring must not try to create them itself.
   session:
@@ -53,6 +62,11 @@ server:
         same-site: lax
 
 management:
+  health:
+    # Password-reset email is an external notification channel, not a prerequisite for serving
+    # the app. A temporary SMTP outage must not make Railway restart an otherwise healthy service.
+    mail:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -61,3 +75,9 @@ management:
   endpoint:
     health:
       show-details: never
+
+flavors:
+  app:
+    base-url: ${FLAVORS_APP_BASE_URL:http://localhost:5173}
+  mail:
+    from: ${FLAVORS_MAIL_FROM:no-reply@flavors.local}

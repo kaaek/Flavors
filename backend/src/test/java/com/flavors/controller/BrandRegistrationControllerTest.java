@@ -11,7 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.flavors.config.SecurityConfig;
 import com.flavors.dto.BrandRegistrationResponse;
 import com.flavors.enums.Role;
-import com.flavors.exception.ApiExceptionHandler;
+import com.flavors.exception.GlobalExceptionHandler;
 import com.flavors.exception.DuplicateEmailException;
 import com.flavors.service.BrandRegistrationService;
 import jakarta.servlet.http.Cookie;
@@ -24,7 +24,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(BrandRegistrationController.class)
-@Import({SecurityConfig.class, ApiExceptionHandler.class})
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
 class BrandRegistrationControllerTest {
 
     @Autowired

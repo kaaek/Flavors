@@ -12,7 +12,7 @@ import com.flavors.config.SecurityConfig;
 import com.flavors.dto.BranchResponse;
 import com.flavors.dto.CurrentUser;
 import com.flavors.enums.Role;
-import com.flavors.exception.ApiExceptionHandler;
+import com.flavors.exception.GlobalExceptionHandler;
 import com.flavors.service.BrandBranchService;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
@@ -25,7 +25,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(BrandBranchController.class)
-@Import({SecurityConfig.class, ApiExceptionHandler.class})
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
 class BrandBranchControllerTest {
 
     @Autowired

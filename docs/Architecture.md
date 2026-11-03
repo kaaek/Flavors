@@ -302,6 +302,7 @@ read-only `campaign` (EEC-36). Later stories add columns and methods to these cl
   across redeploys. The cookie is HttpOnly, Secure (staging/prod) and SameSite=Lax.
 - **CSRF:** on, using Spring Security's SPA mode. The token travels in the `XSRF-TOKEN` cookie (readable by
   JavaScript) that the frontend echoes back in the `X-XSRF-TOKEN` header on every POST/PUT/PATCH/DELETE.
+  `<AuthProvider>`'s initial `GET /api/me` forces Spring's SPA support to write that cookie before the first login.
 - **No request cache, form login, HTTP Basic or default logout:** they are for server-rendered pages. The
   request cache would also create a session row for every anonymous 401.
 - **Passwords:** BCrypt (delegating encoder, hashes stored as `{bcrypt}...`). `AppUserDetailsServiceImpl` loads
@@ -310,8 +311,12 @@ read-only `campaign` (EEC-36). Later stories add columns and methods to these cl
   Java-serialized into the session table, so change its fields with care.
 - **Tests:** `RoleGuardTest` (every role × area, 401/403 bodies, CSRF), `MeControllerTest`, `SecurityIT`
   (health public, no session on 401, CSRF cookie), `AppUserDetailsServiceImplIT`.
-- **Scope split:** EEC-27 builds the mechanism, the guards and `GET /api/me`. The login, logout and
-  password reset endpoints and screens belong to UC-F19.3.
+- **Authentication endpoints:** UC-F19.3 adds session login and logout plus one-use, SHA-256-hashed password-reset
+  tokens that expire after one hour. A newer request invalidates all earlier unused tokens. A successful reset
+  invalidates all of that user's sessions. Reset mail is sent only after the token transaction commits; mail
+  failures are logged without changing the generic public response, which is identical whether the email exists.
+- **MVP login-abuse limit:** failed logins are audited, but automated rate limiting and account lockout are not
+  included in the MVP. They must be added before exposing the application to unrestricted public traffic.
 
 ## 6. Audit log (NF-7) — built
 
