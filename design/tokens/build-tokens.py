@@ -21,7 +21,7 @@ PRIMITIVES = {
         "paprika-50": "#FDEBE5", "paprika-300": "#F0907A", "paprika-500": "#CC3300", "paprika-700": "#992600",
         "saffron-100": "#FBE3CF", "saffron-500": "#E58039", "saffron-700": "#A94E0C",
         "beet-500": "#8E1341",
-        "cream": "#FBF6EE", "sand": "#F1E9DB", "sand-dark": "#E4D8C4",
+        "cream": "#FBF6EE", "sand": "#F1E9DB", "sand-dark": "#E4D8C4", "stone-500": "#74807E",
         "ink": "#1B2422", "ink-soft": "#4A5755", "white": "#FFFFFF",
     },
 }
@@ -31,7 +31,8 @@ SEMANTIC = {
     "bg": "cream",                  # page background
     "surface": "white",             # cards, inputs, modals
     "surface-muted": "sand",        # table stripes, sidebars, code blocks
-    "border": "sand-dark",
+    "border": "sand-dark",          # decorative dividers and card edges only (1.4:1)
+    "border-strong": "stone-500",   # form controls and anything that must be seen: 3:1+ (WCAG 1.4.11)
     "text": "ink",
     "text-muted": "ink-soft",
     "text-on-primary": "white",     # Paprika fill takes white (5.2:1)
@@ -83,6 +84,7 @@ OTHER = {
         "leaf": "linear-gradient(135deg, #009383 0%, #006D6B 100%)",
         "hero": "linear-gradient(135deg, #00776F 0%, #003836 100%)",
     },
+    "overlay": {"scrim": "rgba(27, 36, 34, 0.55)"},   # behind modals
     "motion": {
         "duration-fast": "120ms", "duration-base": "200ms", "duration-slow": "320ms",
         "ease-out": "cubic-bezier(0.22, 1, 0.36, 1)", "ease-in-out": "cubic-bezier(0.65, 0, 0.35, 1)",

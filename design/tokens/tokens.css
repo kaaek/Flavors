@@ -23,6 +23,7 @@
   --palette-cream: #FBF6EE;
   --palette-sand: #F1E9DB;
   --palette-sand-dark: #E4D8C4;
+  --palette-stone-500: #74807E;
   --palette-ink: #1B2422;
   --palette-ink-soft: #4A5755;
   --palette-white: #FFFFFF;
@@ -32,6 +33,7 @@
   --color-surface: var(--palette-white);
   --color-surface-muted: var(--palette-sand);
   --color-border: var(--palette-sand-dark);
+  --color-border-strong: var(--palette-stone-500);
   --color-text: var(--palette-ink);
   --color-text-muted: var(--palette-ink-soft);
   --color-text-on-primary: var(--palette-white);
@@ -119,6 +121,9 @@
   --gradient-heart: linear-gradient(160deg, #E58039 0%, #B5433D 55%, #8E1341 100%);
   --gradient-leaf: linear-gradient(135deg, #009383 0%, #006D6B 100%);
   --gradient-hero: linear-gradient(135deg, #00776F 0%, #003836 100%);
+
+  /* overlay */
+  --overlay-scrim: rgba(27, 36, 34, 0.55);
 
   /* motion */
   --motion-duration-fast: 120ms;
