@@ -64,3 +64,11 @@ Rules that follow:
 - The logo's "V" is the heart and the **"O" has a stray teal leaf-fragment** inside it (visible in
   `image2.png`). I'll drop that artifact in the redrawn logo, in step 2.
 - `#CC5500` (burnt orange in the deck) is dropped in favor of the logo's real wordmark color `#CC3300`.
+
+## Typography (locked 3 Nov 2026)
+- **Display: Marcellus** (Google Fonts, one weight). Only for large headings, hero text and big numbers.
+  Chosen as the closest free match to the logo's light, flared lettering
+  (comparison: `font-comparison.png`).
+- **Body and UI: Lato** (400 / 700 / 900). Everything else: paragraphs, buttons, forms, tables, small labels.
+- Replaces the deck's four families (Lovelo, Montserrat, Lato, Glacial Indifference); Montserrat is dropped.
+- Swapping later is one token: `--font-display` in `design/tokens/build-tokens.py`.
