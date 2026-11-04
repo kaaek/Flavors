@@ -385,8 +385,6 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 
 ## 10. Frontend — built
 
-## 10. Frontend — built
-
 - Vite + React + TypeScript, React Router, Vitest + Testing Library, Prettier. The linter is **oxlint**, not ESLint:
   it is what the current Vite template ships with, and it needs no config files for our rules.
   Run from `frontend/`: `npm run lint`, `npm test`, `npm run format:check`, `npm run build`.
@@ -430,8 +428,6 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 - **Railway** (manual setup): project `flavors` with environments `staging` and `production`, each with a
   Postgres service and an `app` service (Dockerfile build, health check `/actuator/health`). GitHub
   secrets `RAILWAY_TOKEN_STAGING` and `RAILWAY_TOKEN_PRODUCTION` hold the deploy tokens.
-
-## 12. Creator portfolio (UC-F1.2) — backend built, page planned
 
 ## 12. Creator portfolio (UC-F1.2) — built
 
