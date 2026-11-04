@@ -1,0 +1,8 @@
+# Production-only settings. Everything else comes from application.yml and environment variables.
+springdoc:
+  # The API docs list every endpoint, which helps an attacker map the API. They stay on in
+  # dev (and in staging, which doesn't use this profile) but never in production.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
