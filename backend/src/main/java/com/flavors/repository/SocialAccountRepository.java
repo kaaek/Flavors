@@ -2,8 +2,12 @@ package com.flavors.repository;
 
 import com.flavors.entity.SocialAccount;
 import java.util.List;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /** The token is not reachable from here on purpose; see SocialAccountTokenRepository. */
 public interface SocialAccountRepository extends JpaRepository<SocialAccount, Long> {
@@ -16,4 +20,13 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
 
     /** The account with this id on the platform, whoever connected it (the pair is unique, V2). */
     Optional<SocialAccount> findByPlatformAndExternalId(String platform, String externalId);
+
+    /**
+     * The account, locked until the transaction ends (SELECT ... FOR UPDATE). Connect, disconnect and the daily
+     * pull all take this lock before they read or change the token, so they run one at a time per account and a
+     * stale pull result can't overwrite a disconnect that committed just before it.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from SocialAccount a where a.id = :id")
+    Optional<SocialAccount> lockById(@Param("id") Long id);
 }

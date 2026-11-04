@@ -87,9 +87,11 @@ class SocialAccountServiceImpl implements SocialAccountService {
         if (existing.isPresent() && !existing.get().getCreatorId().equals(creatorId)) {
             throw new SocialAccountTakenException();
         }
-        // Flushed now: the token is written with plain SQL, so the row must already exist.
-        SocialAccount account = existing.orElseGet(() -> accounts.saveAndFlush(
-                new SocialAccount(creatorId, InstagramClient.PLATFORM, snapshot.externalId())));
+        // Flushed now: the token is written with plain SQL, so the row must already exist. A reconnect takes the
+        // account lock, so a pull that started with the old token can't write its result over the new connection.
+        SocialAccount account = existing.isPresent()
+                ? accounts.lockById(existing.get().getId()).orElseThrow(SocialAccountNotFoundException::new)
+                : accounts.saveAndFlush(new SocialAccount(creatorId, InstagramClient.PLATFORM, snapshot.externalId()));
 
         storeFigures(account, snapshot, Instant.now());
         tokens.store(account.getId(), cipher.encrypt(token));
@@ -108,8 +110,9 @@ class SocialAccountServiceImpl implements SocialAccountService {
 
     @Override
     public void disconnect(long creatorId, long accountId) {
-        SocialAccount account = accounts.findByIdAndCreatorId(accountId, creatorId)
+        SocialAccount owned = accounts.findByIdAndCreatorId(accountId, creatorId)
                 .orElseThrow(SocialAccountNotFoundException::new);
+        SocialAccount account = accounts.lockById(owned.getId()).orElseThrow(SocialAccountNotFoundException::new);
         account.markNeedsReconnection();
         tokens.clear(account.getId());
         auditLogger.record("SOCIAL_ACCOUNT_DISCONNECTED", "social_account", account.getId());
@@ -182,13 +185,15 @@ class SocialAccountServiceImpl implements SocialAccountService {
      */
     private boolean writeIfUnchanged(long accountId, Optional<byte[]> tokenUsed, Consumer<SocialAccount> change) {
         return Boolean.TRUE.equals(tx.execute(status -> {
+            // Locked first: a disconnect that is committing right now finishes before the token is compared.
+            SocialAccount account = accounts.lockById(accountId).orElseThrow(SocialAccountNotFoundException::new);
             Optional<byte[]> current = tokens.find(accountId);
             boolean same = current.isPresent() == tokenUsed.isPresent()
                     && (current.isEmpty() || Arrays.equals(current.get(), tokenUsed.get()));
             if (!same) {
                 return false;
             }
-            change.accept(accounts.findById(accountId).orElseThrow(SocialAccountNotFoundException::new));
+            change.accept(account);
             return true;
         }));
     }
