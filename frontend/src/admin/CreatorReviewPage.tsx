@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ApiError, apiFetch } from '../api/client'
+import { Icon } from '../layout/Icon'
+import { LOCALE } from '../lib/locale'
 import { formatUSD } from '../lib/money'
+import { StatusChip } from '../creator/StatusChip'
+import { platformName } from '../creator/accountView'
 
 interface PendingCreator {
   id: number
@@ -33,6 +37,8 @@ interface CreatorReview {
   needsReconnection: boolean
   socialAccounts: SocialAccount[]
 }
+
+const dateOnly = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium' })
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiError) return error.problem.errors?.reason ?? error.message
@@ -99,76 +105,172 @@ export function CreatorReviewPage() {
 
   return (
     <div className="fl-stack">
-      <h1>Creator approvals</h1>
-      {error && <p role="alert">{error}</p>}
-      {message && <p role="status">{message}</p>}
-
-      {selected ? (
-        <section>
-          <h2>{selected.displayName}</h2>
-          <p>{selected.email}</p>
-          <p>
-            {selected.foodCategory} · {selected.location}
-          </p>
-          <p>
-            Price per campaign: {formatUSD(selected.priceMinCents)} to{' '}
-            {formatUSD(selected.priceMaxCents)}
-          </p>
-          {selected.bio && <p>{selected.bio}</p>}
-
-          <h3>Social accounts</h3>
-          {selected.needsReconnection && (
-            <p role="alert">
-              Needs reconnection. Approval is blocked until the creator reconnects.
-            </p>
-          )}
-          <ul>
-            {selected.socialAccounts.map((account) => (
-              <li key={`${account.platform}:${account.externalId}`}>
-                {account.platform} @{account.externalId}:{' '}
-                {account.followers === null
-                  ? 'followers not pulled yet'
-                  : `${account.followers} followers`}
-                {account.engagementRate !== null && `, ${account.engagementRate}% engagement`}
-                {account.status === 'NEEDS_RECONNECTION' && ' (needs reconnection)'}
-              </li>
-            ))}
-          </ul>
-
+      <header className="fl-pagehead">
+        <div>
+          <h1>Creator approvals</h1>
+          <p>Approve who gets the verified badge.</p>
+        </div>
+        {selected && (
           <button
+            className="fl-btn fl-btn--outline"
             type="button"
-            disabled={selected.needsReconnection}
-            onClick={() => approve(selected)}
+            onClick={() => setSelected(null)}
           >
-            Approve
-          </button>
-
-          <form onSubmit={(event) => reject(selected, event)}>
-            <label>
-              Reason for rejection
-              <textarea name="reason" />
-            </label>
-            <button type="submit">Reject</button>
-          </form>
-          <button type="button" onClick={() => setSelected(null)}>
             Back to the list
           </button>
+        )}
+      </header>
+
+      {error && (
+        <div className="fl-alert fl-alert--danger" role="alert">
+          <Icon name="alert" />
+          <div>{error}</div>
+        </div>
+      )}
+      {message && (
+        <div className="fl-alert fl-alert--success" role="status">
+          <Icon name="check-circle" />
+          <div>{message}</div>
+        </div>
+      )}
+
+      {selected ? (
+        <section className="fl-card fl-stack" aria-labelledby="creator-title">
+          <div className="fl-row fl-row--between">
+            <h2 className="fl-card__title" id="creator-title">
+              {selected.displayName}
+            </h2>
+            <StatusChip status={selected.verificationStatus} />
+          </div>
+
+          {selected.needsReconnection && (
+            <div className="fl-alert fl-alert--danger" role="alert">
+              <Icon name="alert" />
+              <div>
+                <b>Can't approve yet</b>A social account is disconnected, so we can't confirm the
+                creator's numbers. Approval is blocked until she reconnects it.
+              </div>
+            </div>
+          )}
+
+          <dl className="fl-kv">
+            <dt>Email</dt>
+            <dd>{selected.email}</dd>
+            <dt>Location</dt>
+            <dd>{selected.location}</dd>
+            <dt>Category</dt>
+            <dd>{selected.foodCategory}</dd>
+            <dt>Price range</dt>
+            <dd>
+              {formatUSD(selected.priceMinCents)} – {formatUSD(selected.priceMaxCents)}
+            </dd>
+            {selected.bio && (
+              <>
+                <dt>Bio</dt>
+                <dd>{selected.bio}</dd>
+              </>
+            )}
+            {selected.socialAccounts.map((account) => (
+              <Fragment key={`${account.platform}:${account.externalId}`}>
+                <dt>
+                  {platformName(account.platform)} @{account.externalId}
+                </dt>
+                <dd>
+                  {account.followers === null
+                    ? 'followers not pulled yet'
+                    : `${account.followers.toLocaleString(LOCALE)} followers`}
+                  {account.engagementRate !== null && ` · ${account.engagementRate}% engagement`}{' '}
+                  {account.status === 'NEEDS_RECONNECTION' && (
+                    <span className="fl-chip fl-chip--danger">Needs reconnection</span>
+                  )}
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+
+          <div className="fl-row">
+            <button
+              className="fl-btn fl-btn--primary"
+              type="button"
+              disabled={selected.needsReconnection}
+              onClick={() => approve(selected)}
+            >
+              Approve
+            </button>
+          </div>
+
+          <form className="fl-stack" onSubmit={(event) => reject(selected, event)}>
+            <div className="fl-field">
+              <label className="fl-label" htmlFor="reject-reason">
+                Reason for rejection
+              </label>
+              <textarea className="fl-textarea" id="reject-reason" name="reason" />
+              <span className="fl-hint">Required. The creator sees this reason.</span>
+            </div>
+            <div className="fl-row">
+              <button className="fl-btn fl-btn--danger" type="submit">
+                Reject
+              </button>
+            </div>
+          </form>
         </section>
       ) : queue === null ? (
-        <p>Loading…</p>
+        <div className="fl-card" aria-busy="true">
+          Loading…
+        </div>
       ) : queue.length === 0 ? (
-        <p>No profiles are waiting for approval.</p>
+        <div className="fl-card fl-empty">
+          <img
+            className="fl-empty__art-img"
+            src="/illustrations/spots/empty-creators.svg"
+            alt=""
+            aria-hidden="true"
+          />
+          <h2>No profiles are waiting for approval.</h2>
+          <p>New creator registrations appear here.</p>
+        </div>
       ) : (
-        <ul>
-          {queue.map((creator) => (
-            <li key={creator.id}>
-              <button type="button" onClick={() => open(creator.id)}>
-                {creator.displayName}
-              </button>{' '}
-              {creator.foodCategory} · {creator.location}
-            </li>
-          ))}
-        </ul>
+        <div className="fl-tablewrap">
+          <table className="fl-table">
+            <thead>
+              <tr>
+                <th scope="col">Creator</th>
+                <th scope="col">Category</th>
+                <th scope="col">Location</th>
+                <th scope="col">Submitted</th>
+                <th scope="col">Status</th>
+                <th scope="col">
+                  <span className="fl-sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {queue.map((creator) => (
+                <tr key={creator.id}>
+                  <td>
+                    <b>{creator.displayName}</b>
+                  </td>
+                  <td>{creator.foodCategory}</td>
+                  <td>{creator.location}</td>
+                  <td>{dateOnly.format(new Date(creator.registeredAt))}</td>
+                  <td>
+                    <StatusChip status="PENDING_APPROVAL" />
+                  </td>
+                  <td className="num">
+                    <button
+                      className="fl-btn fl-btn--outline fl-btn--sm"
+                      type="button"
+                      aria-label={`Review ${creator.displayName}`}
+                      onClick={() => open(creator.id)}
+                    >
+                      Review
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

@@ -175,3 +175,13 @@ body::before {
     font-size: var(--font-size-3xl);
   }
 }
+
+/* Text for screen readers only (a table column that has no visible heading). */
+.fl-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

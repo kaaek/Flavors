@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
 import { Icon } from '../layout/Icon'
-import { AccountCard, platformName, type AccountView } from './AccountCard'
+import { AccountCard } from './AccountCard'
+import { platformName, type AccountView } from './accountView'
 
 /** One connected account, as GET /api/creator/social returns it (the token is never sent). */
 export interface SocialAccount extends AccountView {
