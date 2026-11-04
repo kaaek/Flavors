@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
+import './brandAccount.css'
 
 interface Branch {
   id: number
@@ -59,7 +60,7 @@ export function BrandAccountPage() {
         <span className="fl-role">Brand</span>
       </nav>
 
-      <main aria-labelledby="brand-account-title">
+      <main className="fl-brand-account" aria-labelledby="brand-account-title">
         <header>
           <h1 id="brand-account-title">Brand account</h1>
           <p className="fl-hint">Manage every restaurant location under this brand account.</p>
