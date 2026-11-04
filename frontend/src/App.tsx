@@ -6,6 +6,7 @@ import { RequireRole } from './auth/RequireRole'
 import { ResetPasswordPage } from './auth/ResetPasswordPage'
 import { CreatorReviewPage } from './admin/CreatorReviewPage'
 import { BrandAccountPage } from './brand/BrandAccountPage'
+import { SocialAccountsPage } from './creator/SocialAccountsPage'
 import { CreatorStatusPage } from './creator/CreatorStatusPage'
 import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
 import { CreatorRegistrationPage } from './registration/CreatorRegistrationPage'
@@ -94,6 +95,14 @@ export function AppRoutes() {
         }
       />
 
+      <Route
+        path="/creator/social"
+        element={
+          <RequireRole role="CREATOR">
+            <SocialAccountsPage />
+          </RequireRole>
+        }
+      />
       <Route
         path="/creator/*"
         element={
