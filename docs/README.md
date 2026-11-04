@@ -294,3 +294,19 @@ On Railway, the variables are set per environment (staging, production).
 | `FLAVORS_MAIL_FROM` | From address for password-reset email | `no-reply@flavors.local` |
 
 The `PG*` names match what Railway's Postgres service exposes, so staging and production need no renaming.
+
+### Connecting Instagram (EEC-33)
+
+Creators connect their Instagram professional account through the Meta developer app (SPIKE-1). All four
+variables are optional: without them the app starts normally, and *Connect Instagram* answers
+"not available yet" (HTTP 503).
+
+| Variable | Used for | Example / default |
+|---|---|---|
+| `FLAVORS_INSTAGRAM_CLIENT_ID` | Instagram App ID, from the Meta app (Instagram → API setup with Instagram login) | (none) |
+| `FLAVORS_INSTAGRAM_CLIENT_SECRET` | Instagram App Secret, from the same page | (never commit) |
+| `FLAVORS_INSTAGRAM_REDIRECT_URI` | Where Instagram sends the browser back. Must be listed exactly as a redirect URL in the Meta app | `https://<app domain>/api/creator/social/instagram/callback` |
+| `FLAVORS_TOKEN_ENCRYPTION_KEY` | Encrypts the Instagram tokens stored in `social_account`. 32 random bytes in Base64: `openssl rand -base64 32`. Use a different key per environment, and don't change it afterwards (stored tokens could no longer be read, and creators would have to reconnect) | (never commit) |
+
+In the MVP the Meta app runs in Standard Access, so only Instagram accounts added as testers in the Meta app
+can connect (SPIKE-1, section 4).
