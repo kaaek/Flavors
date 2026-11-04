@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { apiFetch } from '../api/client'
 import { BrandAccountPage } from './BrandAccountPage'
@@ -18,9 +19,14 @@ it('lists existing branches and adds another branch', async () => {
     .mockResolvedValueOnce([{ id: 11, name: 'Hamra', location: 'Beirut' }])
     .mockResolvedValueOnce({ id: 12, name: 'Jounieh', location: 'Keserwan' })
 
-  render(<BrandAccountPage />)
+  render(
+    <MemoryRouter>
+      <BrandAccountPage />
+    </MemoryRouter>,
+  )
 
-  expect(await screen.findByText('Hamra — Beirut')).toBeInTheDocument()
+  expect(await screen.findByText('Hamra')).toBeInTheDocument()
+  expect(screen.getByText('Beirut')).toBeInTheDocument()
   await user.type(screen.getByLabelText('Branch name'), 'Jounieh')
   await user.type(screen.getByLabelText('Location'), 'Keserwan')
   await user.click(screen.getByRole('button', { name: 'Add branch' }))
@@ -29,5 +35,6 @@ it('lists existing branches and adds another branch', async () => {
     method: 'POST',
     body: { name: 'Jounieh', location: 'Keserwan' },
   })
-  expect(await screen.findByText('Jounieh — Keserwan')).toBeInTheDocument()
+  expect(await screen.findByText('Jounieh')).toBeInTheDocument()
+  expect(screen.getByText('Keserwan')).toBeInTheDocument()
 })
