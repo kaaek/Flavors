@@ -73,23 +73,23 @@ export function PortfolioPage() {
 
   if (state.status === 'loading') {
     return (
-      <main>
+      <div className="fl-stack">
         <p>Loading your portfolio…</p>
-      </main>
+      </div>
     )
   }
   if (state.status === 'not-approved' || state.status === 'error') {
     return (
-      <main>
+      <div className="fl-stack">
         <h1>Manage portfolio</h1>
         <p role="alert">{state.message}</p>
-      </main>
+      </div>
     )
   }
 
   const { portfolio } = state
   return (
-    <main>
+    <div className="fl-stack">
       <h1>Manage portfolio</h1>
       <p>{portfolio.displayName}</p>
 
@@ -104,7 +104,7 @@ export function PortfolioPage() {
 
       <h2>Completed campaigns</h2>
       <Campaigns campaigns={portfolio.completedCampaigns} onToggled={setFeatured} />
-    </main>
+    </div>
   )
 }
 

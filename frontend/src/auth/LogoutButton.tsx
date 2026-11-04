@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
 import { useMe } from './useMe'
 
-export function LogoutButton() {
+/** @param className the button's look; the top bar passes its link style, elsewhere it is an outline button */
+export function LogoutButton({ className = 'fl-btn fl-btn--outline' }: { className?: string }) {
   const { refresh } = useMe()
   const navigate = useNavigate()
   const [error, setError] = useState<string>()
@@ -20,7 +21,7 @@ export function LogoutButton() {
 
   return (
     <>
-      <button className="fl-btn fl-btn--outline" type="button" onClick={logout}>
+      <button className={className} type="button" onClick={logout}>
         Log out
       </button>
       {error && (

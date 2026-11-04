@@ -98,7 +98,7 @@ export function CreatorReviewPage() {
   }
 
   return (
-    <main>
+    <div className="fl-stack">
       <h1>Creator approvals</h1>
       {error && <p role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
@@ -170,6 +170,6 @@ export function CreatorReviewPage() {
           ))}
         </ul>
       )}
-    </main>
+    </div>
   )
 }

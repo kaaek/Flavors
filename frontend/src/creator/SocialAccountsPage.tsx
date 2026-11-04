@@ -118,7 +118,7 @@ export function SocialAccountsPage({
   const needsReconnection = accounts.some((a) => a.status === 'NEEDS_RECONNECTION')
 
   return (
-    <main>
+    <div className="fl-stack">
       <h1>Social accounts</h1>
       <p>
         Your follower and engagement numbers come directly from Instagram, so brands can trust them.
@@ -159,6 +159,6 @@ export function SocialAccountsPage({
       <button type="button" onClick={connect} disabled={connecting}>
         {needsReconnection ? 'Reconnect Instagram' : 'Connect Instagram'}
       </button>
-    </main>
+    </div>
   )
 }

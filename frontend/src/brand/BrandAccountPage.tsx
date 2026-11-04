@@ -1,7 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
-import './brandAccount.css'
 
 interface Branch {
   id: number
@@ -47,20 +45,7 @@ export function BrandAccountPage() {
 
   return (
     <>
-      <nav className="fl-nav" aria-label="Brand">
-        <Link className="fl-nav__brand" to="/brand" aria-label="Flavors brand dashboard">
-          <img src="/flavors-logo-dark.svg" alt="Flavors" />
-        </Link>
-        <Link className="fl-navlink" to="/brand">
-          Dashboard
-        </Link>
-        <Link className="fl-navlink" to="/brand/account" aria-current="page">
-          Account
-        </Link>
-        <span className="fl-role">Brand</span>
-      </nav>
-
-      <main className="fl-brand-account" aria-labelledby="brand-account-title">
+      <div className="fl-stack">
         <header>
           <h1 id="brand-account-title">Brand account</h1>
           <p className="fl-hint">Manage every restaurant location under this brand account.</p>
@@ -148,7 +133,7 @@ export function BrandAccountPage() {
             </button>
           </form>
         </section>
-      </main>
+      </div>
     </>
   )
 }

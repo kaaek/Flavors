@@ -2,13 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
 import { type Me } from './authContext'
+import { homeByRole } from './homeByRole'
 import { useMe } from './useMe'
-
-const homeByRole = {
-  CREATOR: '/creator',
-  BRAND: '/brand',
-  ADMIN: '/admin',
-} as const
 
 export function LoginPage() {
   const { refresh } = useMe()

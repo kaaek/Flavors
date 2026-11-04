@@ -28,7 +28,7 @@ export function CreatorStatusPage() {
 
   const { verificationStatus, rejectionReason } = state.status
   return (
-    <main>
+    <div className="fl-stack">
       <h1>Your profile</h1>
       {verificationStatus === 'PENDING_APPROVAL' && (
         <p>Pending approval. Brands can't find you until an admin approves your profile.</p>
@@ -40,6 +40,6 @@ export function CreatorStatusPage() {
           {rejectionReason && <p>Reason: {rejectionReason}</p>}
         </>
       )}
-    </main>
+    </div>
   )
 }
