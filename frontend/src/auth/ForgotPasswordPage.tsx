@@ -29,16 +29,26 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <main aria-labelledby="forgot-password-title">
-      <section className="fl-card">
+    <main className="fl-auth-shell" aria-labelledby="forgot-password-title">
+      <Link className="fl-auth-logo" to="/" aria-label="Flavors home">
+        <img src="/flavors-logo.svg" alt="Flavors" />
+      </Link>
+      <section className="fl-card fl-auth-card">
         <h1 id="forgot-password-title">Reset your password</h1>
         <p className="fl-hint">
           Enter your account email and we will send a one-time link that expires after one hour.
         </p>
 
         {message ? (
-          <div className="fl-alert fl-alert--success" role="status">
-            {message}
+          <div className="fl-result fl-result--ok" role="status">
+            <img
+              className="fl-success-art"
+              src="/illustrations/spots/success.svg"
+              alt=""
+              aria-hidden="true"
+            />
+            <h2 className="fl-card__title">Check your email</h2>
+            <p>{message}</p>
           </div>
         ) : (
           <form onSubmit={submit}>

@@ -31,8 +31,11 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <main aria-labelledby="reset-password-title">
-      <section className="fl-card">
+    <main className="fl-auth-shell" aria-labelledby="reset-password-title">
+      <Link className="fl-auth-logo" to="/" aria-label="Flavors home">
+        <img src="/flavors-logo.svg" alt="Flavors" />
+      </Link>
+      <section className="fl-card fl-auth-card">
         <h1 id="reset-password-title">Choose a new password</h1>
         {!token && (
           <div className="fl-alert fl-alert--danger" role="alert">
@@ -41,6 +44,12 @@ export function ResetPasswordPage() {
         )}
         {message ? (
           <div className="fl-result fl-result--ok" role="status">
+            <img
+              className="fl-success-art"
+              src="/illustrations/spots/success.svg"
+              alt=""
+              aria-hidden="true"
+            />
             <h2 className="fl-card__title">Password changed</h2>
             <p>{message}</p>
             <Link className="fl-btn fl-btn--primary" to="/login">

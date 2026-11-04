@@ -4,6 +4,7 @@ import { LoginPage } from './auth/LoginPage'
 import { LogoutButton } from './auth/LogoutButton'
 import { RequireRole } from './auth/RequireRole'
 import { ResetPasswordPage } from './auth/ResetPasswordPage'
+import './auth/authPages.css'
 import { CreatorReviewPage } from './admin/CreatorReviewPage'
 import { BrandAccountPage } from './brand/BrandAccountPage'
 import { CreatorStatusPage } from './creator/CreatorStatusPage'
@@ -39,15 +40,29 @@ export function AppRoutes() {
       <Route
         path="/"
         element={
-          <main>
-            <h1>
-              <img src="/flavors-logo.svg" alt="Flavors" height="56" />
-            </h1>
-            <nav>
-              <Link to="/login">Log in</Link>
-              {' · '}
-              <Link to="/register">Register</Link>
-            </nav>
+          <main className="fl-landing">
+            <section className="fl-landing__copy">
+              <img className="fl-landing__logo" src="/flavors-logo.svg" alt="Flavors" />
+              <h1>Creator campaigns you can measure.</h1>
+              <p className="fl-landing__lede">
+                Connect with food creators, run campaigns and track the restaurant visits they
+                produce.
+              </p>
+              <div className="fl-landing__actions" aria-label="Account actions">
+                <Link className="fl-btn fl-btn--primary fl-btn--lg" to="/register">
+                  Create an account
+                </Link>
+                <Link className="fl-btn fl-btn--outline fl-btn--lg" to="/login">
+                  Log in
+                </Link>
+              </div>
+            </section>
+            <img
+              className="fl-landing__art"
+              src="/illustrations/hero.svg"
+              alt=""
+              aria-hidden="true"
+            />
           </main>
         }
       />
@@ -57,11 +72,34 @@ export function AppRoutes() {
       <Route
         path="/register"
         element={
-          <main>
-            <h1>Register</h1>
-            <Link to="/register/creator">Register as a creator</Link>
-            {' · '}
-            <Link to="/register/brand">Register an F&amp;B brand</Link>
+          <main className="fl-auth-shell" aria-labelledby="register-title">
+            <Link className="fl-auth-logo" to="/" aria-label="Flavors home">
+              <img src="/flavors-logo.svg" alt="Flavors" />
+            </Link>
+            <section className="fl-card fl-auth-card">
+              <h1 id="register-title">Join Flavors</h1>
+              <p className="fl-hint">Choose the account that matches how you use Flavors.</p>
+              <div className="fl-choice-grid">
+                <Link
+                  className="fl-btn fl-btn--primary fl-btn--lg fl-btn--block"
+                  to="/register/brand"
+                >
+                  Register an F&amp;B brand
+                </Link>
+                <Link
+                  className="fl-btn fl-btn--outline fl-btn--lg fl-btn--block"
+                  to="/register/creator"
+                >
+                  Register as a creator
+                </Link>
+              </div>
+              <p>
+                Already registered?{' '}
+                <Link className="fl-link" to="/login">
+                  Log in
+                </Link>
+              </p>
+            </section>
           </main>
         }
       />

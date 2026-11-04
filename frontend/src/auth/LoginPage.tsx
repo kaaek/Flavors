@@ -41,8 +41,11 @@ export function LoginPage() {
   }
 
   return (
-    <main aria-labelledby="login-title">
-      <section className="fl-card">
+    <main className="fl-auth-shell" aria-labelledby="login-title">
+      <Link className="fl-auth-logo" to="/" aria-label="Flavors home">
+        <img src="/flavors-logo.svg" alt="Flavors" />
+      </Link>
+      <section className="fl-card fl-auth-card">
         <h1 id="login-title">Welcome back</h1>
         <p className="fl-hint">Log in to continue to your Flavors workspace.</p>
 
@@ -97,6 +100,12 @@ export function LoginPage() {
         <p>
           <Link className="fl-link" to="/forgot-password">
             Forgot your password?
+          </Link>
+        </p>
+        <p>
+          New to Flavors?{' '}
+          <Link className="fl-link" to="/register">
+            Create an account
           </Link>
         </p>
       </section>
