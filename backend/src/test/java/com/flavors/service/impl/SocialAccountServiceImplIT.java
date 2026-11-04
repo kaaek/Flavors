@@ -188,6 +188,49 @@ class SocialAccountServiceImplIT {
         assertThat(postMetrics.findBySocialAccountId(id)).hasSize(2);
     }
 
+    // ---- A pull runs without a database transaction, so she can change the account while it is in flight ----
+
+    @Test
+    void disconnectingWhileAPullIsRunningIsNotUndoneByThePull() {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long id = service.connectInstagram(lara, "code-1").id();
+
+        // She clicks Disconnect while Instagram is still answering the pull.
+        given(instagram.fetchSnapshot("token-1")).willAnswer(call -> {
+            service.disconnect(lara, id);
+            return snapshot(externalId, 15000);
+        });
+
+        assertThat(service.refresh(id)).isFalse();
+
+        SocialAccount after = accounts.findById(id).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(SocialAccountStatus.NEEDS_RECONNECTION);
+        assertThat(after.getFollowers()).isEqualTo(12000);
+        assertThat(tokens.find(id)).isEmpty();
+    }
+
+    @Test
+    void aFailedPullDoesNotFlagAnAccountSheReconnectedMeanwhile() {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long id = service.connectInstagram(lara, "code-1").id();
+
+        // While the old token is being rejected, she reconnects and gets a new token.
+        given(instagram.fetchSnapshot("token-1")).willAnswer(call -> {
+            instagramAccepts("code-2", "token-2", externalId);
+            service.connectInstagram(lara, "code-2");
+            throw new SocialTokenInvalidException();
+        });
+
+        assertThat(service.refresh(id)).isFalse();
+
+        assertThat(accounts.findById(id).orElseThrow().getStatus()).isEqualTo(SocialAccountStatus.CONNECTED);
+        assertThat(cipher.decrypt(tokens.find(id).orElseThrow())).isEqualTo("token-2");
+    }
+
     // ---- Disconnect and reconnect (FR-F19.16) ----
 
     @Test

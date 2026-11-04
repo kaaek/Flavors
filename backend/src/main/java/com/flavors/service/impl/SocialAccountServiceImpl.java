@@ -22,11 +22,16 @@ import com.flavors.util.TokenCipher;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @Transactional
@@ -43,11 +48,12 @@ class SocialAccountServiceImpl implements SocialAccountService {
     private final TokenCipher cipher;
     private final SocialAccountMapper mapper;
     private final AuditLogger auditLogger;
+    private final TransactionTemplate tx;
 
     SocialAccountServiceImpl(SocialAccountRepository accounts, SocialAccountTokenRepository tokens,
                              SocialPostMetricRepository postMetrics, CreatorProfileRepository profiles,
                              InstagramClient instagram, TokenCipher cipher, SocialAccountMapper mapper,
-                             AuditLogger auditLogger) {
+                             AuditLogger auditLogger, PlatformTransactionManager transactionManager) {
         this.accounts = accounts;
         this.tokens = tokens;
         this.postMetrics = postMetrics;
@@ -56,6 +62,7 @@ class SocialAccountServiceImpl implements SocialAccountService {
         this.cipher = cipher;
         this.mapper = mapper;
         this.auditLogger = auditLogger;
+        this.tx = new TransactionTemplate(transactionManager);
     }
 
     @Override
@@ -108,33 +115,64 @@ class SocialAccountServiceImpl implements SocialAccountService {
         auditLogger.record("SOCIAL_ACCOUNT_DISCONNECTED", "social_account", account.getId());
     }
 
+    /**
+     * Not one big transaction: a pull makes many slow calls to Instagram, and a transaction would hold a database
+     * connection for all of them. So it is read (short transaction), pull (none), write (short transaction).
+     */
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean refresh(long accountId) {
-        SocialAccount account = accounts.findById(accountId).orElseThrow(SocialAccountNotFoundException::new);
+        Optional<byte[]> stored = tx.execute(status -> {
+            if (!accounts.existsById(accountId)) {
+                throw new SocialAccountNotFoundException();
+            }
+            return tokens.find(accountId);
+        });
 
-        Optional<byte[]> stored = tokens.find(accountId);
         if (stored.isEmpty() || !cipher.isConfigured()) {
-            flag(account, "no token");
-            return false;
+            return flagIfUnchanged(accountId, stored, "no token");
         }
         String token;
         try {
             token = cipher.decrypt(stored.get());
         } catch (IllegalStateException e) {
             // Wrong key or changed bytes: the token can't be used, so she must reconnect.
-            flag(account, "token unreadable");
-            return false;
+            return flagIfUnchanged(accountId, stored, "token unreadable");
         }
+        InstagramClient.Snapshot snapshot;
         try {
-            storeFigures(account, instagram.fetchSnapshot(token), Instant.now());
-            return true;
+            snapshot = instagram.fetchSnapshot(token);
         } catch (SocialTokenInvalidException e) {
-            flag(account, "token revoked or expired");
-            return false;
+            return flagIfUnchanged(accountId, stored, "token revoked or expired");
         } catch (SocialPlatformException e) {
-            flag(account, "pull failed");
-            return false;
+            return flagIfUnchanged(accountId, stored, "pull failed");
         }
+        return writeIfUnchanged(accountId, stored,
+                account -> storeFigures(account, snapshot, Instant.now()));
+    }
+
+    /** Records a failed pull, unless the token changed while the pull ran. Always returns false. */
+    private boolean flagIfUnchanged(long accountId, Optional<byte[]> tokenUsed, String reason) {
+        writeIfUnchanged(accountId, tokenUsed, account -> flag(account, reason));
+        return false;
+    }
+
+    /**
+     * The pull ran without a transaction, so the creator may have disconnected (token cleared) or reconnected
+     * (new token) meanwhile. Then this result is stale: writing it would undo her disconnect, or flag a fresh
+     * connection. Returns true only if the change was written.
+     */
+    private boolean writeIfUnchanged(long accountId, Optional<byte[]> tokenUsed, Consumer<SocialAccount> change) {
+        return Boolean.TRUE.equals(tx.execute(status -> {
+            Optional<byte[]> current = tokens.find(accountId);
+            boolean same = current.isPresent() == tokenUsed.isPresent()
+                    && (current.isEmpty() || Arrays.equals(current.get(), tokenUsed.get()));
+            if (!same) {
+                return false;
+            }
+            change.accept(accounts.findById(accountId).orElseThrow(SocialAccountNotFoundException::new));
+            return true;
+        }));
     }
 
     /**
