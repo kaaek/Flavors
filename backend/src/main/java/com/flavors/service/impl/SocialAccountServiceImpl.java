@@ -78,9 +78,12 @@ class SocialAccountServiceImpl implements SocialAccountService {
         requireReady();
         requireProfile(creatorId);
 
-        // Both calls to Instagram happen before anything is saved, so a failure saves nothing (EX-F19.4.1).
+        // Every call to Instagram happens before anything is saved, so a failure saves nothing (EX-F19.4.1).
         String token = instagram.exchangeCode(code);
-        InstagramClient.Snapshot snapshot = instagram.fetchSnapshot(token);
+        // She picks one account on Meta's page; if a token ever covers several, the first is the one we connect.
+        InstagramClient.AccountRef shared = instagram.assignedAccounts(token).stream().findFirst()
+                .orElseThrow(() -> new SocialPlatformException("No Instagram account was shared."));
+        InstagramClient.Snapshot snapshot = instagram.fetchSnapshot(token, shared.id());
 
         Optional<SocialAccount> existing =
                 accounts.findByPlatformAndExternalId(InstagramClient.PLATFORM, snapshot.externalId());
@@ -125,12 +128,13 @@ class SocialAccountServiceImpl implements SocialAccountService {
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean refresh(long accountId) {
-        Optional<byte[]> stored = tx.execute(status -> {
-            if (!accounts.existsById(accountId)) {
-                throw new SocialAccountNotFoundException();
-            }
-            return tokens.find(accountId);
+        record Stored(String externalId, Optional<byte[]> token) {
+        }
+        Stored read = tx.execute(status -> {
+            SocialAccount account = accounts.findById(accountId).orElseThrow(SocialAccountNotFoundException::new);
+            return new Stored(account.getExternalId(), tokens.find(accountId));
         });
+        Optional<byte[]> stored = read.token();
 
         if (stored.isEmpty() || !cipher.isConfigured()) {
             return flagIfUnchanged(accountId, stored, "no token");
@@ -142,34 +146,17 @@ class SocialAccountServiceImpl implements SocialAccountService {
             // Wrong key or changed bytes: the token can't be used, so she must reconnect.
             return flagIfUnchanged(accountId, stored, "token unreadable");
         }
-        // A long-lived token lasts 60 days. Renewing on every pull keeps it alive without storing an expiry date.
-        // Renewing is best effort: Instagram refuses it for a token under 24 hours old, and the old token still
-        // works, so only a dead token stops the pull.
-        String renewed = null;
-        try {
-            renewed = instagram.renewToken(token);
-        } catch (SocialTokenInvalidException e) {
-            return flagIfUnchanged(accountId, stored, "token revoked or expired");
-        } catch (SocialPlatformException e) {
-            // keep the current token
-        }
-        String activeToken = renewed != null ? renewed : token;
-
+        // The token never expires (system-user token), so there is nothing to renew: it only stops working if she
+        // removes the app from her business or moves the account, and then she must reconnect.
         InstagramClient.Snapshot snapshot;
         try {
-            snapshot = instagram.fetchSnapshot(activeToken);
+            snapshot = instagram.fetchSnapshot(token, read.externalId());
         } catch (SocialTokenInvalidException e) {
             return flagIfUnchanged(accountId, stored, "token revoked or expired");
         } catch (SocialPlatformException e) {
             return flagIfUnchanged(accountId, stored, "pull failed");
         }
-        String newToken = renewed;
-        return writeIfUnchanged(accountId, stored, account -> {
-            storeFigures(account, snapshot, Instant.now());
-            if (newToken != null) {
-                tokens.store(accountId, cipher.encrypt(newToken));
-            }
-        });
+        return writeIfUnchanged(accountId, stored, account -> storeFigures(account, snapshot, Instant.now()));
     }
 
     /** Records a failed pull, unless the token changed while the pull ran. Always returns false. */
