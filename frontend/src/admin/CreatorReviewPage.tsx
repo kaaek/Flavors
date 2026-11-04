@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ApiError, apiFetch } from '../api/client'
 import { formatUSD } from '../lib/money'
@@ -60,9 +59,7 @@ export function CreatorReviewPage() {
 
   const loadQueue = useCallback(async () => {
     try {
-      setQueue(
-        await apiFetch<PendingCreator[]>('/api/admin/creators/pending'),
-      )
+      setQueue(await apiFetch<PendingCreator[]>('/api/admin/creators/pending'))
     } catch (e) {
       setError(messageOf(e))
     }
@@ -77,9 +74,7 @@ export function CreatorReviewPage() {
     setMessage(null)
 
     try {
-      setSelected(
-        await apiFetch<CreatorReview>(`/api/admin/creators/${id}`),
-      )
+      setSelected(await apiFetch<CreatorReview>(`/api/admin/creators/${id}`))
     } catch (e) {
       setError(messageOf(e))
     }
@@ -90,10 +85,7 @@ export function CreatorReviewPage() {
     setMessage(null)
 
     try {
-      await apiFetch<CreatorReview>(
-        `/api/admin/creators/${creator.id}/approve`,
-        { method: 'POST' },
-      )
+      await apiFetch<CreatorReview>(`/api/admin/creators/${creator.id}/approve`, { method: 'POST' })
 
       setMessage(`${creator.displayName} is approved.`)
       setSelected(null)
@@ -103,26 +95,18 @@ export function CreatorReviewPage() {
     }
   }
 
-  async function reject(
-    creator: CreatorReview,
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  async function reject(creator: CreatorReview, event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
     setMessage(null)
 
-    const reason = String(
-      new FormData(event.currentTarget).get('reason') ?? '',
-    )
+    const reason = String(new FormData(event.currentTarget).get('reason') ?? '')
 
     try {
-      await apiFetch<CreatorReview>(
-        `/api/admin/creators/${creator.id}/reject`,
-        {
-          method: 'POST',
-          body: { reason },
-        },
-      )
+      await apiFetch<CreatorReview>(`/api/admin/creators/${creator.id}/reject`, {
+        method: 'POST',
+        body: { reason },
+      })
 
       setMessage(`${creator.displayName} is rejected.`)
       setSelected(null)
@@ -142,9 +126,7 @@ export function CreatorReviewPage() {
         <div className="creator-admin-links">
           <a href="#approvals" aria-current="page">
             Approvals
-            <span className="creator-admin-count">
-              {queue?.length ?? 0}
-            </span>
+            <span className="creator-admin-count">{queue?.length ?? 0}</span>
           </a>
           <a href="#disputes">Disputes</a>
           <a href="#payments">Payments</a>
@@ -158,9 +140,8 @@ export function CreatorReviewPage() {
           <p className="creator-review-eyebrow">C · FLAVORS ADMIN</p>
           <h1>Approve who gets the verified badge</h1>
           <p>
-            Review creator profiles before granting verification.
-            Approval is blocked while a social account needs reconnection,
-            and a rejection requires a written reason.
+            Review creator profiles before granting verification. Approval is blocked while a social
+            account needs reconnection, and a rejection requires a written reason.
           </p>
         </header>
 
@@ -182,9 +163,7 @@ export function CreatorReviewPage() {
           {queue === null ? (
             <p>Loading creator profiles...</p>
           ) : queue.length === 0 ? (
-            <p className="creator-review-empty">
-              No profiles are waiting for approval.
-            </p>
+            <p className="creator-review-empty">No profiles are waiting for approval.</p>
           ) : (
             <div className="creator-review-table-wrap">
               <table className="creator-review-table">
@@ -203,20 +182,16 @@ export function CreatorReviewPage() {
                   {queue.map((creator) => (
                     <tr
                       key={creator.id}
-                      className={
-                        selected?.id === creator.id
-                          ? 'creator-review-row-selected'
-                          : ''
-                      }
+                      className={selected?.id === creator.id ? 'creator-review-row-selected' : ''}
                     >
                       <td>
-                      <button
-  type="button"
-  className="creator-review-name"
-  onClick={() => open(creator.id)}
->
-  {creator.displayName}
-</button>
+                        <button
+                          type="button"
+                          className="creator-review-name"
+                          onClick={() => open(creator.id)}
+                        >
+                          {creator.displayName}
+                        </button>
                       </td>
                       <td>{creator.foodCategory}</td>
                       <td>{creator.location}</td>
@@ -248,9 +223,7 @@ export function CreatorReviewPage() {
             <article className="fl-card creator-review-card">
               <div className="creator-review-card-header">
                 <h2>{selected.displayName}</h2>
-                <span className="creator-status creator-status-pending">
-                  Pending approval
-                </span>
+                <span className="creator-status creator-status-pending">Pending approval</span>
               </div>
 
               <dl className="creator-review-info">
@@ -264,10 +237,10 @@ export function CreatorReviewPage() {
                 <dd>{selected.foodCategory}</dd>
 
                 <dt>Campaign price</dt>
-<dd>
-  Price per campaign: {formatUSD(selected.priceMinCents)} to{' '}
-  {formatUSD(selected.priceMaxCents)}
-</dd>
+                <dd>
+                  Price per campaign: {formatUSD(selected.priceMinCents)} to{' '}
+                  {formatUSD(selected.priceMaxCents)}
+                </dd>
 
                 {selected.bio && (
                   <>
@@ -299,9 +272,7 @@ export function CreatorReviewPage() {
                       </span>
 
                       {account.engagementRate !== null && (
-                        <span>
-                          {account.engagementRate}% engagement
-                        </span>
+                        <span>{account.engagementRate}% engagement</span>
                       )}
 
                       {account.status === 'NEEDS_RECONNECTION' && (
@@ -317,41 +288,34 @@ export function CreatorReviewPage() {
               {selected.needsReconnection && (
                 <div className="fl-alert fl-alert--danger creator-review-alert" role="alert">
                   <div>
-  <strong>Needs reconnection</strong>
-  <p>
-    A connected social account needs reconnection.
-    Ask the creator to reconnect it before approval.
-  </p>
-</div>
+                    <strong>Needs reconnection</strong>
+                    <p>
+                      A connected social account needs reconnection. Ask the creator to reconnect it
+                      before approval.
+                    </p>
+                  </div>
                 </div>
               )}
 
               <div className="creator-review-actions">
                 <button
-  className="fl-btn fl-btn--primary"
-  type="button"
-  aria-label="Approve"
-  disabled={selected.needsReconnection}
-  onClick={() => approve(selected)}
->
-  Approve creator
-</button>
+                  className="fl-btn fl-btn--primary"
+                  type="button"
+                  aria-label="Approve"
+                  disabled={selected.needsReconnection}
+                  onClick={() => approve(selected)}
+                >
+                  Approve creator
+                </button>
 
                 <form onSubmit={(event) => reject(selected, event)}>
-                  <label htmlFor="creator-rejection-reason">
-                    Reason for rejection
-                  </label>
+                  <label htmlFor="creator-rejection-reason">Reason for rejection</label>
                   <textarea
                     id="creator-rejection-reason"
                     name="reason"
                     placeholder="Write the reason for rejecting this profile..."
-
                   />
-                  <button
-                    type="submit"
-                    className="fl-btn fl-btn--danger"
-                    aria-label="Reject"
-                  >
+                  <button type="submit" className="fl-btn fl-btn--danger" aria-label="Reject">
                     Reject...
                   </button>
                 </form>
