@@ -13,12 +13,32 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
 
   switch (state.status) {
     case 'loading':
-      return <p>Loading…</p>
+      return (
+        <main>
+          <div className="fl-card" aria-busy="true">
+            Loading…
+          </div>
+        </main>
+      )
     case 'anonymous':
       return <Navigate to="/login" replace />
     case 'error':
-      return <p role="alert">Could not reach the server. Please try again.</p>
+      return (
+        <main>
+          <div className="fl-alert fl-alert--danger" role="alert">
+            Could not reach the server. Please try again.
+          </div>
+        </main>
+      )
     case 'authenticated':
-      return state.me.role === role ? children : <p role="alert">Not allowed</p>
+      return state.me.role === role ? (
+        children
+      ) : (
+        <main>
+          <div className="fl-alert fl-alert--danger" role="alert">
+            Not allowed
+          </div>
+        </main>
+      )
   }
 }

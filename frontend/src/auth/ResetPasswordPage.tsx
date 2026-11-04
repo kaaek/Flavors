@@ -31,33 +31,56 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <main>
-      <h1>Choose a new password</h1>
-      {!token && <p role="alert">This password-reset link is invalid.</p>}
-      {message ? (
-        <>
-          <p>{message}</p>
-          <Link to="/login">Log in</Link>
-        </>
-      ) : (
-        token && (
-          <form onSubmit={submit}>
-            {error && <p role="alert">{error}</p>}
-            <label>
-              New password
-              <input
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                minLength={8}
-                maxLength={72}
-                required
-              />
-            </label>
-            <button type="submit">Change password</button>
-          </form>
-        )
-      )}
+    <main aria-labelledby="reset-password-title">
+      <section className="fl-card">
+        <h1 id="reset-password-title">Choose a new password</h1>
+        {!token && (
+          <div className="fl-alert fl-alert--danger" role="alert">
+            This password-reset link is invalid.
+          </div>
+        )}
+        {message ? (
+          <div className="fl-result fl-result--ok" role="status">
+            <h2 className="fl-card__title">Password changed</h2>
+            <p>{message}</p>
+            <Link className="fl-btn fl-btn--primary" to="/login">
+              Log in
+            </Link>
+          </div>
+        ) : (
+          token && (
+            <form onSubmit={submit}>
+              {error && (
+                <div className="fl-alert fl-alert--danger" role="alert">
+                  {error}
+                </div>
+              )}
+              <div className="fl-field">
+                <label className="fl-label" htmlFor="new-password">
+                  New password
+                </label>
+                <input
+                  className="fl-input"
+                  id="new-password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  maxLength={72}
+                  aria-describedby="new-password-hint"
+                  required
+                />
+                <span className="fl-hint" id="new-password-hint">
+                  Use between 8 and 72 characters.
+                </span>
+              </div>
+              <button className="fl-btn fl-btn--primary fl-btn--block" type="submit">
+                Change password
+              </button>
+            </form>
+          )
+        )}
+      </section>
     </main>
   )
 }

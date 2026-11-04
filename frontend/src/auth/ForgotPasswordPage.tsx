@@ -29,23 +29,49 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <main>
-      <h1>Reset your password</h1>
-      {message ? (
-        <p>{message}</p>
-      ) : (
-        <form onSubmit={submit}>
-          {error && <p role="alert">{error}</p>}
-          <label>
-            Email
-            <input name="email" type="email" autoComplete="email" required />
-          </label>
-          <button type="submit">Send reset link</button>
-        </form>
-      )}
-      <p>
-        <Link to="/login">Back to log in</Link>
-      </p>
+    <main aria-labelledby="forgot-password-title">
+      <section className="fl-card">
+        <h1 id="forgot-password-title">Reset your password</h1>
+        <p className="fl-hint">
+          Enter your account email and we will send a one-time link that expires after one hour.
+        </p>
+
+        {message ? (
+          <div className="fl-alert fl-alert--success" role="status">
+            {message}
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            {error && (
+              <div className="fl-alert fl-alert--danger" role="alert">
+                {error}
+              </div>
+            )}
+            <div className="fl-field">
+              <label className="fl-label" htmlFor="reset-email">
+                Email
+              </label>
+              <input
+                className="fl-input"
+                id="reset-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+              />
+            </div>
+            <button className="fl-btn fl-btn--primary fl-btn--block" type="submit">
+              Send reset link
+            </button>
+          </form>
+        )}
+
+        <p>
+          <Link className="fl-link" to="/login">
+            Back to log in
+          </Link>
+        </p>
+      </section>
     </main>
   )
 }

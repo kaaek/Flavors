@@ -20,10 +20,14 @@ export function LogoutButton() {
 
   return (
     <>
-      <button type="button" onClick={logout}>
+      <button className="fl-btn fl-btn--outline" type="button" onClick={logout}>
         Log out
       </button>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <span className="fl-error" role="alert">
+          {error}
+        </span>
+      )}
     </>
   )
 }

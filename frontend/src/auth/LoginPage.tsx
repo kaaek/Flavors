@@ -41,25 +41,65 @@ export function LoginPage() {
   }
 
   return (
-    <main>
-      <h1>Log in</h1>
-      <form onSubmit={submit}>
-        {error && <p role="alert">{error}</p>}
-        <label>
-          Email
-          <input name="email" type="email" autoComplete="email" required />
-        </label>
-        <label>
-          Password
-          <input name="password" type="password" autoComplete="current-password" required />
-        </label>
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Logging in…' : 'Log in'}
-        </button>
-      </form>
-      <p>
-        <Link to="/forgot-password">Forgot your password?</Link>
-      </p>
+    <main aria-labelledby="login-title">
+      <section className="fl-card">
+        <h1 id="login-title">Welcome back</h1>
+        <p className="fl-hint">Log in to continue to your Flavors workspace.</p>
+
+        <form onSubmit={submit}>
+          {error && (
+            <div className="fl-alert fl-alert--danger" role="alert">
+              <div>
+                <b>We could not log you in.</b>
+                {error}
+              </div>
+            </div>
+          )}
+
+          <div className="fl-field">
+            <label className="fl-label" htmlFor="login-email">
+              Email
+            </label>
+            <input
+              className="fl-input"
+              id="login-email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+            />
+          </div>
+
+          <div className="fl-field">
+            <label className="fl-label" htmlFor="login-password">
+              Password
+            </label>
+            <input
+              className="fl-input"
+              id="login-password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+            />
+          </div>
+
+          <button
+            className="fl-btn fl-btn--primary fl-btn--lg fl-btn--block"
+            type="submit"
+            disabled={submitting}
+            aria-busy={submitting}
+          >
+            {submitting ? 'Logging in…' : 'Log in'}
+          </button>
+        </form>
+
+        <p>
+          <Link className="fl-link" to="/forgot-password">
+            Forgot your password?
+          </Link>
+        </p>
+      </section>
     </main>
   )
 }
