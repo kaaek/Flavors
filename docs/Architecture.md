@@ -476,10 +476,11 @@ returns 409 before approval.
   The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect and disconnect
   do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
   is never undone by the stale result.
-- **Token renewal:** each pull first trades the token for a new 60-day one (`InstagramClient.renewToken`) and stores it
-  encrypted. No expiry date is stored: renewing daily is allowed once a token is 24 hours old. Renewal is best effort (a token
-  under 24 hours old can't be renewed yet but still works); only a revoked token stops the pull.
+- **Token:** a business system-user token from a Unified Login configuration with expiry "Never" (EEC-88), so nothing is renewed.
+  It stops working only if the creator removes the app from her business portfolio or moves the account; the next pull then
+  flags `NEEDS_RECONNECTION`. EEC-88 replaced the Instagram-login flow because Meta no longer offers it to new apps, which also
+  overturns SPIKE-1's "no Facebook Page or business portfolio" assumption: a business portfolio is required (a Page is not).
 - **Tests:** `SocialRefreshJobTest`, `SocialRefreshJobIT` (TC-F1.3.1, TC-F1.3.2, failure isolation, the lock),
-  `SocialAccountServiceImplIT` (renewal, disconnect/reconnect during a pull), `InstagramClientImplTest` (renewal against a local
-  stand-in server). A real pull against Instagram can only be checked with a Meta app and a tester account.
+  `SocialAccountServiceImplIT` (disconnect/reconnect during a pull), `InstagramClientImplTest` (login URL, code exchange, account
+  list and pull against a local stand-in for graph.facebook.com). A real pull against Instagram can only be checked with a Meta app and a tester account.
 - **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
