@@ -16,10 +16,9 @@ import org.hibernate.annotations.CreationTimestamp;
  * A social account a creator connected (table {@code social_account}, V2). The follower and
  * engagement figures come from the platform, never from the creator.
  *
- * <p>This class maps only the columns the portfolio reads. The encrypted OAuth token column
- * ({@code access_token_enc}) is left out on purpose: the connect story (EEC-33) adds it, and
- * nothing that shows a portfolio should ever be able to read it. The stories that connect an
- * account (EEC-33) or refresh its numbers (EEC-37) add their own methods here.
+ * <p>The encrypted OAuth token column ({@code access_token_enc}) is deliberately not mapped here, so
+ * nothing that loads this entity (the portfolio, the admin review) can ever read it. EEC-33 writes and
+ * reads it only through {@code SocialAccountTokenRepository}.
  */
 @Entity
 public class SocialAccount {
@@ -64,6 +63,25 @@ public class SocialAccount {
         this.creatorId = creatorId;
         this.platform = platform;
         this.externalId = externalId;
+    }
+
+    /**
+     * Stores the figures of a successful pull, with the time of the pull, and marks the account
+     * connected again (FR-F19.15, FR-F1.2).
+     */
+    public void recordPull(long followers, BigDecimal engagementRate, Instant pulledAt) {
+        this.followers = followers;
+        this.engagementRate = engagementRate;
+        this.lastPulledAt = pulledAt;
+        this.status = SocialAccountStatus.CONNECTED;
+    }
+
+    /**
+     * After a disconnect or a failed pull: the last figures and their 'last updated' time stay, and the
+     * creator sees 'Needs reconnection' (FR-F19.16, FR-F1.9).
+     */
+    public void markNeedsReconnection() {
+        this.status = SocialAccountStatus.NEEDS_RECONNECTION;
     }
 
     public Long getId() {
