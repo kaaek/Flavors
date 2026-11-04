@@ -45,6 +45,9 @@ public class SecurityConfig {
                         // aren't exposed (application.yml); denying them guards against exposing one by mistake.
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/actuator/**").denyAll()
+                        // API documentation (springdoc). Public so the team can read it without logging in;
+                        // it only describes the endpoints, each of which is still guarded above.
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
                         // The SPA's files and client-side routes: the SPA itself checks the role (RequireRole).
                         .anyRequest().permitAll())
                 // 401/403 as JSON instead of a redirect to a login page.

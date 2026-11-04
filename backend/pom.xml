@@ -59,6 +59,14 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
+        <!-- Generates the OpenAPI document (/v3/api-docs) and the Swagger UI (/swagger-ui.html)
+             from the controllers. Not managed by Spring Boot, so it needs its own version
+             (3.x is the line for Spring Boot 4). -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.2.0</version>
+        </dependency>
         <!-- Flyway keeps database-specific support in separate modules. -->
         <dependency>
             <groupId>org.flywaydb</groupId>
