@@ -1,10 +1,25 @@
 .fl-landing {
   max-width: var(--layout-content-max);
   min-height: calc(100vh - var(--space-16));
+  position: relative;
+  z-index: 0;
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   align-items: center;
   gap: var(--space-10);
+}
+
+.fl-landing::before,
+.fl-auth-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--color-bg);
+  background-image: url('/illustrations/pattern-cream.svg');
+  background-repeat: repeat;
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .fl-landing__copy {
@@ -48,6 +63,8 @@
 
 .fl-auth-shell {
   max-width: var(--layout-prose-max);
+  position: relative;
+  z-index: 0;
 }
 
 .fl-auth-logo {
