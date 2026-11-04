@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
@@ -36,7 +37,7 @@ class InstagramClientImpl implements InstagramClient {
 
     private static final String AUTHORIZE_URL = "https://www.instagram.com/oauth/authorize";
     private static final String TOKEN_URL = "https://api.instagram.com/oauth/access_token";
-    private static final String GRAPH_URL = "https://graph.instagram.com";
+    private static final String DEFAULT_GRAPH_URL = "https://graph.instagram.com";
 
     /** SPIKE-1, section 4: basic profile data, and insights for views, likes, comments and shares. */
     private static final String SCOPES = "instagram_business_basic,instagram_business_manage_insights";
@@ -54,10 +55,18 @@ class InstagramClientImpl implements InstagramClient {
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
+    private final String graphUrl;
 
+    @Autowired
     InstagramClientImpl(@Value("${flavors.instagram.client-id:}") String clientId,
                         @Value("${flavors.instagram.client-secret:}") String clientSecret,
                         @Value("${flavors.instagram.redirect-uri:}") String redirectUri) {
+        this(clientId, clientSecret, redirectUri, DEFAULT_GRAPH_URL);
+    }
+
+    /** The graph address can be replaced so a test can point the client at a local stand-in server. */
+    InstagramClientImpl(String clientId, String clientSecret, String redirectUri, String graphUrl) {
+        this.graphUrl = graphUrl;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.redirectUri = redirectUri;
@@ -107,7 +116,7 @@ class InstagramClientImpl implements InstagramClient {
 
         // 2. The short-lived token becomes a long-lived one (valid 60 days). Server side only: it uses the secret.
         Map<String, Object> longLived = call(() -> http.get()
-                .uri(GRAPH_URL + "/access_token?grant_type=ig_exchange_token&client_secret={secret}&access_token={token}",
+                .uri(graphUrl + "/access_token?grant_type=ig_exchange_token&client_secret={secret}&access_token={token}",
                         clientSecret, shortToken)
                 .retrieve()
                 .body(JSON));
@@ -115,9 +124,19 @@ class InstagramClientImpl implements InstagramClient {
     }
 
     @Override
+    public String renewToken(String accessToken) {
+        // A long-lived token can be exchanged for a new 60-day one once it is 24 hours old. Server side only.
+        Map<String, Object> renewed = call(() -> http.get()
+                .uri(graphUrl + "/refresh_access_token?grant_type=ig_refresh_token&access_token={token}", accessToken)
+                .retrieve()
+                .body(JSON));
+        return text(renewed, "access_token");
+    }
+
+    @Override
     public Snapshot fetchSnapshot(String accessToken) {
         Map<String, Object> me = call(() -> http.get()
-                .uri(GRAPH_URL + "/me?fields=user_id,username,followers_count&access_token={token}", accessToken)
+                .uri(graphUrl + "/me?fields=user_id,username,followers_count&access_token={token}", accessToken)
                 .retrieve()
                 .body(JSON));
         // user_id is the professional account's id; id is only valid for this app. Prefer the first.
@@ -126,7 +145,7 @@ class InstagramClientImpl implements InstagramClient {
         long followers = number(me.get("followers_count"));
 
         Map<String, Object> media = call(() -> http.get()
-                .uri(GRAPH_URL + "/me/media?fields=id,like_count,comments_count&limit={limit}&access_token={token}",
+                .uri(graphUrl + "/me/media?fields=id,like_count,comments_count&limit={limit}&access_token={token}",
                         RECENT_POSTS, accessToken)
                 .retrieve()
                 .body(JSON));
@@ -150,7 +169,7 @@ class InstagramClientImpl implements InstagramClient {
         long shares = 0;
         try {
             Map<String, Object> insights = call(() -> http.get()
-                    .uri(GRAPH_URL + "/{post}/insights?metric=views,likes,comments,shares&access_token={token}",
+                    .uri(graphUrl + "/{post}/insights?metric=views,likes,comments,shares&access_token={token}",
                             postId, accessToken)
                     .retrieve()
                     .body(JSON));

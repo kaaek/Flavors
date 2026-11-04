@@ -23,6 +23,13 @@ public interface InstagramClient {
     /** Trades the one-time code Instagram sent back for a long-lived (60-day) access token. */
     String exchangeCode(String code);
 
+    /**
+     * Trades a long-lived token for a new one, valid for another 60 days. Instagram only allows this once the token
+     * is 24 hours old, so a call can fail with a plain {@code SocialPlatformException} while the old token is still
+     * fine; a revoked or expired token fails with {@code SocialTokenInvalidException}.
+     */
+    String renewToken(String accessToken);
+
     /** Reads the account's id, follower count and the figures of its recent posts. */
     Snapshot fetchSnapshot(String accessToken);
 

@@ -139,16 +139,34 @@ class SocialAccountServiceImpl implements SocialAccountService {
             // Wrong key or changed bytes: the token can't be used, so she must reconnect.
             return flagIfUnchanged(accountId, stored, "token unreadable");
         }
+        // A long-lived token lasts 60 days. Renewing on every pull keeps it alive without storing an expiry date.
+        // Renewing is best effort: Instagram refuses it for a token under 24 hours old, and the old token still
+        // works, so only a dead token stops the pull.
+        String renewed = null;
+        try {
+            renewed = instagram.renewToken(token);
+        } catch (SocialTokenInvalidException e) {
+            return flagIfUnchanged(accountId, stored, "token revoked or expired");
+        } catch (SocialPlatformException e) {
+            // keep the current token
+        }
+        String activeToken = renewed != null ? renewed : token;
+
         InstagramClient.Snapshot snapshot;
         try {
-            snapshot = instagram.fetchSnapshot(token);
+            snapshot = instagram.fetchSnapshot(activeToken);
         } catch (SocialTokenInvalidException e) {
             return flagIfUnchanged(accountId, stored, "token revoked or expired");
         } catch (SocialPlatformException e) {
             return flagIfUnchanged(accountId, stored, "pull failed");
         }
-        return writeIfUnchanged(accountId, stored,
-                account -> storeFigures(account, snapshot, Instant.now()));
+        String newToken = renewed;
+        return writeIfUnchanged(accountId, stored, account -> {
+            storeFigures(account, snapshot, Instant.now());
+            if (newToken != null) {
+                tokens.store(accountId, cipher.encrypt(newToken));
+            }
+        });
     }
 
     /** Records a failed pull, unless the token changed while the pull ran. Always returns false. */
