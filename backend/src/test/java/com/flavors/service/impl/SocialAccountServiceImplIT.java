@@ -3,6 +3,8 @@ package com.flavors.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -135,7 +137,8 @@ class SocialAccountServiceImplIT {
 
         // The code works but reading the account fails.
         given(instagram.exchangeCode("code-2")).willReturn("token-2");
-        given(instagram.fetchSnapshot("token-2")).willThrow(new SocialPlatformException("down"));
+        given(instagram.assignedAccounts("token-2")).willReturn(List.of(new InstagramClient.AccountRef("ig-x", "lara.eats")));
+        given(instagram.fetchSnapshot(eq("token-2"), anyString())).willThrow(new SocialPlatformException("down"));
         assertThatThrownBy(() -> service.connectInstagram(lara, "code-2"))
                 .isInstanceOf(SocialPlatformException.class);
         assertThat(accounts.findByCreatorId(lara)).isEmpty();
@@ -155,7 +158,7 @@ class SocialAccountServiceImplIT {
         long id = service.connectInstagram(lara, "code-1").id();
         SocialAccount before = accounts.findById(id).orElseThrow();
 
-        given(instagram.fetchSnapshot("token-1")).willThrow(new SocialTokenInvalidException());
+        given(instagram.fetchSnapshot(eq("token-1"), anyString())).willThrow(new SocialTokenInvalidException());
 
         assertThat(service.refresh(id)).isFalse();
 
@@ -177,7 +180,7 @@ class SocialAccountServiceImplIT {
         long id = service.connectInstagram(lara, "code-1").id();
 
         // 720 interactions in 2 posts, now with 15,000 followers: 2.40 %.
-        given(instagram.fetchSnapshot("token-1")).willReturn(snapshot(externalId, 15000));
+        given(instagram.fetchSnapshot(eq("token-1"), anyString())).willReturn(snapshot(externalId, 15000));
 
         assertThat(service.refresh(id)).isTrue();
 
@@ -188,57 +191,16 @@ class SocialAccountServiceImplIT {
         assertThat(postMetrics.findBySocialAccountId(id)).hasSize(2);
     }
 
-    // ---- The long-lived token is renewed on every pull (60-day token) ----
-
     @Test
-    void aSuccessfulPullStoresTheRenewedTokenEncrypted() {
+    void connectingWithNoSharedInstagramAccountSavesNothing() {
         long lara = newCreator();
-        String externalId = newExternalId();
-        instagramAccepts("code-1", "token-1", externalId);
-        long id = service.connectInstagram(lara, "code-1").id();
-        given(instagram.renewToken("token-1")).willReturn("token-2");
-        given(instagram.fetchSnapshot("token-2")).willReturn(snapshot(externalId, 15000));
+        given(instagram.exchangeCode("code-1")).willReturn("token-1");
+        given(instagram.assignedAccounts("token-1")).willReturn(List.of());
 
-        assertThat(service.refresh(id)).isTrue();
+        assertThatThrownBy(() -> service.connectInstagram(lara, "code-1")).isInstanceOf(SocialPlatformException.class);
 
-        // The figures were pulled with the new token, and only the new token is kept.
-        assertThat(accounts.findById(id).orElseThrow().getFollowers()).isEqualTo(15000);
-        byte[] stored = tokens.find(id).orElseThrow();
-        assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain("token-2");
-        assertThat(cipher.decrypt(stored)).isEqualTo("token-2");
-    }
-
-    @Test
-    void whenRenewingIsRefusedTheOldTokenIsKeptAndThePullStillWorks() {
-        long lara = newCreator();
-        String externalId = newExternalId();
-        instagramAccepts("code-1", "token-1", externalId);
-        long id = service.connectInstagram(lara, "code-1").id();
-        // For example the token is not yet 24 hours old.
-        given(instagram.renewToken("token-1")).willThrow(new SocialPlatformException("not old enough"));
-        given(instagram.fetchSnapshot("token-1")).willReturn(snapshot(externalId, 15000));
-
-        assertThat(service.refresh(id)).isTrue();
-
-        assertThat(accounts.findById(id).orElseThrow().getFollowers()).isEqualTo(15000);
-        assertThat(cipher.decrypt(tokens.find(id).orElseThrow())).isEqualTo("token-1");
-    }
-
-    @Test
-    void aTokenThatCannotBeRenewedBecauseItWasRevokedFlagsTheAccount() {
-        long lara = newCreator();
-        instagramAccepts("code-1", "token-1", newExternalId());
-        long id = service.connectInstagram(lara, "code-1").id();
-        SocialAccount before = accounts.findById(id).orElseThrow();
-        given(instagram.renewToken("token-1")).willThrow(new SocialTokenInvalidException());
-
-        assertThat(service.refresh(id)).isFalse();
-
-        SocialAccount after = accounts.findById(id).orElseThrow();
-        assertThat(after.getStatus()).isEqualTo(SocialAccountStatus.NEEDS_RECONNECTION);
-        assertThat(after.getFollowers()).isEqualTo(12000);
-        assertThat(after.getLastPulledAt()).isEqualTo(before.getLastPulledAt());
-        then(instagram).should(never()).fetchSnapshot("token-2");
+        assertThat(accounts.findByCreatorId(lara)).isEmpty();
+        then(instagram).should(never()).fetchSnapshot(any(), any());
     }
 
     // ---- A pull runs without a database transaction, so she can change the account while it is in flight ----
@@ -251,7 +213,7 @@ class SocialAccountServiceImplIT {
         long id = service.connectInstagram(lara, "code-1").id();
 
         // She clicks Disconnect while Instagram is still answering the pull.
-        given(instagram.fetchSnapshot("token-1")).willAnswer(call -> {
+        given(instagram.fetchSnapshot(eq("token-1"), anyString())).willAnswer(call -> {
             service.disconnect(lara, id);
             return snapshot(externalId, 15000);
         });
@@ -272,7 +234,7 @@ class SocialAccountServiceImplIT {
         long id = service.connectInstagram(lara, "code-1").id();
 
         // While the old token is being rejected, she reconnects and gets a new token.
-        given(instagram.fetchSnapshot("token-1")).willAnswer(call -> {
+        given(instagram.fetchSnapshot(eq("token-1"), anyString())).willAnswer(call -> {
             instagramAccepts("code-2", "token-2", externalId);
             service.connectInstagram(lara, "code-2");
             throw new SocialTokenInvalidException();
@@ -397,7 +359,8 @@ class SocialAccountServiceImplIT {
     /** Instagram accepts this code, and the token shows an account with 12,000 followers. */
     private void instagramAccepts(String code, String token, String externalId) {
         given(instagram.exchangeCode(code)).willReturn(token);
-        given(instagram.fetchSnapshot(token)).willReturn(snapshot(externalId, 12000));
+        given(instagram.assignedAccounts(token)).willReturn(List.of(new InstagramClient.AccountRef(externalId, "lara.eats")));
+        given(instagram.fetchSnapshot(eq(token), anyString())).willReturn(snapshot(externalId, 12000));
     }
 
     /** Two posts with 480 and 240 interactions: 360 per post, so 3.00 % of 12,000 followers. */

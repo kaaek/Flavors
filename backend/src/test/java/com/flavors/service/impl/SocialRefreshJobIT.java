@@ -1,10 +1,11 @@
 package com.flavors.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 import com.flavors.TestcontainersConfiguration;
 import com.flavors.entity.AppUser;
@@ -79,7 +80,7 @@ class SocialRefreshJobIT {
         String externalId = connect("token-1", 12000);
         SocialAccount before = onlyAccount();
 
-        given(instagram.fetchSnapshot("token-1")).willReturn(snapshot(externalId, 15000));
+        given(instagram.fetchSnapshot(eq("token-1"), anyString())).willReturn(snapshot(externalId, 15000));
         SocialRefreshJob.Result result = job.runOnce();
 
         SocialAccount after = onlyAccount();
@@ -97,7 +98,8 @@ class SocialRefreshJobIT {
         long creator = newCreator();
         String externalId = "ig-" + UUID.randomUUID();
         given(instagram.exchangeCode("code")).willReturn("token-1");
-        given(instagram.fetchSnapshot("token-1")).willReturn(snapshot(externalId, 12000));
+        given(instagram.assignedAccounts("token-1")).willReturn(List.of(new InstagramClient.AccountRef(externalId, "lara.eats")));
+        given(instagram.fetchSnapshot(eq("token-1"), anyString())).willReturn(snapshot(externalId, 12000));
         long id = service.connectInstagram(creator, "code").id();
         SocialAccount before = accounts.findById(id).orElseThrow();
         service.disconnect(creator, id);
@@ -109,8 +111,8 @@ class SocialRefreshJobIT {
         assertThat(after.getStatus()).isEqualTo(SocialAccountStatus.NEEDS_RECONNECTION);
         assertThat(after.getFollowers()).isEqualTo(12000);
         assertThat(after.getLastPulledAt()).isEqualTo(before.getLastPulledAt());
-        // The job didn't even ask Instagram about it again (only the connect pulled).
-        then(instagram).should(never()).renewToken(any());
+        // The job didn't ask Instagram about it again (only the connect pulled).
+        then(instagram).should(times(1)).fetchSnapshot(eq("token-1"), anyString());
     }
 
     // ---- EX-F1.3.1 and one failure not stopping the rest ----
@@ -121,8 +123,8 @@ class SocialRefreshJobIT {
         String goodId = connect("token-good", 12000);
         SocialAccount revokedBefore = accounts.findAll().stream()
                 .filter(a -> a.getExternalId().equals(revokedId)).findFirst().orElseThrow();
-        given(instagram.fetchSnapshot("token-revoked")).willThrow(new SocialTokenInvalidException());
-        given(instagram.fetchSnapshot("token-good")).willReturn(snapshot(goodId, 20000));
+        given(instagram.fetchSnapshot(eq("token-revoked"), anyString())).willThrow(new SocialTokenInvalidException());
+        given(instagram.fetchSnapshot(eq("token-good"), anyString())).willReturn(snapshot(goodId, 20000));
 
         SocialRefreshJob.Result result = job.runOnce();
 
@@ -140,8 +142,8 @@ class SocialRefreshJobIT {
     void anUnexpectedErrorInOneAccountDoesNotStopTheNext() {
         String brokenId = connect("token-broken", 12000);
         String goodId = connect("token-good", 12000);
-        given(instagram.fetchSnapshot("token-broken")).willThrow(new IllegalStateException("unexpected"));
-        given(instagram.fetchSnapshot("token-good")).willReturn(snapshot(goodId, 20000));
+        given(instagram.fetchSnapshot(eq("token-broken"), anyString())).willThrow(new IllegalStateException("unexpected"));
+        given(instagram.fetchSnapshot(eq("token-good"), anyString())).willReturn(snapshot(goodId, 20000));
 
         SocialRefreshJob.Result result = job.runOnce();
 
@@ -169,7 +171,7 @@ class SocialRefreshJobIT {
     @Test
     void theScheduledRunDoesNothingWhileAnotherInstanceHoldsTheLock() throws SQLException {
         String externalId = connect("token-1", 12000);
-        given(instagram.fetchSnapshot("token-1")).willReturn(snapshot(externalId, 15000));
+        given(instagram.fetchSnapshot(eq("token-1"), anyString())).willReturn(snapshot(externalId, 15000));
 
         try (Connection other = dataSource.getConnection()) {
             other.setAutoCommit(false);
@@ -204,7 +206,8 @@ class SocialRefreshJobIT {
         String externalId = "ig-" + UUID.randomUUID();
         String code = "code-" + token;
         given(instagram.exchangeCode(code)).willReturn(token);
-        given(instagram.fetchSnapshot(token)).willReturn(snapshot(externalId, followers));
+        given(instagram.assignedAccounts(token)).willReturn(List.of(new InstagramClient.AccountRef(externalId, "lara.eats")));
+        given(instagram.fetchSnapshot(eq(token), anyString())).willReturn(snapshot(externalId, followers));
         service.connectInstagram(creator, code);
         return externalId;
     }
