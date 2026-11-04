@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
+import './brandRegistration.css'
 
 interface BranchInput {
   name: string
@@ -62,8 +63,20 @@ export function BrandRegistrationPage() {
 
   if (registered) {
     return (
-      <main aria-labelledby="registration-complete-title">
-        <section className="fl-card fl-result fl-result--ok">
+      <main
+        className="fl-brand-registration__success"
+        aria-labelledby="registration-complete-title"
+      >
+        <Link className="fl-brand-registration__logo" to="/" aria-label="Flavors home">
+          <img src="/flavors-logo.svg" alt="Flavors" />
+        </Link>
+        <section className="fl-card fl-empty">
+          <img
+            className="fl-brand-registration__success-art"
+            src="/illustrations/spots/success.svg"
+            alt=""
+            aria-hidden="true"
+          />
           <h1 id="registration-complete-title">Restaurant registered</h1>
           <p>Your brand account is ready. You can now log in.</p>
           <Link className="fl-btn fl-btn--primary" to="/login">
@@ -75,15 +88,24 @@ export function BrandRegistrationPage() {
   }
 
   return (
-    <main aria-labelledby="brand-registration-title">
-      <header>
-        <h1 id="brand-registration-title">Register your restaurant</h1>
-        <p className="fl-hint">
-          Create one account for your restaurant and add at least one branch to get started.
-        </p>
+    <main className="fl-brand-registration" aria-labelledby="brand-registration-title">
+      <Link className="fl-brand-registration__logo" to="/" aria-label="Flavors home">
+        <img src="/flavors-logo.svg" alt="Flavors" />
+      </Link>
+      <header className="fl-brand-registration__intro">
+        <div>
+          <h1 id="brand-registration-title">Register your restaurant</h1>
+          <p>Create one brand account, add your branches and start building campaigns.</p>
+        </div>
+        <img
+          className="fl-brand-registration__art"
+          src="/illustrations/hero.svg"
+          alt=""
+          aria-hidden="true"
+        />
       </header>
 
-      <form className="fl-card" onSubmit={submit}>
+      <form className="fl-card fl-brand-registration__form" onSubmit={submit}>
         {errors.form && (
           <div className="fl-alert fl-alert--danger" role="alert">
             <div>
