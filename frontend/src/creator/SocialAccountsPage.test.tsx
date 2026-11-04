@@ -36,10 +36,10 @@ it('lists her accounts with the numbers pulled from Instagram', async () => {
 
   renderAt('/creator/social')
 
-  expect(
-    await screen.findByText(/12,000 followers · 3\.00% engagement · last updated/),
-  ).toBeInTheDocument()
-  expect(screen.getByText(/Instagram — Connected/)).toBeInTheDocument()
+  expect(await screen.findByText('12,000')).toBeInTheDocument()
+  expect(screen.getByText('3.00%')).toBeInTheDocument()
+  expect(screen.getByText(/Last updated/)).toBeInTheDocument()
+  expect(screen.getByText('Connected')).toBeInTheDocument()
   expect(apiFetchMock).toHaveBeenCalledWith('/api/creator/social')
 })
 
@@ -109,7 +109,7 @@ it('disconnecting keeps the numbers and shows Needs reconnection', async () => {
   await user.click(await screen.findByRole('button', { name: 'Disconnect Instagram' }))
 
   expect(apiFetchMock).toHaveBeenLastCalledWith('/api/creator/social/3', { method: 'DELETE' })
-  expect(await screen.findByText(/Instagram — Needs reconnection/)).toBeInTheDocument()
-  expect(screen.getByText(/12,000 followers/)).toBeInTheDocument()
+  expect(await screen.findByText('Needs reconnection')).toBeInTheDocument()
+  expect(screen.getByText('12,000')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Reconnect Instagram' })).toBeInTheDocument()
 })

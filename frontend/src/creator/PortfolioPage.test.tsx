@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, apiFetch } from '../api/client'
 import { PortfolioPage } from './PortfolioPage'
@@ -61,15 +62,19 @@ describe('loading', () => {
   it('shows her details, accounts and completed campaigns', async () => {
     serve({ [GET]: () => portfolio })
 
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     expect(await screen.findByLabelText('Category')).toHaveValue('Burgers')
     expect(screen.getByLabelText('Bio')).toHaveValue('I love burgers')
     expect(screen.getByLabelText('Location')).toHaveValue('Beirut')
     expect(screen.getByLabelText('Minimum price (USD)')).toHaveValue('25.00')
     expect(screen.getByLabelText('Maximum price (USD)')).toHaveValue('100.50')
-    expect(screen.getByText('instagram')).toBeInTheDocument()
-    expect(screen.getByText(/12,000 followers/)).toBeInTheDocument()
+    expect(screen.getByText('Instagram')).toBeInTheDocument()
+    expect(screen.getByText('12,000')).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'Summer burgers' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Winter desserts' })).not.toBeChecked()
   })
@@ -81,7 +86,11 @@ describe('loading', () => {
     }
     serve({ [GET]: () => needsReconnection })
 
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     expect(await screen.findByText('Needs reconnection')).toBeInTheDocument()
   })
@@ -89,7 +98,11 @@ describe('loading', () => {
   it('says so when she has no accounts and no completed campaigns', async () => {
     serve({ [GET]: () => ({ ...portfolio, socialAccounts: [], completedCampaigns: [] }) })
 
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     expect(await screen.findByText('No social account is connected yet.')).toBeInTheDocument()
     expect(screen.getByText(/You have no completed campaigns yet/)).toBeInTheDocument()
@@ -104,7 +117,11 @@ describe('loading', () => {
       ),
     })
 
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('available after an admin approves')
     expect(screen.queryByLabelText('Bio')).not.toBeInTheDocument()
@@ -117,7 +134,11 @@ describe('loading', () => {
       },
     })
 
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load your portfolio.')
   })
@@ -127,7 +148,11 @@ describe('saving the details', () => {
   it('sends a full replace with the prices in cents and shows success', async () => {
     const user = userEvent.setup()
     serve({ [GET]: () => portfolio, [PUT]: () => ({ ...portfolio, bio: 'New bio' }) })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     const bio = await screen.findByLabelText('Bio')
     await user.clear(bio)
@@ -156,7 +181,11 @@ describe('saving the details', () => {
   it('sends an empty bio as null', async () => {
     const user = userEvent.setup()
     serve({ [GET]: () => portfolio, [PUT]: () => ({ ...portfolio, bio: null }) })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     await user.clear(await screen.findByLabelText('Bio'))
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -174,7 +203,11 @@ describe('saving the details', () => {
       [GET]: () => portfolio,
       [PUT]: refused(400, 'Invalid portfolio', "Minimum price can't be above the maximum price."),
     })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     await user.click(await screen.findByRole('button', { name: 'Save changes' }))
 
@@ -186,7 +219,11 @@ describe('saving the details', () => {
   it('does not send anything when a price is not an amount', async () => {
     const user = userEvent.setup()
     serve({ [GET]: () => portfolio })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     const min = await screen.findByLabelText('Minimum price (USD)')
     await user.clear(min)
@@ -209,7 +246,11 @@ describe('featured campaigns', () => {
         featured: true,
       }),
     })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     await user.click(await screen.findByRole('checkbox', { name: 'Winter desserts' }))
 
@@ -225,7 +266,11 @@ describe('featured campaigns', () => {
   it('stops featuring a campaign when its box is unticked', async () => {
     const user = userEvent.setup()
     serve({ [GET]: () => portfolio, 'DELETE /api/creator/portfolio/featured/42': () => undefined })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     await user.click(await screen.findByRole('checkbox', { name: 'Summer burgers' }))
 
@@ -247,7 +292,11 @@ describe('featured campaigns', () => {
         'This campaign is already featured on your portfolio.',
       ),
     })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     await user.click(await screen.findByRole('checkbox', { name: 'Winter desserts' }))
 
@@ -267,7 +316,11 @@ describe('featured campaigns', () => {
         'Only your completed campaigns can be featured.',
       ),
     })
-    render(<PortfolioPage />)
+    render(
+      <MemoryRouter>
+        <PortfolioPage />
+      </MemoryRouter>,
+    )
 
     await user.click(await screen.findByRole('checkbox', { name: 'Winter desserts' }))
 

@@ -58,9 +58,9 @@ it('shows the details and approves a profile', async () => {
     .mockResolvedValueOnce([])
   render(<CreatorReviewPage />)
 
-  await user.click(await screen.findByRole('button', { name: 'Lara' }))
-  expect(await screen.findByText(/12000 followers/)).toBeInTheDocument()
-  expect(screen.getByText('Price per campaign: $100.00 to $300.00')).toBeInTheDocument()
+  await user.click(await screen.findByRole('button', { name: 'Review Lara' }))
+  expect(await screen.findByText(/12,000 followers/)).toBeInTheDocument()
+  expect(screen.getByText('$100.00 – $300.00')).toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'Approve' }))
 
@@ -75,9 +75,9 @@ it('blocks approval while the social account needs reconnection', async () => {
     .mockResolvedValueOnce(review({ needsReconnection: true }))
   render(<CreatorReviewPage />)
 
-  await user.click(await screen.findByRole('button', { name: 'Lara' }))
+  await user.click(await screen.findByRole('button', { name: 'Review Lara' }))
 
-  expect(await screen.findByText(/Needs reconnection/)).toBeInTheDocument()
+  expect(await screen.findByText("Can't approve yet")).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled()
 })
 
@@ -91,7 +91,7 @@ it('shows the server message when rejecting without a reason', async () => {
     )
   render(<CreatorReviewPage />)
 
-  await user.click(await screen.findByRole('button', { name: 'Lara' }))
+  await user.click(await screen.findByRole('button', { name: 'Review Lara' }))
   await user.click(await screen.findByRole('button', { name: 'Reject' }))
 
   expect(await screen.findByText('A reason is required to reject a profile.')).toBeInTheDocument()

@@ -1,7 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
-import './brandAccount.css'
 
 interface Branch {
   id: number
@@ -47,30 +45,21 @@ export function BrandAccountPage() {
 
   return (
     <>
-      <nav className="fl-nav" aria-label="Brand">
-        <Link className="fl-nav__brand" to="/brand" aria-label="Flavors brand dashboard">
-          <img src="/flavors-logo-dark.svg" alt="Flavors" />
-        </Link>
-        <Link className="fl-navlink" to="/brand">
-          Dashboard
-        </Link>
-        <Link className="fl-navlink" to="/brand/account" aria-current="page">
-          Account
-        </Link>
-        <span className="fl-role">Brand</span>
-      </nav>
-
-      <main className="fl-brand-account" aria-labelledby="brand-account-title">
-        <header>
-          <h1 id="brand-account-title">Brand account</h1>
-          <p className="fl-hint">Manage every restaurant location under this brand account.</p>
+      <div className="fl-stack">
+        <header className="fl-pagehead">
+          <div>
+            <h1 id="brand-account-title">Brand account</h1>
+            <p>Manage every restaurant location under this brand account.</p>
+          </div>
         </header>
 
-        <section aria-labelledby="branches-title">
-          <h2 id="branches-title">Branches</h2>
+        <section className="fl-stack" aria-labelledby="branches-title">
+          <h2 className="fl-section-title" id="branches-title">
+            Branches
+          </h2>
           {loading ? (
             <div className="fl-card" aria-busy="true" aria-label="Loading branches">
-              <div className="fl-skel" style={{ height: '1.25rem', width: '40%' }} />
+              <div className="fl-skel fl-skel--line" />
             </div>
           ) : branches.length === 0 ? (
             <div className="fl-card fl-empty">
@@ -99,9 +88,11 @@ export function BrandAccountPage() {
           )}
         </section>
 
-        <section aria-labelledby="add-branch-title">
-          <h2 id="add-branch-title">Add a branch</h2>
-          <form className="fl-card" onSubmit={addBranch}>
+        <section className="fl-stack" aria-labelledby="add-branch-title">
+          <h2 className="fl-section-title" id="add-branch-title">
+            Add a branch
+          </h2>
+          <form className="fl-card fl-stack" onSubmit={addBranch}>
             {errors.form && (
               <div className="fl-alert fl-alert--danger" role="alert">
                 {errors.form}
@@ -148,7 +139,7 @@ export function BrandAccountPage() {
             </button>
           </form>
         </section>
-      </main>
+      </div>
     </>
   )
 }
