@@ -1,6 +1,7 @@
 package com.flavors.repository;
 
 import com.flavors.entity.SocialAccount;
+import com.flavors.enums.SocialAccountStatus;
 import java.util.List;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
@@ -29,4 +30,8 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from SocialAccount a where a.id = :id")
     Optional<SocialAccount> lockById(@Param("id") Long id);
+
+    /** Only the ids, so the daily job doesn't load every account (and each pull then loads its own). */
+    @Query("select a.id from SocialAccount a where a.status = :status order by a.id")
+    List<Long> findIdsByStatus(@Param("status") SocialAccountStatus status);
 }
