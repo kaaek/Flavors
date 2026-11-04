@@ -185,3 +185,8 @@ body::before {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.fl-skel--line {
+  height: var(--space-5);
+  width: 40%;
+}

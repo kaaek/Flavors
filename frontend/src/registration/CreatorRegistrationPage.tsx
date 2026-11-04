@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
+import './registration.css'
 
 interface RegistrationResponse {
   id: number
@@ -62,79 +63,190 @@ export function CreatorRegistrationPage() {
 
   if (registered) {
     return (
-      <main>
-        <h1>Registration sent</h1>
-        <p>Your profile is pending approval. You will see the result in your account.</p>
-        <Link to="/login">Continue to log in</Link>
+      <main className="fl-registration__success" aria-labelledby="registration-complete-title">
+        <Link className="fl-registration__logo" to="/" aria-label="Flavors home">
+          <img src="/flavors-logo.svg" alt="Flavors" />
+        </Link>
+        <section className="fl-card fl-empty">
+          <img
+            className="fl-registration__success-art"
+            src="/illustrations/spots/success.svg"
+            alt=""
+            aria-hidden="true"
+          />
+          <h1 id="registration-complete-title">Registration sent</h1>
+          <p>Your profile is pending approval. You will see the result in your account.</p>
+          <Link className="fl-btn fl-btn--primary" to="/login">
+            Continue to log in
+          </Link>
+        </section>
       </main>
     )
   }
 
   return (
-    <main>
-      <h1>Register as a creator</h1>
-      <form onSubmit={submit}>
-        {errors.form && <p role="alert">{errors.form}</p>}
-        <label>
-          Name
-          <input name="name" required />
-        </label>
-        {errors.name && <p role="alert">{errors.name}</p>}
+    <main className="fl-registration" aria-labelledby="creator-registration-title">
+      <Link className="fl-registration__logo" to="/" aria-label="Flavors home">
+        <img src="/flavors-logo.svg" alt="Flavors" />
+      </Link>
+      <header className="fl-registration__intro">
+        <div>
+          <h1 id="creator-registration-title">Register as a creator</h1>
+          <p>Tell brands who you are. An admin approves your profile before brands can find you.</p>
+        </div>
+        <img
+          className="fl-registration__art"
+          src="/illustrations/hero.svg"
+          alt=""
+          aria-hidden="true"
+        />
+      </header>
 
-        <label>
-          Email
-          <input name="email" type="email" required />
-        </label>
-        {errors.email && <p role="alert">{errors.email}</p>}
+      <form className="fl-card fl-registration__form" onSubmit={submit}>
+        {errors.form && (
+          <div className="fl-alert fl-alert--danger" role="alert">
+            <div>
+              <b>We could not create your account.</b>
+              {errors.form}
+            </div>
+          </div>
+        )}
 
-        <label>
-          Password
-          <input name="password" type="password" required minLength={8} />
-        </label>
-        {errors.password && <p role="alert">{errors.password}</p>}
+        <Field id="creator-name" name="name" label="Name" error={errors.name} autoComplete="name" />
+        <Field
+          id="creator-email"
+          name="email"
+          label="Email"
+          type="email"
+          error={errors.email}
+          autoComplete="email"
+        />
+        <Field
+          id="creator-password"
+          name="password"
+          label="Password"
+          type="password"
+          error={errors.password}
+          autoComplete="new-password"
+          minLength={8}
+        />
+        <Field
+          id="creator-category"
+          name="foodCategory"
+          label="Food category"
+          error={errors.foodCategory}
+        />
+        <Field
+          id="creator-location"
+          name="location"
+          label="Location (city or country)"
+          error={errors.location}
+        />
+        <Field
+          id="creator-min"
+          name="priceMin"
+          label="Minimum price per campaign (USD)"
+          type="number"
+          prefix="$"
+          error={errors.priceMinCents}
+          min="0"
+          step="0.01"
+        />
+        <Field
+          id="creator-max"
+          name="priceMax"
+          label="Maximum price per campaign (USD)"
+          type="number"
+          prefix="$"
+          error={errors.priceMaxCents}
+          min="0"
+          step="0.01"
+        />
 
-        <label>
-          Food category
-          <input name="foodCategory" required />
-        </label>
-        {errors.foodCategory && <p role="alert">{errors.foodCategory}</p>}
-
-        <label>
-          Location (city or country)
-          <input name="location" required />
-        </label>
-        {errors.location && <p role="alert">{errors.location}</p>}
-
-        <label>
-          Minimum price per campaign (USD)
-          <input name="priceMin" type="number" min="0" step="0.01" required />
-        </label>
-        {errors.priceMinCents && <p role="alert">{errors.priceMinCents}</p>}
-
-        <label>
-          Maximum price per campaign (USD)
-          <input name="priceMax" type="number" min="0" step="0.01" required />
-        </label>
-        {errors.priceMaxCents && <p role="alert">{errors.priceMaxCents}</p>}
-
-        <label>
-          Short bio (optional)
-          <textarea name="bio" />
-        </label>
+        <div className="fl-field">
+          <label className="fl-label" htmlFor="creator-bio">
+            Short bio <small>(optional)</small>
+          </label>
+          <textarea className="fl-textarea" id="creator-bio" name="bio" />
+        </div>
 
         <fieldset>
           <legend>Social account</legend>
-          <label>
-            Instagram username
-            <input name="socialHandle" />
-          </label>
-          {errors.socialAccounts && <p role="alert">{errors.socialAccounts}</p>}
+          <Field
+            id="creator-instagram"
+            name="socialHandle"
+            label="Instagram username"
+            required={false}
+            error={errors.socialAccounts}
+            hint="Type your username for now. You connect the account itself, so brands see real numbers, from Social accounts once you are logged in."
+          />
         </fieldset>
 
-        <button type="submit" disabled={submitting}>
+        <button
+          className="fl-btn fl-btn--primary fl-btn--lg fl-btn--block"
+          type="submit"
+          disabled={submitting}
+        >
           {submitting ? 'Sending…' : 'Send registration'}
         </button>
       </form>
     </main>
+  )
+}
+
+/** One labelled field with its error and hint, in the design's markup (components.html). */
+function Field({
+  id,
+  name,
+  label,
+  error,
+  hint,
+  prefix,
+  required = true,
+  ...input
+}: {
+  id: string
+  name: string
+  label: string
+  error?: string
+  hint?: string
+  prefix?: string
+  required?: boolean
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'name' | 'className' | 'required'>) {
+  const control = (
+    <input
+      className="fl-input"
+      id={id}
+      name={name}
+      required={required}
+      aria-invalid={Boolean(error)}
+      aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
+      {...input}
+    />
+  )
+  return (
+    <div className={`fl-field${error ? ' is-invalid' : ''}`}>
+      <label className="fl-label" htmlFor={id}>
+        {label}
+      </label>
+      {prefix ? (
+        <div className="fl-affix">
+          <span>{prefix}</span>
+          {control}
+        </div>
+      ) : (
+        control
+      )}
+      {hint && !error && (
+        <span className="fl-hint" id={`${id}-hint`}>
+          {hint}
+        </span>
+      )}
+      {error && (
+        <span className="fl-error" id={`${id}-error`} role="alert">
+          {error}
+        </span>
+      )}
+    </div>
   )
 }

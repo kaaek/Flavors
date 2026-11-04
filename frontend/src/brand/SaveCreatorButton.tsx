@@ -36,11 +36,21 @@ export function SaveCreatorButton({ creatorId, initiallySaved, onChange }: SaveC
   }
 
   return (
-    <div>
-      <button type="button" onClick={toggleSave} disabled={loading} aria-pressed={isSaved}>
+    <div className="fl-stack">
+      <button
+        className={`fl-btn ${isSaved ? 'fl-btn--secondary' : 'fl-btn--outline'}`}
+        type="button"
+        onClick={toggleSave}
+        disabled={loading}
+        aria-pressed={isSaved}
+      >
         {loading ? 'Saving...' : isSaved ? 'Unsave' : 'Save'}
       </button>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <span className="fl-error" role="alert">
+          {error}
+        </span>
+      )}
     </div>
   )
 }
