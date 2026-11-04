@@ -63,6 +63,13 @@ and `design/screens.html` (sample role screens) in a browser. Rules when you bui
   dispute or error screens.
 - Marcellus (display) is for headings and big numbers only; Lato does everything else.
 
+**Adding a page (EEC-86):** logged-in pages render inside the role's top bar (`layout/AppShell.tsx`), so a page returns a `<div>`,
+not its own `<main>` or nav. Add its `<Route>` inside the role's area in `App.tsx`, and its link to `layout/navItems.ts` (the only
+list of top bar links; `linkAudit.test.tsx` fails if a link leads nowhere). Start the page with the header pattern
+(`<header className="fl-pagehead">`), arrange content with the helpers in `layout/layout.css` (`fl-stack`, `fl-row`, `fl-stats`,
+`fl-kv`), draw icons with `<Icon name="..."/>`, and never add a page background of your own: the cream pattern is set once for the
+whole app.
+
 **Changing the design:** edit the sources in `design/` (`tokens/build-tokens.py`, `components.css`), then run
 `design/sync-to-frontend.sh` and commit both. The script copies them into `frontend/src/styles/` and `frontend/public/`
 because the Docker build only sees `frontend/`. Never edit the copies by hand. Illustrations regenerate with

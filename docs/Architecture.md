@@ -392,8 +392,23 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 - `<AuthProvider>` asks `GET /api/me` once; `useMe()` returns `{ state, refresh }` (`loading`, `anonymous`, `authenticated`,
   `error`). `<RequireRole role="...">` redirects to `/login` on 401 and shows "Not allowed" for the wrong role (403). A
   server failure is its own state, so an outage never looks like being logged out.
-- Route areas: `/creator/*` (with `/creator/status` and `/creator/portfolio`), `/brand/*`, `/admin/*`; public `/s/:slug` (storefront) and
-  `/claim/:token` (diner QR page).
+- **App shell and navigation (EEC-86):** every logged-in page lives inside `layout/AppShell.tsx`, the top bar of `design/screens.html`
+  (logo to the role's home, one link per page, the role chip, the email, Log out) plus the page. `App.tsx` mounts one shell per
+  role area (`<RoleArea role="...">` = `RequireRole` + `AppShell`), so the bar is only ever shown to the right role.
+  **`layout/navItems.ts` is the single list of top bar links**: a new page is a `<Route>` in `App.tsx` and, if it belongs in
+  the bar, one line there. Only pages that exist are listed, so no link leads to a dead end. `auth/homeByRole.ts` says where each
+  role lands (login, the logo, "Go to my home", and `/` for someone already logged in).
+
+  | Role | Pages (top bar) | Also reachable |
+  |---|---|---|
+  | Creator | Home `/creator`, Portfolio `/creator/portfolio`, Social accounts `/creator/social`, Profile status `/creator/status` | Connect Instagram returns to `/creator/social?instagram=<result>` |
+  | Brand | Home `/brand`, Account `/brand/account` | |
+  | Admin | Home `/admin`, Approvals `/admin/creators` (with the pending count) | |
+  | Public | `/`, `/login`, `/forgot-password`, `/reset-password`, `/register`, `/register/brand`, `/register/creator` | `/s/:slug` (storefront) and `/claim/:token` (diner QR page) are placeholders |
+
+  Each role has a home page built from endpoints that exist (`CreatorHome`, `BrandHome`, `AdminHome`). An unknown address inside a
+  role's area shows "Page not found" inside the bar; elsewhere it shows it alone. `linkAudit.test.tsx` starts at each role's home,
+  follows every link on every page it reaches and fails on a dead end or a top bar page that cannot be reached.
 - In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingConfig` answers non-API,
   non-file paths with `index.html` so client-side routes work on reload. It is a fallback inside the static-file
   handler, not a `@GetMapping` controller: controllers are matched before static files, so a catch-all controller
@@ -406,9 +421,11 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
   back to system fonts. Usage rules: `docs/README.md`, "Styling pages".
 - **Money input:** `lib/money.ts` formats integer cents for display; `lib/moneyInput.ts` goes the other way, reading dollars
   typed by a person into integer cents by string maths (never `* 100`, which gives 19.99 * 100 = 1998.9999...) and back.
-- Most pages are still plain placeholders (`App.tsx`); the auth, registration, brand-account, creator-status, Manage Portfolio
-  (`creator/PortfolioPage.tsx`, see §12) and admin-review pages exist.
-- **Tests:** `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
+- Pages that exist: auth, both registrations, the three role homes, brand account, creator status, Social accounts, Manage Portfolio
+  (`creator/PortfolioPage.tsx`, see §12) and admin approvals. All use the design's `fl-` components; page layout helpers
+  (`fl-page`, `fl-stack`, `fl-row`, `fl-stats`, `fl-kv`, `fl-pagehead`) and the one cream background are in `layout/layout.css`.
+  Icons: `<Icon name="plus"/>` draws from `public/icons.svg` (copied from `design/icons`).
+- **Tests:** `AppShell.test.tsx` and `linkAudit.test.tsx` (navigation), `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
   ProblemDetail errors), `money.test.ts`, `moneyInput.test.ts`, `PortfolioPage.test.tsx`. When a test mocks `apiFetch`, write
   `beforeEach(() => { mock.mockReset() })` with braces: Vitest runs a function returned from `beforeEach` as a cleanup, and
   `mockReset()` returns the mock.
