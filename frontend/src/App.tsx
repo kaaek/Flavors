@@ -9,6 +9,7 @@ import { BrandAccountPage } from './brand/BrandAccountPage'
 import { CreatorStatusPage } from './creator/CreatorStatusPage'
 import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
 import { CreatorRegistrationPage } from './registration/CreatorRegistrationPage'
+import { PortfolioPage } from './creator/PortfolioPage'
 
 function Placeholder({ title, note }: { title: string; note: string }) {
   return (
@@ -83,14 +84,33 @@ export function AppRoutes() {
           </RequireRole>
         }
       />
+
+      <Route
+        path="/creator/portfolio"
+        element={
+          <RequireRole role="CREATOR">
+            <PortfolioPage />
+          </RequireRole>
+        }
+      />
+
       <Route
         path="/creator/*"
         element={
           <RequireRole role="CREATOR">
-            <RoleHome title="Creator portal" />
+            <main>
+              <h1>Creator portal</h1>
+              <nav>
+                <Link to="/creator/status">Your profile status</Link>
+                {' · '}
+                <Link to="/creator/portfolio">Manage portfolio</Link>
+              </nav>
+              <LogoutButton />
+            </main>
           </RequireRole>
         }
       />
+
       <Route
         path="/brand/account"
         element={

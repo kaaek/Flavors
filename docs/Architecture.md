@@ -385,6 +385,8 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 
 ## 10. Frontend — built
 
+## 10. Frontend — built
+
 - Vite + React + TypeScript, React Router, Vitest + Testing Library, Prettier. The linter is **oxlint**, not ESLint:
   it is what the current Vite template ships with, and it needs no config files for our rules.
   Run from `frontend/`: `npm run lint`, `npm test`, `npm run format:check`, `npm run build`.
@@ -392,7 +394,7 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 - `<AuthProvider>` asks `GET /api/me` once; `useMe()` returns `{ state, refresh }` (`loading`, `anonymous`, `authenticated`,
   `error`). `<RequireRole role="...">` redirects to `/login` on 401 and shows "Not allowed" for the wrong role (403). A
   server failure is its own state, so an outage never looks like being logged out.
-- Route areas: `/creator/*`, `/brand/*`, `/admin/*`; public `/s/:slug` (storefront) and
+- Route areas: `/creator/*` (with `/creator/status` and `/creator/portfolio`), `/brand/*`, `/admin/*`; public `/s/:slug` (storefront) and
   `/claim/:token` (diner QR page).
 - In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingConfig` answers non-API,
   non-file paths with `index.html` so client-side routes work on reload. It is a fallback inside the static-file
@@ -404,9 +406,14 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
   net. These two files and the logo/icons in `public/` are **copies** made by `design/sync-to-frontend.sh`, because the
   Docker build context is `frontend/` only. Fonts (Lato, Marcellus) load from Google Fonts in `index.html`; offline they fall
   back to system fonts. Usage rules: `docs/README.md`, "Styling pages".
-- Most pages are still plain placeholders (`App.tsx`); only the auth, registration, brand-account and admin-review pages exist.
+- **Money input:** `lib/money.ts` formats integer cents for display; `lib/moneyInput.ts` goes the other way, reading dollars
+  typed by a person into integer cents by string maths (never `* 100`, which gives 19.99 * 100 = 1998.9999...) and back.
+- Most pages are still plain placeholders (`App.tsx`); the auth, registration, brand-account, creator-status, Manage Portfolio
+  (`creator/PortfolioPage.tsx`, see §12) and admin-review pages exist.
 - **Tests:** `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
-  ProblemDetail errors), `money.test.ts`.
+  ProblemDetail errors), `money.test.ts`, `moneyInput.test.ts`, `PortfolioPage.test.tsx`. When a test mocks `apiFetch`, write
+  `beforeEach(() => { mock.mockReset() })` with braces: Vitest runs a function returned from `beforeEach` as a cleanup, and
+  `mockReset()` returns the mock.
 
 ## 11. Build, deploy and CI/CD — built (Railway and GitHub setup is manual)
 
@@ -426,7 +433,9 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
 
 ## 12. Creator portfolio (UC-F1.2) — backend built, page planned
 
-The creator's Manage Portfolio page (EEC-36). Only an **approved** creator has a portfolio (FR-F20.4); every call below
+## 12. Creator portfolio (UC-F1.2) — built
+
+The creator's Manage Portfolio page and API (EEC-36). Only an **approved** creator has a portfolio (FR-F20.4); every call below
 returns 409 before approval.
 
 | Method and path | Who | What |
@@ -445,5 +454,11 @@ returns 409 before approval.
 - `PortfolioFeature` implements `Persistable`, so saving a new row is a plain INSERT and a duplicate fails on the primary key instead of being mistaken for an update.
 - The social-account token is never mapped by `SocialAccount` and never sent.
 - "Verified" (completed **and** at least one redemption, FR-F1.3) is not stored; the brand's view of a portfolio (EEC-35) works it out when it is read.
-- **Tests:** `PortfolioServiceImplIT` (TC-F1.2.1 to TC-F1.2.3, PATCH rules, parallel requests), `PortfolioControllerTest` (every verb: 401, 403, CSRF, JSON shape, error bodies), `CreatorProfileTest`, `CreatorProfileIT`, `SocialAccountIT`, `PortfolioFeatureIT`.
-- **Planned:** the React page under `/creator/portfolio`, and the brand's read-only view (EEC-35).
+- **Page** `/creator/portfolio` (`frontend/src/creator/PortfolioPage.tsx`, API calls in `creator/portfolioApi.ts`), creators only (`RequireRole`):
+  - A details form (bio, category, location, minimum and maximum price). Prices are typed in dollars and converted to integer cents by `lib/moneyInput.ts` (string maths, no `* 100`). Save sends PUT; an empty bio is sent as `null`; when an edit is refused (400) the server's message is shown.
+  - The connected accounts, read-only (connecting is UC-F19.4): followers, engagement, "last updated" and "Needs reconnection".
+  - The completed campaigns as checkboxes, each saved immediately (tick = POST, untick = DELETE). A 409 "Already featured", or a 404 on DELETE, only syncs the box with the real state; other errors show the server's message.
+  - A 409 on load shows the "available after an admin approves" message instead of the form. There are empty states for no accounts and no completed campaigns.
+  - It uses plain markup, styled by the base rules in `index.css` (no `fl-` classes yet).
+- **Tests:** `PortfolioServiceImplIT` (TC-F1.2.1 to TC-F1.2.3, PATCH rules, parallel requests), `PortfolioControllerTest` (every verb: 401, 403, CSRF, JSON shape, error bodies), `CreatorProfileTest`, `CreatorProfileIT`, `SocialAccountIT`, `PortfolioFeatureIT`; frontend: `PortfolioPage.test.tsx` (loading, empty and unapproved states, save, refused edit, feature and unfeature) and `moneyInput.test.ts`.
+- **Planned:** the brand's read-only view of a portfolio (EEC-35).
