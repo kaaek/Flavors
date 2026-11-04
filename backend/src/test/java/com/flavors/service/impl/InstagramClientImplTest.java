@@ -1,9 +1,17 @@
 package com.flavors.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.flavors.exception.SocialPlatformException;
+import com.flavors.exception.SocialTokenInvalidException;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.util.UriComponents;
@@ -45,6 +53,60 @@ class InstagramClientImplTest {
         assertThat(new InstagramClientImpl("id", "", REDIRECT).isConfigured()).isFalse();
         assertThat(new InstagramClientImpl("", "secret", REDIRECT).isConfigured()).isFalse();
         assertThat(new InstagramClientImpl("id", "secret", REDIRECT).isConfigured()).isTrue();
+    }
+
+    // ---- renewToken, against a local stand-in for graph.instagram.com ----
+
+    private HttpServer graph;
+    private final AtomicReference<String> lastRequest = new AtomicReference<>();
+
+    @AfterEach
+    void stopStandIn() {
+        if (graph != null) {
+            graph.stop(0);
+        }
+    }
+
+    @Test
+    void renewingSendsTheOldTokenAndReturnsTheNewOne() throws IOException {
+        InstagramClientImpl client = clientAnswering(200, "{\"access_token\":\"new-token\",\"expires_in\":5184000}");
+
+        assertThat(client.renewToken("old-token")).isEqualTo("new-token");
+
+        assertThat(lastRequest.get()).startsWith("/refresh_access_token?")
+                .contains("grant_type=ig_refresh_token").contains("access_token=old-token");
+    }
+
+    @Test
+    void aRevokedTokenIsReportedAsInvalid() throws IOException {
+        InstagramClientImpl client = clientAnswering(400, "{\"error\":{\"message\":\"Invalid OAuth access token.\",\"code\":190}}");
+
+        assertThatThrownBy(() -> client.renewToken("old-token")).isInstanceOf(SocialTokenInvalidException.class);
+    }
+
+    @Test
+    void anyOtherRefusalIsAPlainPlatformErrorWithoutTheTokenInIt() throws IOException {
+        // For example "the token is not old enough yet": the old token is still good.
+        InstagramClientImpl client = clientAnswering(400, "{\"error\":{\"message\":\"Cannot refresh yet\",\"code\":10}}");
+
+        assertThatThrownBy(() -> client.renewToken("old-token"))
+                .isInstanceOf(SocialPlatformException.class)
+                .isNotInstanceOf(SocialTokenInvalidException.class)
+                .hasMessageNotContaining("old-token");
+    }
+
+    private InstagramClientImpl clientAnswering(int status, String json) throws IOException {
+        graph = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        graph.createContext("/", exchange -> {
+            lastRequest.set(exchange.getRequestURI().toString());
+            byte[] body = json.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        graph.start();
+        return new InstagramClientImpl("id", "secret", REDIRECT, "http://127.0.0.1:" + graph.getAddress().getPort());
     }
 
     private static String decoded(String value) {

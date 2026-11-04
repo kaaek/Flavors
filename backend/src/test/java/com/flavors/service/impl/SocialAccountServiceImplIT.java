@@ -188,6 +188,102 @@ class SocialAccountServiceImplIT {
         assertThat(postMetrics.findBySocialAccountId(id)).hasSize(2);
     }
 
+    // ---- The long-lived token is renewed on every pull (60-day token) ----
+
+    @Test
+    void aSuccessfulPullStoresTheRenewedTokenEncrypted() {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long id = service.connectInstagram(lara, "code-1").id();
+        given(instagram.renewToken("token-1")).willReturn("token-2");
+        given(instagram.fetchSnapshot("token-2")).willReturn(snapshot(externalId, 15000));
+
+        assertThat(service.refresh(id)).isTrue();
+
+        // The figures were pulled with the new token, and only the new token is kept.
+        assertThat(accounts.findById(id).orElseThrow().getFollowers()).isEqualTo(15000);
+        byte[] stored = tokens.find(id).orElseThrow();
+        assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain("token-2");
+        assertThat(cipher.decrypt(stored)).isEqualTo("token-2");
+    }
+
+    @Test
+    void whenRenewingIsRefusedTheOldTokenIsKeptAndThePullStillWorks() {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long id = service.connectInstagram(lara, "code-1").id();
+        // For example the token is not yet 24 hours old.
+        given(instagram.renewToken("token-1")).willThrow(new SocialPlatformException("not old enough"));
+        given(instagram.fetchSnapshot("token-1")).willReturn(snapshot(externalId, 15000));
+
+        assertThat(service.refresh(id)).isTrue();
+
+        assertThat(accounts.findById(id).orElseThrow().getFollowers()).isEqualTo(15000);
+        assertThat(cipher.decrypt(tokens.find(id).orElseThrow())).isEqualTo("token-1");
+    }
+
+    @Test
+    void aTokenThatCannotBeRenewedBecauseItWasRevokedFlagsTheAccount() {
+        long lara = newCreator();
+        instagramAccepts("code-1", "token-1", newExternalId());
+        long id = service.connectInstagram(lara, "code-1").id();
+        SocialAccount before = accounts.findById(id).orElseThrow();
+        given(instagram.renewToken("token-1")).willThrow(new SocialTokenInvalidException());
+
+        assertThat(service.refresh(id)).isFalse();
+
+        SocialAccount after = accounts.findById(id).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(SocialAccountStatus.NEEDS_RECONNECTION);
+        assertThat(after.getFollowers()).isEqualTo(12000);
+        assertThat(after.getLastPulledAt()).isEqualTo(before.getLastPulledAt());
+        then(instagram).should(never()).fetchSnapshot("token-2");
+    }
+
+    // ---- A pull runs without a database transaction, so she can change the account while it is in flight ----
+
+    @Test
+    void disconnectingWhileAPullIsRunningIsNotUndoneByThePull() {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long id = service.connectInstagram(lara, "code-1").id();
+
+        // She clicks Disconnect while Instagram is still answering the pull.
+        given(instagram.fetchSnapshot("token-1")).willAnswer(call -> {
+            service.disconnect(lara, id);
+            return snapshot(externalId, 15000);
+        });
+
+        assertThat(service.refresh(id)).isFalse();
+
+        SocialAccount after = accounts.findById(id).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(SocialAccountStatus.NEEDS_RECONNECTION);
+        assertThat(after.getFollowers()).isEqualTo(12000);
+        assertThat(tokens.find(id)).isEmpty();
+    }
+
+    @Test
+    void aFailedPullDoesNotFlagAnAccountSheReconnectedMeanwhile() {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long id = service.connectInstagram(lara, "code-1").id();
+
+        // While the old token is being rejected, she reconnects and gets a new token.
+        given(instagram.fetchSnapshot("token-1")).willAnswer(call -> {
+            instagramAccepts("code-2", "token-2", externalId);
+            service.connectInstagram(lara, "code-2");
+            throw new SocialTokenInvalidException();
+        });
+
+        assertThat(service.refresh(id)).isFalse();
+
+        assertThat(accounts.findById(id).orElseThrow().getStatus()).isEqualTo(SocialAccountStatus.CONNECTED);
+        assertThat(cipher.decrypt(tokens.find(id).orElseThrow())).isEqualTo("token-2");
+    }
+
     // ---- Disconnect and reconnect (FR-F19.16) ----
 
     @Test
