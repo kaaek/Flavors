@@ -36,7 +36,7 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
         children
       ) : (
         <main className="fl-page">
-          <div className="fl-card fl-empty" role="alert">
+          <div className="fl-card fl-empty">
             <h1>Not allowed</h1>
             <p>This area belongs to another kind of account.</p>
             <Link className="fl-btn fl-btn--primary" to={homeByRole[state.me.role]}>

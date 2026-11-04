@@ -66,6 +66,11 @@ body::before {
   opacity: 0.85;
 }
 
+/* index.css makes every <label> a grid, which put "(optional)" on its own line; a design label is plain text. */
+.fl-label {
+  display: block;
+}
+
 /* Layout helpers (named like screens.html's .stack, .row, .stats, .kv, .split). */
 .fl-stack {
   display: grid;
@@ -162,6 +167,9 @@ body::before {
 }
 
 @media (max-width: 48rem) {
+  .fl-nav__email {
+    display: none;
+  }
   .fl-page {
     padding: var(--space-6) var(--space-4);
   }
@@ -189,4 +197,10 @@ body::before {
 .fl-skel--line {
   height: var(--space-5);
   width: 40%;
+}
+
+/* A table that scrolls sideways on a phone must contain its own screen-reader-only text: an absolutely positioned
+   child would otherwise stick out of the scroll box and make the whole page scroll sideways. */
+.fl-tablewrap {
+  position: relative;
 }

@@ -53,7 +53,7 @@ it('sums the followers of her connected accounts and has nothing to nag about', 
       status: 'CONNECTED',
       followers: 12000,
       engagementRate: 3,
-      lastPulledAt: null,
+      lastPulledAt: '2026-11-04T03:00:00Z',
     },
   ])
   render(
@@ -64,6 +64,26 @@ it('sums the followers of her connected accounts and has nothing to nag about', 
 
   expect(await screen.findByText('12,000')).toBeInTheDocument()
   expect(screen.queryByText('Connect your Instagram account')).not.toBeInTheDocument()
+})
+
+it('still asks her to connect when the only account is a typed username with no pulled numbers', async () => {
+  answers({ verificationStatus: 'APPROVED', rejectionReason: null }, [
+    {
+      id: 1,
+      platform: 'instagram',
+      status: 'CONNECTED',
+      followers: null,
+      engagementRate: null,
+      lastPulledAt: null,
+    },
+  ])
+  render(
+    <MemoryRouter>
+      <CreatorHome />
+    </MemoryRouter>,
+  )
+
+  expect(await screen.findByText('Connect your Instagram account')).toBeInTheDocument()
 })
 
 it('shows why a profile was not approved', async () => {

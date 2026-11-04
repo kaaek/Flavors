@@ -37,10 +37,12 @@ export function CreatorHome() {
   const social = useFetch<SocialAccount[]>('/api/creator/social')
 
   const accounts = social.status === 'ready' ? social.data : []
-  const connected = accounts.filter((a) => a.status === 'CONNECTED')
-  const followers = connected.reduce((sum, a) => sum + (a.followers ?? 0), 0)
-  const needsAttention =
-    social.status === 'ready' && (accounts.length === 0 || connected.length < accounts.length)
+  // An account only counts once figures were pulled from Instagram: registration also stores a typed username,
+  // which has no numbers and no connection behind it.
+  const pulled = accounts.filter((a) => a.status === 'CONNECTED' && a.lastPulledAt !== null)
+  const followers = pulled.reduce((sum, a) => sum + (a.followers ?? 0), 0)
+  const needsReconnecting = accounts.some((a) => a.status === 'NEEDS_RECONNECTION')
+  const needsAttention = social.status === 'ready' && (pulled.length === 0 || needsReconnecting)
 
   return (
     <div className="fl-stack">
@@ -81,13 +83,13 @@ export function CreatorHome() {
           <Icon name="info" />
           <div>
             <b>
-              {accounts.length === 0
-                ? 'Connect your Instagram account'
-                : 'An account needs reconnecting'}
+              {needsReconnecting
+                ? 'An account needs reconnecting'
+                : 'Connect your Instagram account'}
             </b>
             Brands trust numbers that come straight from Instagram.{' '}
             <Link className="fl-link" to="/creator/social">
-              {accounts.length === 0 ? 'Connect Instagram' : 'Reconnect it'}
+              {needsReconnecting ? 'Reconnect it' : 'Connect Instagram'}
             </Link>
           </div>
         </div>
@@ -96,13 +98,13 @@ export function CreatorHome() {
       <div className="fl-stats">
         <div className="fl-stat">
           <div className="fl-stat__label">Connected accounts</div>
-          <div className="fl-stat__value">{social.status === 'ready' ? connected.length : '—'}</div>
+          <div className="fl-stat__value">{social.status === 'ready' ? pulled.length : '—'}</div>
           <div className="fl-stat__note">Instagram</div>
         </div>
         <div className="fl-stat">
           <div className="fl-stat__label">Followers</div>
           <div className="fl-stat__value">
-            {connected.length > 0 ? followers.toLocaleString(LOCALE) : '—'}
+            {pulled.length > 0 ? followers.toLocaleString(LOCALE) : '—'}
           </div>
           <div className="fl-stat__note">from your connected accounts</div>
         </div>
