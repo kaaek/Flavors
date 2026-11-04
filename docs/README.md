@@ -310,3 +310,17 @@ variables are optional: without them the app starts normally, and *Connect Insta
 
 In the MVP the Meta app runs in Standard Access, so only Instagram accounts added as testers in the Meta app
 can connect (SPIKE-1, section 4).
+
+### Daily social refresh (EEC-37)
+
+Every connected account is pulled once a day, and its 60-day Instagram token is renewed at the same time. A failed
+pull keeps the last figures and shows "Needs reconnection". The job does nothing where the Instagram settings or
+`FLAVORS_TOKEN_ENCRYPTION_KEY` are missing, so a half-configured environment never flags anyone.
+
+| Variable | Used for | Default |
+|---|---|---|
+| `FLAVORS_SOCIAL_REFRESH_CRON` | When the job runs (Spring cron: seconds first) | `0 0 3 * * *` (03:00) |
+| `FLAVORS_SOCIAL_REFRESH_ZONE` | Time zone of the cron | `Asia/Beirut` |
+| `FLAVORS_SOCIAL_REFRESH_ENABLED` | `false` turns the job off | `true` |
+
+To try it locally, set the cron to every minute: `FLAVORS_SOCIAL_REFRESH_CRON="0 * * * * *"`.

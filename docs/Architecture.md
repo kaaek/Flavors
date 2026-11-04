@@ -62,7 +62,7 @@ com.flavors
 ├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus
 ├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser, PortfolioResponse, UpdatePortfolioRequest
 ├── mapper/         entity/principal <-> DTO converters: MeMapper, PortfolioMapper
-├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder
+├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder, SchedulingConfig
 ├── exception/      domain exceptions and the @RestControllerAdvice (GlobalExceptionHandler): IdempotencyConflictException, InvalidPortfolioException, PortfolioNotAvailableException, AlreadyFeaturedException, FeatureNotFoundException
 └── util/           helpers and value objects: Money
 ```
@@ -458,3 +458,28 @@ returns 409 before approval.
   - It uses plain markup, styled by the base rules in `index.css` (no `fl-` classes yet).
 - **Tests:** `PortfolioServiceImplIT` (TC-F1.2.1 to TC-F1.2.3, PATCH rules, parallel requests), `PortfolioControllerTest` (every verb: 401, 403, CSRF, JSON shape, error bodies), `CreatorProfileTest`, `CreatorProfileIT`, `SocialAccountIT`, `PortfolioFeatureIT`; frontend: `PortfolioPage.test.tsx` (loading, empty and unapproved states, save, refused edit, feature and unfeature) and `moneyInput.test.ts`.
 - **Planned:** the brand's read-only view of a portfolio (EEC-35).
+
+## 13. Scheduled jobs and the daily social refresh (UC-F1.3) — built
+
+`SchedulingConfig` turns on `@Scheduled`. The only job so far is `SocialRefreshJob` (`service/impl/`, EEC-37):
+
+- **When:** `flavors.social.refresh-cron` (default `0 0 3 * * *`) in `flavors.social.refresh-zone` (default `Asia/Beirut`);
+  `flavors.social.refresh-enabled=false` switches it off. The variables are in [README.md](README.md#daily-social-refresh-eec-37).
+- **What:** for every `CONNECTED` account it calls `SocialAccountService.refresh(id)` (FR-F1.2). A failed pull or a revoked
+  token keeps the last figures and their time and flags `NEEDS_RECONNECTION` (FR-F1.9, EX-F1.3.1). Disconnected accounts are
+  not pulled (TC-F1.3.2). One account's unexpected error is logged (id only, never a token or URL) and the loop goes on.
+- **One instance at a time:** `runDaily()` takes a Postgres transaction-level advisory lock (`pg_try_advisory_xact_lock`) on a
+  dedicated connection. A second app instance skips the run; the lock disappears with the transaction, even if the app dies.
+- **Not configured, not flagged:** where Instagram or `FLAVORS_TOKEN_ENCRYPTION_KEY` isn't set, the run is skipped entirely,
+  so a missing setting can't mark every creator "Needs reconnection".
+- **No long transaction:** `refresh()` reads in a short transaction, calls Instagram with none, then writes in a short one.
+  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect and disconnect
+  do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
+  is never undone by the stale result.
+- **Token renewal:** each pull first trades the token for a new 60-day one (`InstagramClient.renewToken`) and stores it
+  encrypted. No expiry date is stored: renewing daily is allowed once a token is 24 hours old. Renewal is best effort (a token
+  under 24 hours old can't be renewed yet but still works); only a revoked token stops the pull.
+- **Tests:** `SocialRefreshJobTest`, `SocialRefreshJobIT` (TC-F1.3.1, TC-F1.3.2, failure isolation, the lock),
+  `SocialAccountServiceImplIT` (renewal, disconnect/reconnect during a pull), `InstagramClientImplTest` (renewal against a local
+  stand-in server). A real pull against Instagram can only be checked with a Meta app and a tester account.
+- **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
