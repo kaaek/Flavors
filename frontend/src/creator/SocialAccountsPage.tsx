@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ApiError, apiFetch } from '../api/client'
-import { LOCALE } from '../lib/locale'
+import { Icon } from '../layout/Icon'
+import { AccountCard, platformName, type AccountView } from './AccountCard'
 
 /** One connected account, as GET /api/creator/social returns it (the token is never sent). */
-export interface SocialAccount {
+export interface SocialAccount extends AccountView {
   id: number
-  platform: string
-  status: 'CONNECTED' | 'NEEDS_RECONNECTION'
-  followers: number | null
-  engagementRate: number | null
-  lastPulledAt: string | null
 }
 
 /**
@@ -36,26 +32,6 @@ const RESULTS: Record<string, { text: string; ok: boolean }> = {
     text: 'Connecting Instagram is not available yet. Please try again later.',
     ok: false,
   },
-}
-
-function platformName(platform: string) {
-  return platform === 'instagram' ? 'Instagram' : platform
-}
-
-function figures(account: SocialAccount) {
-  const parts: string[] = []
-  if (account.followers !== null)
-    parts.push(`${account.followers.toLocaleString(LOCALE)} followers`)
-  if (account.engagementRate !== null)
-    parts.push(`${account.engagementRate.toFixed(2)}% engagement`)
-  if (account.lastPulledAt !== null) {
-    const when = new Date(account.lastPulledAt).toLocaleString(LOCALE, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    })
-    parts.push(`last updated ${when}`)
-  }
-  return parts.length === 0 ? 'No numbers yet' : parts.join(' · ')
 }
 
 /**
@@ -119,46 +95,72 @@ export function SocialAccountsPage({
 
   return (
     <div className="fl-stack">
-      <h1>Social accounts</h1>
-      <p>
-        Your follower and engagement numbers come directly from Instagram, so brands can trust them.
-      </p>
+      <header className="fl-pagehead">
+        <div>
+          <h1>Social accounts</h1>
+          <p>
+            Your follower and engagement numbers come directly from Instagram, so brands can trust
+            them.
+          </p>
+        </div>
+        <button
+          className="fl-btn fl-btn--primary"
+          type="button"
+          onClick={connect}
+          disabled={connecting}
+        >
+          <Icon name="plus" />
+          {needsReconnection ? 'Reconnect Instagram' : 'Connect Instagram'}
+        </button>
+      </header>
 
-      {result && <p role={result.ok ? 'status' : 'alert'}>{result.text}</p>}
-      {error && <p role="alert">{error}</p>}
-
-      {loading ? (
-        <p>Loading your accounts…</p>
-      ) : accounts.length === 0 ? (
-        <p>No account connected yet.</p>
-      ) : (
-        <ul>
-          {accounts.map((account) => (
-            <li key={account.id}>
-              {platformName(account.platform)} —{' '}
-              {account.status === 'CONNECTED' ? 'Connected' : 'Needs reconnection'}
-              <br />
-              {figures(account)}
-              {account.status === 'CONNECTED' && (
-                <>
-                  {' '}
-                  <button
-                    type="button"
-                    aria-label={`Disconnect ${platformName(account.platform)}`}
-                    onClick={() => disconnect(account)}
-                  >
-                    Disconnect
-                  </button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+      {result && (
+        <div
+          className={`fl-alert fl-alert--${result.ok ? 'success' : 'danger'}`}
+          role={result.ok ? 'status' : 'alert'}
+        >
+          <Icon name={result.ok ? 'check-circle' : 'alert'} />
+          <div>{result.text}</div>
+        </div>
+      )}
+      {error && (
+        <div className="fl-alert fl-alert--danger" role="alert">
+          <Icon name="alert" />
+          <div>{error}</div>
+        </div>
       )}
 
-      <button type="button" onClick={connect} disabled={connecting}>
-        {needsReconnection ? 'Reconnect Instagram' : 'Connect Instagram'}
-      </button>
+      {loading ? (
+        <div className="fl-card" aria-busy="true">
+          Loading your accounts…
+        </div>
+      ) : accounts.length === 0 ? (
+        <div className="fl-card fl-empty">
+          <img
+            className="fl-empty__art-img"
+            src="/illustrations/spots/empty-creators.svg"
+            alt=""
+            aria-hidden="true"
+          />
+          <h2>No account connected yet.</h2>
+          <p>Connect Instagram so brands can see your real numbers.</p>
+        </div>
+      ) : (
+        accounts.map((account) => (
+          <AccountCard key={account.id} account={account}>
+            {account.status === 'CONNECTED' && (
+              <button
+                className="fl-btn fl-btn--danger fl-btn--sm"
+                type="button"
+                aria-label={`Disconnect ${platformName(account.platform)}`}
+                onClick={() => disconnect(account)}
+              >
+                Disconnect
+              </button>
+            )}
+          </AccountCard>
+        ))
+      )}
     </div>
   )
 }
