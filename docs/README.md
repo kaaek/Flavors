@@ -248,7 +248,7 @@ Nothing here is in git because it is account configuration and secrets.
    | `FLAVORS_APP_BASE_URL` | the public app URL used in password-reset links |
    | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | the SMTP server used for password-reset email |
    | `FLAVORS_MAIL_FROM` | the From address for password-reset email |
-   | `SPRING_PROFILES_ACTIVE` | `staging` / `prod` (optional: those profiles have no overrides yet) |
+   | `SPRING_PROFILES_ACTIVE` | `prod` on the production environment: it loads `application-prod.yml`, which switches the Swagger docs off. Leave it unset (or `staging`) on staging, where the docs stay on |
 
 4. Generate a public domain for each app service (Settings, Networking).
 5. In each environment create a **project token** (Project settings, Tokens).
