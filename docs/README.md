@@ -295,25 +295,40 @@ On Railway, the variables are set per environment (staging, production).
 
 The `PG*` names match what Railway's Postgres service exposes, so staging and production need no renaming.
 
-### Connecting Instagram (EEC-33)
+### Connecting Instagram (EEC-33, EEC-88)
 
-Creators connect their Instagram professional account through the Meta developer app (SPIKE-1). All four
-variables are optional: without them the app starts normally, and *Connect Instagram* answers
-"not available yet" (HTTP 503).
+Creators connect their Instagram professional account through **Unified Login** (Meta no longer offers the older
+"Instagram Login" to new apps). All five variables are optional: without them the app starts normally, and
+*Connect Instagram* answers "not available yet" (HTTP 503).
 
 | Variable | Used for | Example / default |
 |---|---|---|
-| `FLAVORS_INSTAGRAM_CLIENT_ID` | Instagram App ID, from the Meta app (Instagram → API setup with Instagram login) | (none) |
-| `FLAVORS_INSTAGRAM_CLIENT_SECRET` | Instagram App Secret, from the same page | (never commit) |
-| `FLAVORS_INSTAGRAM_REDIRECT_URI` | Where Instagram sends the browser back. Must be listed exactly as a redirect URL in the Meta app | `https://<app domain>/api/creator/social/instagram/callback` |
-| `FLAVORS_TOKEN_ENCRYPTION_KEY` | Encrypts the Instagram tokens stored in `social_account`. 32 random bytes in Base64: `openssl rand -base64 32`. Use a different key per environment, and don't change it afterwards (stored tokens could no longer be read, and creators would have to reconnect) | (never commit) |
+| `FLAVORS_INSTAGRAM_CLIENT_ID` | The **Meta app id** (App settings → Basic) | (none) |
+| `FLAVORS_INSTAGRAM_CLIENT_SECRET` | The **Meta app secret**, same page | (never commit) |
+| `FLAVORS_INSTAGRAM_CONFIG_ID` | The configuration made in the Meta app (below) | (none) |
+| `FLAVORS_INSTAGRAM_REDIRECT_URI` | Where Meta sends the browser back. Must be registered exactly in the Meta app | `https://<app domain>/api/creator/social/instagram/callback` (local: `http://localhost:5173/api/creator/social/instagram/callback`) |
+| `FLAVORS_TOKEN_ENCRYPTION_KEY` | Encrypts the access tokens stored in `social_account`. 32 random bytes in Base64: `openssl rand -base64 32`. Use a different key per environment, and don't change it afterwards (stored tokens could no longer be read, and creators would have to reconnect) | (never commit) |
 
-In the MVP the Meta app runs in Standard Access, so only Instagram accounts added as testers in the Meta app
-can connect (SPIKE-1, section 4).
+**Setting up the Meta app (once)**
+
+1. developers.facebook.com → create an app → use case **Manage messaging & content on Instagram** → *API setup with Unified login*.
+2. Create a **configuration**: login variation *General*, access token *System-user token*, expiration **Never**, business asset
+   *Instagram account*, permissions **`instagram_basic`** and **`instagram_manage_insights`** only. Its id is `FLAVORS_INSTAGRAM_CONFIG_ID`.
+   (A token that expires would make every creator reconnect: the app does not renew it.)
+3. Register the redirect URL of every environment (localhost, staging, production) in the same page.
+4. In the app's *Roles*, add the Instagram accounts that will connect as **Instagram testers** and accept the invite in Instagram.
+   While the app is in Development mode only people with a role on it can connect.
+5. The Instagram account must be a professional (Creator or Business) account that belongs to a **business portfolio**: at login
+   the creator picks the portfolio and the account to share. No Facebook Page is needed.
+
+How it runs: *Connect* sends the browser to Facebook's login dialog with the configuration id. Meta redirects back with a one-time
+code, the server trades it for a system-user token (kept encrypted) and reads the shared account from
+`/me/assigned_instagram_accounts`. The token belongs to the creator's business portfolio and stops working only if she removes
+the app or moves the account; then the next daily pull shows "Needs reconnection".
 
 ### Daily social refresh (EEC-37)
 
-Every connected account is pulled once a day, and its 60-day Instagram token is renewed at the same time. A failed
+Every connected account is pulled once a day. A failed
 pull keeps the last figures and shows "Needs reconnection". The job does nothing where the Instagram settings or
 `FLAVORS_TOKEN_ENCRYPTION_KEY` are missing, so a half-configured environment never flags anyone.
 
