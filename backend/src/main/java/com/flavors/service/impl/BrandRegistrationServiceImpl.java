@@ -58,13 +58,16 @@ public class BrandRegistrationServiceImpl implements BrandRegistrationService {
         }
 
         brands.save(new Brand(user.getId(), request.businessName().trim(),
-                request.contactPerson().trim(), request.phone().trim()));
+                request.contactPerson().trim(), request.phone().trim(),
+                request.cuisine(), request.description()));
         branches.saveAll(request.branches().stream()
                 .map(branch -> new Branch(user.getId(), branch.name().trim(), branch.location().trim()))
                 .toList());
         auditLogger.record("BRAND_REGISTERED", "app_user", user.getId(),
                 Map.of("branchCount", request.branches().size()));
 
-        return new BrandRegistrationResponse(user.getId(), user.getEmail(), user.getRole());
+        return new BrandRegistrationResponse(user.getId(), user.getEmail(), user.getRole(),
+                request.cuisine() == null || request.cuisine().isBlank() ? null : request.cuisine().trim(),
+                request.description() == null || request.description().isBlank() ? null : request.description().trim());
     }
 }

@@ -501,3 +501,29 @@ returns 409 before approval.
   `SocialAccountServiceImplIT` (disconnect/reconnect during a pull), `InstagramClientImplTest` (login URL, code exchange, account
   list and pull against a local stand-in for graph.facebook.com). A real pull against Instagram can only be checked with a Meta app and a tester account.
 - **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
+
+## 14. Search (UC-F2.1, plus brand search) — built
+
+Brands search creators (EEC-39); creators search brands (added at the team's request, no Jira story yet). Migration `V8__search.sql`.
+
+- **Endpoints:** `GET /api/brand/creators/search`, `GET /api/brand/creators/facets` (locations and categories for dropdown suggestions),
+  `GET /api/creator/brands/search`. The role guard is the existing `/api/brand/**` and `/api/creator/**` rule, so anonymous gets 401 and the
+  wrong role 403 (TC-F2.1.3). Brands also got `GET`/`PATCH /api/brand/profile` for the new `cuisine` and `description` fields.
+- **Plain search (`q`):** the text is split into words (`util/SearchText`); **every word must match some field**. A word matches by
+  case-insensitive substring or by `word_similarity >= 0.3` (`pg_trgm`), so "burgers beirut" finds Burgers creators in Beirut and
+  "burgr" still matches. Creator fields: name, food category, location, bio. Brand fields: name, cuisine, description, branch name and
+  location. Results are ranked by relevance (category and location above name, bio lowest), then by name.
+- **Advanced filters** (AND with `q`): location, category, platform, followers, engagement, price range, previous ROI, redemptions.
+  The price filter matches when the ranges **overlap** (FR-F2.5). Only `APPROVED` creators with an active user are returned (TC-F2.1.4).
+- **ROI and redemptions** are always `null` until the campaign and redemption stories exist; using those filters returns nothing (FR-F2.5).
+- **Social figures** come from the creator's highest-follower connected account. Creators without one still appear with "—"; a social
+  filter leaves them out. Until the Instagram connection works (Sprint 2 fix), these figures are empty.
+- **Privacy:** brand results never include phone or contact person.
+- **SQL:** the search repositories use `NamedParameterJdbcTemplate` (ranking and `pg_trgm` don't fit JPQL). Only fixed fragments are
+  concatenated; all user text is bound as parameters, with `%` and `_` escaped.
+- **Deployment:** `pg_trgm` is a trusted extension on PostgreSQL 13+, so the database owner can create it; not yet checked on Railway.
+- **Tests:** `SearchTextTest`, `CreatorSearchControllerTest`, `BrandSearchControllerTest`, `BrandProfileControllerTest`,
+  `CreatorSearchServiceImplIT`, `BrandSearchServiceImplIT`, `BrandProfileServiceImplIT`, `SearchSchemaIT`; frontend
+  `CreatorSearchPage.test.tsx`, `BrandSearchPage.test.tsx`.
+- **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); the "Create campaign" button on a result is
+  disabled until the campaign story; results link to `/s/:slug`, still a placeholder.

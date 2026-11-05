@@ -33,7 +33,7 @@ class BrandBranchServiceImplIT {
         long brandId = registration.register(new BrandRegistrationRequest(
                 "Karim's Kitchen", "Karim", UUID.randomUUID() + "@example.com",
                 "+961 1 234567", "correct horse",
-                List.of(new BranchRegistrationRequest("Hamra", "Beirut")))).id();
+                List.of(new BranchRegistrationRequest("Hamra", "Beirut")), null, null)).id();
 
         var added = brandBranches.add(brandId, new BranchRegistrationRequest("Jounieh", "Keserwan"));
 

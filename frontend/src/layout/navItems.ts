@@ -17,12 +17,14 @@ export interface NavItem {
 export const navItems: Record<Role, NavItem[]> = {
   CREATOR: [
     { label: 'Home', to: homeByRole.CREATOR, end: true },
+    { label: 'Find brands', to: '/creator/brands' },
     { label: 'Portfolio', to: '/creator/portfolio' },
     { label: 'Social accounts', to: '/creator/social' },
     { label: 'Profile status', to: '/creator/status' },
   ],
   BRAND: [
     { label: 'Home', to: homeByRole.BRAND, end: true },
+    { label: 'Find creators', to: '/brand/creators' },
     { label: 'Account', to: '/brand/account' },
   ],
   ADMIN: [

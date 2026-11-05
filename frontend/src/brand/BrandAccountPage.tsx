@@ -7,7 +7,16 @@ interface Branch {
   location: string
 }
 
+/** What creators see when they search brands. Contact details are not part of it. */
+interface BrandProfile {
+  businessName: string
+  cuisine: string | null
+  description: string | null
+}
+
 export function BrandAccountPage() {
+  const [profile, setProfile] = useState<BrandProfile | null>(null)
+  const [profileMessage, setProfileMessage] = useState<{ ok: boolean; text: string } | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [loading, setLoading] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -20,6 +29,34 @@ export function BrandAccountPage() {
       )
       .finally(() => setLoading(false))
   }, [])
+
+  // A failed profile load only hides that section; the branches below stay usable.
+  useEffect(() => {
+    apiFetch<BrandProfile>('/api/brand/profile')
+      .then(setProfile)
+      .catch(() => undefined)
+  }, [])
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setProfileMessage(null)
+    const data = new FormData(event.currentTarget)
+    try {
+      await apiFetch<unknown>('/api/brand/profile', {
+        method: 'PATCH',
+        body: {
+          cuisine: String(data.get('cuisine') ?? '').trim(),
+          description: String(data.get('description') ?? '').trim(),
+        },
+      })
+      setProfileMessage({ ok: true, text: 'Profile saved.' })
+    } catch (error) {
+      setProfileMessage({
+        ok: false,
+        text: error instanceof ApiError ? error.message : 'Could not save the profile.',
+      })
+    }
+  }
 
   async function addBranch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -52,6 +89,51 @@ export function BrandAccountPage() {
             <p>Manage every restaurant location under this brand account.</p>
           </div>
         </header>
+
+        {profile && (
+          <section className="fl-stack" aria-labelledby="profile-title">
+            <h2 className="fl-section-title" id="profile-title">
+              Restaurant profile
+            </h2>
+            <form className="fl-card fl-stack" onSubmit={saveProfile}>
+              {profileMessage && (
+                <div
+                  className={`fl-alert fl-alert--${profileMessage.ok ? 'success' : 'danger'}`}
+                  role={profileMessage.ok ? 'status' : 'alert'}
+                >
+                  {profileMessage.text}
+                </div>
+              )}
+              <p className="fl-hint">Creators see these when they search for brands.</p>
+              <div className="fl-field">
+                <label className="fl-label" htmlFor="profile-cuisine">
+                  Cuisine
+                </label>
+                <input
+                  className="fl-input"
+                  id="profile-cuisine"
+                  name="cuisine"
+                  maxLength={50}
+                  defaultValue={profile.cuisine ?? ''}
+                />
+              </div>
+              <div className="fl-field">
+                <label className="fl-label" htmlFor="profile-description">
+                  About your restaurant
+                </label>
+                <textarea
+                  className="fl-textarea"
+                  id="profile-description"
+                  name="description"
+                  defaultValue={profile.description ?? ''}
+                />
+              </div>
+              <button className="fl-btn fl-btn--primary" type="submit">
+                Save profile
+              </button>
+            </form>
+          </section>
+        )}
 
         <section className="fl-stack" aria-labelledby="branches-title">
           <h2 className="fl-section-title" id="branches-title">

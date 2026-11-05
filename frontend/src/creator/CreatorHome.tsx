@@ -12,6 +12,12 @@ interface CreatorStatus {
 
 const actions: { to: string; icon: IconName; title: string; text: string }[] = [
   {
+    to: '/creator/brands',
+    icon: 'search',
+    title: 'Find brands',
+    text: 'Search restaurant brands by cuisine or city.',
+  },
+  {
     to: '/creator/portfolio',
     icon: 'user',
     title: 'Manage portfolio',
