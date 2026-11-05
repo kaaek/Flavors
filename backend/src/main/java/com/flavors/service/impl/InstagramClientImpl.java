@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -97,9 +98,11 @@ class InstagramClientImpl implements InstagramClient {
     @Override
     public String exchangeCode(String code) {
         // One step: the configuration issues a system-user token that doesn't expire. Server side only: it uses the secret.
-        Map<String, Object> token = call(() -> http.get()
-                .uri(graphUrl + "/oauth/access_token?client_id={id}&client_secret={secret}&code={code}",
-                        clientId, clientSecret, code)
+        // redirect_uri must be the one the login dialog was opened with: Facebook-style logins refuse the code otherwise.
+        Map<String, Object> token = call("code exchange", () -> http.get()
+                .uri(graphUrl + "/oauth/access_token?client_id={id}&client_secret={secret}&code={code}"
+                                + "&redirect_uri={redirect}",
+                        clientId, clientSecret, code, redirectUri)
                 .retrieve()
                 .body(JSON));
         return text(token, "access_token");
@@ -108,7 +111,7 @@ class InstagramClientImpl implements InstagramClient {
     @Override
     public List<AccountRef> assignedAccounts(String accessToken) {
         // /me is the system user, not the creator's account; the accounts she shared are listed here.
-        Map<String, Object> accounts = call(() -> http.get()
+        Map<String, Object> accounts = call("account list", () -> http.get()
                 .uri(graphUrl + "/me/assigned_instagram_accounts?fields=id,username&access_token={token}", accessToken)
                 .retrieve()
                 .body(JSON));
@@ -122,14 +125,14 @@ class InstagramClientImpl implements InstagramClient {
 
     @Override
     public Snapshot fetchSnapshot(String accessToken, String externalId) {
-        Map<String, Object> profile = call(() -> http.get()
+        Map<String, Object> profile = call("profile read", () -> http.get()
                 .uri(graphUrl + "/{id}?fields=username,followers_count&access_token={token}", externalId, accessToken)
                 .retrieve()
                 .body(JSON));
         String username = profile.get("username") == null ? null : String.valueOf(profile.get("username"));
         long followers = number(profile.get("followers_count"));
 
-        Map<String, Object> media = call(() -> http.get()
+        Map<String, Object> media = call("post list", () -> http.get()
                 .uri(graphUrl + "/{id}/media?fields=id,like_count,comments_count&limit={limit}&access_token={token}",
                         externalId, RECENT_POSTS, accessToken)
                 .retrieve()
@@ -153,7 +156,7 @@ class InstagramClientImpl implements InstagramClient {
         long views = 0;
         long shares = 0;
         try {
-            Map<String, Object> insights = call(() -> http.get()
+            Map<String, Object> insights = call("post insights", () -> http.get()
                     .uri(graphUrl + "/{post}/insights?metric=views,likes,comments,shares&access_token={token}",
                             postId, accessToken)
                     .retrieve()
@@ -177,21 +180,47 @@ class InstagramClientImpl implements InstagramClient {
     }
 
     /** Runs one request and turns every failure into our own exceptions, without the URL or Meta's text. */
-    private static Map<String, Object> call(Supplier<Map<String, Object>> request) {
+    private static Map<String, Object> call(String what, Supplier<Map<String, Object>> request) {
         try {
             Map<String, Object> body = request.get();
             if (body == null) {
-                throw new SocialPlatformException("Meta sent an empty answer.");
+                throw new SocialPlatformException("Meta sent an empty answer to the " + what + ".");
             }
             return body;
         } catch (RestClientResponseException e) {
-            if (e.getStatusCode().value() == 401 || INVALID_TOKEN.matcher(e.getResponseBodyAsString()).find()) {
+            String answer = e.getResponseBodyAsString();
+            if (e.getStatusCode().value() == 401 || INVALID_TOKEN.matcher(answer).find()) {
                 throw new SocialTokenInvalidException();
             }
-            throw new SocialPlatformException("Meta answered with status " + e.getStatusCode().value() + ".");
+            // Only the numbers and the error type of Meta's answer go into the message (enough to look the error up),
+            // never its free text or the URL: those can carry details that don't belong in a log.
+            throw new SocialPlatformException("Meta answered the " + what + " with status " + e.getStatusCode().value()
+                    + errorDetails(answer) + ".");
         } catch (RestClientException e) {
-            throw new SocialPlatformException("Meta could not be reached.");
+            throw new SocialPlatformException("Meta could not be reached for the " + what + ".");
         }
+    }
+
+    private static final Pattern ERROR_CODE = Pattern.compile("\"code\"\\s*:\\s*(\\d+)");
+    private static final Pattern ERROR_SUBCODE = Pattern.compile("\"error_subcode\"\\s*:\\s*(\\d+)");
+    private static final Pattern ERROR_TYPE = Pattern.compile("\"type\"\\s*:\\s*\"(\\w+)\"");
+
+    /** " (OAuthException, code 100, subcode 33)" from a Graph error body; empty when it has none of them. */
+    private static String errorDetails(String body) {
+        StringBuilder details = new StringBuilder();
+        Matcher type = ERROR_TYPE.matcher(body);
+        if (type.find()) {
+            details.append(type.group(1));
+        }
+        Matcher code = ERROR_CODE.matcher(body);
+        if (code.find()) {
+            details.append(details.isEmpty() ? "" : ", ").append("code ").append(code.group(1));
+        }
+        Matcher subcode = ERROR_SUBCODE.matcher(body);
+        if (subcode.find()) {
+            details.append(details.isEmpty() ? "" : ", ").append("subcode ").append(subcode.group(1));
+        }
+        return details.isEmpty() ? "" : " (" + details + ")";
     }
 
     /** An insight's value: {"values": [{"value": 123}]}, or {"total_value": {"value": 123}}. */
