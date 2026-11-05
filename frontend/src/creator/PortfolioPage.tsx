@@ -1,9 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { ApiError } from '../api/client'
-import { Icon } from '../layout/Icon'
+import { LOCALE } from '../lib/locale'
 import { centsToDollars, parseUSDToCents } from '../lib/moneyInput'
-import { AccountCard } from './AccountCard'
 import {
   featureCampaign,
   getPortfolio,
@@ -18,6 +16,13 @@ import {
 const MAX_BIO_LENGTH = 1000
 const MAX_CATEGORY_LENGTH = 50
 const MAX_LOCATION_LENGTH = 100
+
+const numberFormat = new Intl.NumberFormat(LOCALE)
+const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' })
+
+// Spacing between blocks comes from the design tokens (docs/README.md, "Styling pages").
+const cardSpacing = { marginBottom: 'var(--space-6)' }
+const alertSpacing = { marginBottom: 'var(--space-4)' }
 
 type LoadState =
   | { status: 'loading' }
@@ -72,77 +77,59 @@ export function PortfolioPage() {
 
   if (state.status === 'loading') {
     return (
-      <div className="fl-card" aria-busy="true">
-        Loading your portfolio…
-      </div>
+      <main>
+        <p>Loading your portfolio…</p>
+      </main>
     )
   }
-  if (state.status === 'not-approved' || state.status === 'error') {
-    const notApproved = state.status === 'not-approved'
+  if (state.status === 'not-approved') {
     return (
-      <div className="fl-stack">
-        <header className="fl-pagehead">
+      <main>
+        <h1>Manage portfolio</h1>
+        <div className="fl-alert fl-alert--warning" role="alert">
           <div>
-            <h1>Manage portfolio</h1>
-          </div>
-        </header>
-        <div className={`fl-alert fl-alert--${notApproved ? 'warning' : 'danger'}`} role="alert">
-          <Icon name={notApproved ? 'clock' : 'alert'} />
-          <div>
+            <b>Your portfolio is not available yet</b>
             {state.message}
-            {notApproved && (
-              <>
-                {' '}
-                <Link className="fl-link" to="/creator/status">
-                  See your profile status
-                </Link>
-              </>
-            )}
           </div>
         </div>
-      </div>
+      </main>
+    )
+  }
+  if (state.status === 'error') {
+    return (
+      <main>
+        <h1>Manage portfolio</h1>
+        <div className="fl-alert fl-alert--danger" role="alert">
+          <div>{state.message}</div>
+        </div>
+      </main>
     )
   }
 
   const { portfolio } = state
   return (
-    <div className="fl-stack">
-      <header className="fl-pagehead">
-        <div>
-          <h1>Manage portfolio</h1>
-          <p>{portfolio.displayName}</p>
-        </div>
-      </header>
+    <main>
+      <h1>Manage portfolio</h1>
+      <p>{portfolio.displayName}</p>
 
-      <section className="fl-card fl-stack" aria-labelledby="details-title">
-        <h2 className="fl-card__title" id="details-title">
-          Your details
-        </h2>
+      <section className="fl-card" style={cardSpacing}>
+        <h2 className="fl-card__title">Your details</h2>
         <DetailsForm
           portfolio={portfolio}
           onSaved={(saved) => setState({ status: 'ready', portfolio: saved })}
         />
       </section>
 
-      <section className="fl-stack" aria-labelledby="accounts-title">
-        <div className="fl-row fl-row--between">
-          <h2 className="fl-section-title" id="accounts-title">
-            Connected accounts
-          </h2>
-          <Link className="fl-btn fl-btn--outline fl-btn--sm" to="/creator/social">
-            {portfolio.socialAccounts.length === 0 ? 'Connect Instagram' : 'Manage connections'}
-          </Link>
-        </div>
+      <section className="fl-card" style={cardSpacing}>
+        <h2 className="fl-card__title">Connected accounts</h2>
         <Accounts accounts={portfolio.socialAccounts} />
       </section>
 
-      <section className="fl-stack" aria-labelledby="campaigns-title">
-        <h2 className="fl-section-title" id="campaigns-title">
-          Completed campaigns
-        </h2>
+      <section className="fl-card" style={cardSpacing}>
+        <h2 className="fl-card__title">Completed campaigns</h2>
         <Campaigns campaigns={portfolio.completedCampaigns} onToggled={setFeatured} />
       </section>
-    </div>
+    </main>
   )
 }
 
@@ -198,13 +185,13 @@ function DetailsForm({
   }
 
   return (
-    <form className="fl-stack" onSubmit={save}>
+    <form onSubmit={save}>
       {message && (
         <div
-          className={`fl-alert fl-alert--${message.kind === 'error' ? 'danger' : 'success'}`}
+          className={`fl-alert ${message.kind === 'error' ? 'fl-alert--danger' : 'fl-alert--success'}`}
           role={message.kind === 'error' ? 'alert' : 'status'}
+          style={alertSpacing}
         >
-          <Icon name={message.kind === 'error' ? 'alert' : 'check-circle'} />
           <div>{message.text}</div>
         </div>
       )}
@@ -213,9 +200,8 @@ function DetailsForm({
           Bio
         </label>
         <textarea
-          className="fl-textarea"
           id="portfolio-bio"
-          name="bio"
+          className="fl-textarea"
           rows={5}
           maxLength={MAX_BIO_LENGTH}
           value={bio}
@@ -230,9 +216,8 @@ function DetailsForm({
           Category
         </label>
         <input
-          className="fl-input"
           id="portfolio-category"
-          name="foodCategory"
+          className="fl-input"
           required
           maxLength={MAX_CATEGORY_LENGTH}
           value={foodCategory}
@@ -244,9 +229,8 @@ function DetailsForm({
           Location
         </label>
         <input
-          className="fl-input"
           id="portfolio-location"
-          name="location"
+          className="fl-input"
           required
           maxLength={MAX_LOCATION_LENGTH}
           value={location}
@@ -254,15 +238,14 @@ function DetailsForm({
         />
       </div>
       <div className="fl-field">
-        <label className="fl-label" htmlFor="portfolio-min">
+        <label className="fl-label" htmlFor="portfolio-price-min">
           Minimum price (USD)
         </label>
         <div className="fl-affix">
           <span>$</span>
           <input
+            id="portfolio-price-min"
             className="fl-input"
-            id="portfolio-min"
-            name="priceMin"
             inputMode="decimal"
             required
             value={minPrice}
@@ -271,52 +254,70 @@ function DetailsForm({
         </div>
       </div>
       <div className="fl-field">
-        <label className="fl-label" htmlFor="portfolio-max">
+        <label className="fl-label" htmlFor="portfolio-price-max">
           Maximum price (USD)
         </label>
         <div className="fl-affix">
           <span>$</span>
           <input
+            id="portfolio-price-max"
             className="fl-input"
-            id="portfolio-max"
-            name="priceMax"
             inputMode="decimal"
             required
             value={maxPrice}
             onChange={(event) => setMaxPrice(event.target.value)}
           />
         </div>
+        <span className="fl-hint">Brands see this range on your portfolio.</span>
       </div>
-      <div className="fl-row">
-        <button className="fl-btn fl-btn--primary" type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
-      </div>
+      <button type="submit" className="fl-btn fl-btn--primary" disabled={saving} aria-busy={saving}>
+        Save changes
+      </button>
     </form>
   )
 }
 
-/** Read-only here: connecting and disconnecting an account is on the Social accounts page (UC-F19.4). */
+/** Read-only here: connecting and disconnecting an account belongs to UC-F19.4. */
 function Accounts({ accounts }: { accounts: SocialAccountView[] }) {
-  if (accounts.length === 0) {
-    return (
-      <div className="fl-card fl-empty">
-        <img
-          className="fl-empty__art-img"
-          src="/illustrations/spots/empty-creators.svg"
-          alt=""
-          aria-hidden="true"
-        />
-        <h3>No social account is connected yet.</h3>
-        <p>Brands trust numbers that come straight from Instagram.</p>
-      </div>
-    )
-  }
+  if (accounts.length === 0) return <p>No social account is connected yet.</p>
   return (
-    <div className="fl-stats fl-stats--wide">
-      {accounts.map((account, index) => (
-        <AccountCard key={`${account.platform}-${index}`} account={account} />
-      ))}
+    <div className="fl-tablewrap">
+      <table className="fl-table">
+        <thead>
+          <tr>
+            <th>Platform</th>
+            <th className="num">Followers</th>
+            <th className="num">Engagement</th>
+            <th>Last updated</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {accounts.map((account, index) => (
+            <tr key={`${account.platform}-${index}`}>
+              <td>{account.platform}</td>
+              <td className="num">
+                {account.followers === null ? '—' : numberFormat.format(account.followers)}
+              </td>
+              <td className="num">
+                {account.engagementRate === null ? '—' : `${account.engagementRate}%`}
+              </td>
+              <td>
+                {account.lastPulledAt === null
+                  ? 'Not yet'
+                  : dateTimeFormat.format(new Date(account.lastPulledAt))}
+              </td>
+              <td>
+                {account.status === 'NEEDS_RECONNECTION' ? (
+                  <span className="fl-chip fl-chip--danger">Needs reconnection</span>
+                ) : (
+                  <span className="fl-chip fl-chip--success">Connected</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -365,41 +366,38 @@ function Campaigns({
 
   if (campaigns.length === 0) {
     return (
-      <div className="fl-card fl-empty">
-        <img
-          className="fl-empty__art-img"
-          src="/illustrations/spots/empty-campaigns.svg"
-          alt=""
-          aria-hidden="true"
-        />
+      <div className="fl-empty">
         <h3>No completed campaigns yet</h3>
-        <p>You have no completed campaigns yet. They appear here once a campaign is completed.</p>
+        <p>
+          They appear here once a campaign is completed, and you can feature them on your portfolio.
+        </p>
       </div>
     )
   }
   return (
     <>
       {error && (
-        <div className="fl-alert fl-alert--danger" role="alert">
-          <Icon name="alert" />
+        <div className="fl-alert fl-alert--danger" role="alert" style={alertSpacing}>
           <div>{error}</div>
         </div>
       )}
-      <div className="fl-card fl-stack">
-        <p className="fl-muted">Tick the campaigns you want brands to see on your portfolio.</p>
+      <p className="fl-hint">Tick the campaigns you want brands to see on your portfolio.</p>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {campaigns.map((campaign) => (
-          <label className="fl-check" key={campaign.id}>
-            <input
-              type="checkbox"
-              checked={campaign.featured}
-              disabled={busyId !== null}
-              onChange={() => void toggle(campaign)}
-            />
-            <span className="fl-check__box"></span>
-            <span>{campaign.name}</span>
-          </label>
+          <li key={campaign.id} style={{ marginBottom: 'var(--space-3)' }}>
+            <label className="fl-check">
+              <input
+                type="checkbox"
+                checked={campaign.featured}
+                disabled={busyId !== null}
+                onChange={() => void toggle(campaign)}
+              />
+              <span className="fl-check__box"></span>
+              <span>{campaign.name}</span>
+            </label>
+          </li>
         ))}
-      </div>
+      </ul>
     </>
   )
 }
