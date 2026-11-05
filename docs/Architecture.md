@@ -472,7 +472,7 @@ returns 409 before approval.
   - The connected accounts, read-only (connecting is UC-F19.4): followers, engagement, "last updated" and "Needs reconnection".
   - The completed campaigns as checkboxes, each saved immediately (tick = POST, untick = DELETE). A 409 "Already featured", or a 404 on DELETE, only syncs the box with the real state; other errors show the server's message.
   - A 409 on load shows the "available after an admin approves" message instead of the form. There are empty states for no accounts and no completed campaigns.
-  - It uses plain markup, styled by the base rules in `index.css` (no `fl-` classes yet).
+  - It is built with the design-system classes from design/components.css (fl-card, fl-field, fl-affix, fl-table, fl-chip, fl-alert, fl-check, fl-empty), following “Styling pages” in docs/README.md; spacing comes from tokens.
 - **Tests:** `PortfolioServiceImplIT` (TC-F1.2.1 to TC-F1.2.3, PATCH rules, parallel requests), `PortfolioControllerTest` (every verb: 401, 403, CSRF, JSON shape, error bodies), `CreatorProfileTest`, `CreatorProfileIT`, `SocialAccountIT`, `PortfolioFeatureIT`; frontend: `PortfolioPage.test.tsx` (loading, empty and unapproved states, save, refused edit, feature and unfeature) and `moneyInput.test.ts`.
 - **Planned:** the brand's read-only view of a portfolio (EEC-35).
 
