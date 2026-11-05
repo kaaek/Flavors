@@ -1,0 +1,206 @@
+/* App-level layout shared by every page (EEC-86 follow-up). Components stay in styles/components.css (copied from design/);
+   this file only arranges them, with the same helpers screens.html uses (stack, row, stats, kv, split). */
+:root {
+  /* Column sizes the design file writes as px; named once here instead of repeated in pages. */
+  --layout-stat-min: 8rem;
+  --layout-kv-label: 9rem;
+  --layout-aside: 19rem;
+  --layout-art-small: 14rem;
+  --pattern-opacity: 0.35;
+}
+
+/* One quiet cream pattern behind every screen. It sits in the root stacking context at z-index -1, so it is always
+   behind the page and the top bar (earlier, a copy per page painted over the top bar). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: url('/illustrations/pattern-cream.svg');
+  background-repeat: repeat;
+  opacity: var(--pattern-opacity);
+  pointer-events: none;
+}
+
+/* A page inside the app shell. */
+.fl-page {
+  max-width: var(--layout-content-max);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6);
+}
+.fl-page:focus {
+  outline: none;
+}
+
+.fl-skip {
+  position: absolute;
+  left: var(--space-2);
+  top: -4rem;
+  z-index: 10;
+  background: var(--color-surface);
+  color: var(--color-link);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-weight: 700;
+}
+.fl-skip:focus {
+  top: var(--space-2);
+}
+
+/* Top bar additions: wrap on narrow screens, and a logout button that looks like the other nav links. */
+.fl-nav {
+  flex-wrap: wrap;
+}
+.fl-nav button.fl-navlink {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 0;
+}
+.fl-nav button.fl-navlink:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+.fl-nav__email {
+  font-size: var(--font-size-xs);
+  opacity: 0.85;
+}
+
+/* index.css makes every <label> a grid, which put "(optional)" on its own line; a design label is plain text. */
+.fl-label {
+  display: block;
+}
+
+/* Layout helpers (named like screens.html's .stack, .row, .stats, .kv, .split). */
+.fl-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+.fl-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.fl-row--between {
+  justify-content: space-between;
+}
+.fl-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--layout-stat-min), 1fr));
+  gap: var(--space-3);
+}
+.fl-stats--wide {
+  grid-template-columns: repeat(auto-fit, minmax(var(--layout-aside), 1fr));
+}
+.fl-kv {
+  display: grid;
+  grid-template-columns: var(--layout-kv-label) 1fr;
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+.fl-kv dt {
+  color: var(--color-text-muted);
+}
+.fl-kv dd {
+  margin: 0;
+  font-weight: 700;
+}
+.fl-split {
+  display: grid;
+  grid-template-columns: var(--layout-aside) 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+/* The top of a page: a heading with its one-line explanation, and the page's main action on the right. */
+.fl-pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+.fl-pagehead h1 {
+  font-size: var(--font-size-4xl);
+  margin: 0;
+}
+.fl-pagehead p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-muted);
+}
+.fl-section-title {
+  font-size: var(--font-size-2xl);
+  margin: 0;
+}
+.fl-muted {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* A card that is a link: the whole card is the click target. */
+.fl-actioncard {
+  display: grid;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: inherit;
+}
+.fl-actioncard h3 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}
+.fl-actioncard p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+.fl-actioncard .fl-icon {
+  color: var(--color-link);
+}
+
+.fl-empty__art-img {
+  width: var(--layout-art-small);
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 48rem) {
+  .fl-nav__email {
+    display: none;
+  }
+  .fl-page {
+    padding: var(--space-6) var(--space-4);
+  }
+  .fl-split {
+    grid-template-columns: 1fr;
+  }
+  .fl-kv {
+    grid-template-columns: 1fr;
+  }
+  .fl-pagehead h1 {
+    font-size: var(--font-size-3xl);
+  }
+}
+
+/* Text for screen readers only (a table column that has no visible heading). */
+.fl-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.fl-skel--line {
+  height: var(--space-5);
+  width: 40%;
+}
+
+/* A table that scrolls sideways on a phone must contain its own screen-reader-only text: an absolutely positioned
+   child would otherwise stick out of the scroll box and make the whole page scroll sideways. */
+.fl-tablewrap {
+  position: relative;
+}

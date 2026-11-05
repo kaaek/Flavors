@@ -17,6 +17,9 @@ npm-debug.log*
 .env.*
 !.env.example
 
+# --- Personal notes for Claude Code (not shared) ---
+CLAUDE.md
+
 # --- Editors ---
 # VS Code: only the shared extension recommendations are committed.
 .vscode/*

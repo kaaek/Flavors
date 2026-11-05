@@ -1,0 +1,348 @@
+# Flavors
+
+Flavors connects F&B brands (restaurants, cafés) with verified food creators.
+It covers each campaign from the escrow payment to the QR-code redemption in
+the restaurant, so brands see their real ROI.
+
+EECE 430 course project, Fall 2026–27. Three two-week sprints:
+
+| Sprint | Dates | Goal |
+|---|---|---|
+| 1 (v0) | 22 Oct – 5 Nov | Foundation: accounts, verified portfolios, creator search |
+| 2 (v1) | 5 – 19 Nov | Booking to payout: campaign, escrow, delivery proof, release |
+| 3 (v2) | 19 Nov – 3 Dec | Redeem offers, track ROI |
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Backend | Java 25, Spring Boot 4, Maven |
+| Database | PostgreSQL 17, schema managed by Flyway |
+| Frontend | React + TypeScript + Vite |
+| Deployment | One Docker image (Spring Boot serves the built frontend) on Railway |
+| CI/CD | GitHub Actions |
+
+## Prerequisites
+
+- **JDK 25** (e.g. Eclipse Temurin 25). Check: `java -version`
+- **Node.js 22 LTS** and npm. Check: `node -v`
+- **Docker** with Docker Compose, for the local database and the Testcontainers tests. Check: `docker compose version`
+- **Git**
+- **VS Code** is recommended. When you open the repo it suggests the extensions listed in `.vscode/extensions.json`; accept them.
+
+## Repository layout
+
+Paths are relative to the repository root. Entries marked *(planned)* arrive with EEC-27 (project foundation).
+
+```
+backend/      Spring Boot application (package com.flavors), Flyway migrations
+frontend/     React + TypeScript single-page app (Vite)
+docs/         This README and Architecture.md (design: schema, security, audit log, CI/CD)
+design/       Brand identity: logo, tokens, components, illustrations, style guide (open the .html files in a browser)
+.github/      Pull request template; CI/CD workflows (ci.yml, deploy-production.yml)
+Dockerfile    Builds the frontend and backend into one image
+docker-compose.yml  Local Postgres for development
+railway.json  Railway build and health-check settings
+```
+
+See [Architecture.md](Architecture.md) for how the system is built and why.
+
+## Styling pages (brand identity, EEC-86)
+
+The brand lives in `design/`. Open `design/styleguide.html`, `design/components.html` (every component, with its markup)
+and `design/screens.html` (sample role screens) in a browser. Rules when you build a page:
+
+- Use the `fl-` classes from `design/components.html` (`fl-btn fl-btn--primary`, `fl-field`, `fl-chip`, `fl-card`, ...).
+  Copy the markup pattern from the sheet.
+- No hard-coded colors, fonts or spacing. If you need a value, use a `--color-*`, `--space-*` or `--font-*` token.
+  Never use `--palette-*` in components.
+- Plain elements already look right (`index.css` styles bare `<input>`, `<label>`, `<table>`, headings). A bare `<button>`
+  is the **primary** action (paprika); use `fl-btn--outline` or `fl-btn--secondary` for the others.
+- Status chips carry a symbol so meaning never depends on color alone. Use the existing tone for each state.
+- Playful art (stickers, spot illustrations) only in empty states, success and the 404 page. Never on payment, escrow,
+  dispute or error screens.
+- Marcellus (display) is for headings and big numbers only; Lato does everything else.
+
+**Adding a page (EEC-86):** logged-in pages render inside the role's top bar (`layout/AppShell.tsx`), so a page returns a `<div>`,
+not its own `<main>` or nav. Add its `<Route>` inside the role's area in `App.tsx`, and its link to `layout/navItems.ts` (the only
+list of top bar links; `linkAudit.test.tsx` fails if a link leads nowhere). Start the page with the header pattern
+(`<header className="fl-pagehead">`), arrange content with the helpers in `layout/layout.css` (`fl-stack`, `fl-row`, `fl-stats`,
+`fl-kv`), draw icons with `<Icon name="..."/>`, and never add a page background of your own: the cream pattern is set once for the
+whole app.
+
+**Changing the design:** edit the sources in `design/` (`tokens/build-tokens.py`, `components.css`), then run
+`design/sync-to-frontend.sh` and commit both. The script copies them into `frontend/src/styles/` and `frontend/public/`
+because the Docker build only sees `frontend/`. Never edit the copies by hand. Illustrations regenerate with
+`python3 design/illustrations/build-illustrations.py`.
+
+## Running locally
+
+Start the database, then the backend, then the frontend (three terminals, from the repository root):
+
+```bash
+docker compose up -d db                                   # Postgres on localhost:5432
+cd backend && SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run     # API on http://localhost:8080
+cd frontend && npm install && npm run dev                 # app on http://localhost:5173
+```
+
+To create the admin account on startup, also set `FLAVORS_SEED_ADMIN_ENABLED=true`, `FLAVORS_ADMIN_EMAIL` and
+`FLAVORS_ADMIN_PASSWORD` for the backend.
+
+Password-reset email uses SMTP. For local testing, run an SMTP catcher on port 1025 or set the `MAIL_*`
+variables below to another server.
+
+To try the production image: `docker build -t flavors .`, then run it with the `PG*` variables pointing at a database.
+
+### Frontend
+
+```bash
+cd frontend
+npm install          # first time only
+npm run dev          # http://localhost:5173, proxies /api to the backend on :8080
+npm test             # Vitest
+npm run lint         # oxlint
+npm run format:check # Prettier (npm run format fixes)
+npm run build        # type-check + production build into frontend/dist
+```
+
+### Backend tests
+
+```bash
+cd backend      # from the repository root
+./mvnw verify    # unit tests + integration tests (*IT) against a throwaway Postgres
+```
+
+The tests start Postgres in Docker through Testcontainers, so Docker must be running and
+your user must be able to use it. On Linux: `sudo usermod -aG docker $USER`, then log out
+and back in. The first run downloads the `postgres:17-alpine` image.
+
+### Run the backend without a local database
+
+`backend/src/test/java/com/flavors/TestFlavorsApplication.java` starts the app against a
+Testcontainers Postgres. Run its `main` from VS Code, or use `./mvnw spring-boot:test-run`.
+
+## Branch conventions
+
+```
+main ◄── release/sprint-N ◄── develop ◄── EEC-NN-short-name
+```
+
+| Branch | Purpose | Created from | Merged into | Deploys to |
+|---|---|---|---|---|
+| `main` | What runs in production | (initial commit) | | **Production**, after a reviewer approves the deployment |
+| `release/sprint-N` | The sprint's release candidate, frozen at sprint end | `develop` | `main` via PR | |
+| `develop` | Integration branch; all finished work lands here | `main` | `release/sprint-N` via PR | **Staging**, automatically on every merge |
+| `EEC-NN-short-name` | One feature/story | `develop` | `develop` via PR | |
+
+Rules:
+
+- **Name feature branches after the Jira issue:** `EEC-NN-short-name`, lowercase words joined by hyphens.
+  Example: `EEC-27-foundation`. Jira links the branch to the issue automatically.
+- **Never push directly to `main` or `develop`.** Every change goes through a pull request
+  that needs **1 approval** and **passing CI**.
+- **PR titles:** `EEC-NN: short summary`, e.g. `EEC-27: Project foundation`.
+- **Commit messages:** start with the key, e.g. `EEC-27: Add audit log triggers`. Keep commits small,
+  with one logical step each, so reviewers can read them one at a time.
+- **Keep your branch current:** before opening a PR, merge (or rebase onto) the latest `develop`.
+- **Sprint end:** create `release/sprint-N` from `develop`, open a PR `release/sprint-N` → `main`,
+  and merge it after the demo check. Fixes found on the release branch go back into `develop` too.
+
+Typical flow:
+
+```bash
+git switch develop && git pull
+git switch -c EEC-31-creator-registration
+# ...work, commit...
+git push -u origin EEC-31-creator-registration
+# open a PR into develop on GitHub
+```
+
+## Contributing
+
+Read [Architecture.md](Architecture.md) first: it settles the schema, security and conventions. This
+section covers what you need day to day on top of it.
+
+### Database changes
+
+- The whole MVP schema already exists (V1–V5). Find your tables in
+  [Architecture.md §4.4](Architecture.md#44-which-story-uses-which-table) and check the comments in the
+  migration files: they say which rules the database enforces and which ones your code must enforce.
+- **Never edit a migration that is merged.** Add a new file `V<n>__<what>.sql`.
+- **Claim your version number in the team chat before you create the file.** Two branches that both add V6
+  make Flyway refuse to start for whoever merges second. If someone merged your number first, rename yours
+  to the next free one before merging.
+- Follow the conventions in [Architecture.md §4.1](Architecture.md#41-conventions) (cents as `bigint`,
+  `timestamptz`, `varchar` + `CHECK` for statuses, indexed foreign keys, no `ON DELETE CASCADE`).
+
+### Adding a feature (layers)
+
+The code is organised by layer, with the same package names everywhere (see
+[Architecture.md §3.1](Architecture.md#31-package-layout-n-layered)). For a story that adds, say, campaigns:
+
+| Layer | You add | Example to copy |
+|---|---|---|
+| `entity/` | `Campaign`, matching the table in the migration | `AppUser` |
+| `enums/` | `CampaignStatus` | `UserStatus` |
+| `repository/` | `CampaignRepository extends JpaRepository<Campaign, Long>` | `AppUserRepository` |
+| `service/` + `service/impl/` | `CampaignService` interface and `CampaignServiceImpl` (`@Service`, `@Transactional`) | `AuditLogger` / `AuditLoggerImpl` |
+| `dto/` | request and response records | `MeResponse` |
+| `mapper/` | `CampaignMapper` (`@Component`) | `MeMapper` |
+| `controller/` | `CampaignController` under `/api/brand/...` etc., calling the service and returning DTOs | `MeController` |
+| `exception/` | domain exceptions the service throws | `IdempotencyConflictException` |
+
+Controllers return DTOs, never entities. Tests go in the matching test package.
+
+### JPA entities
+
+- Write entities only for the tables your story uses, in `com.flavors.entity` (enums in `com.flavors.enums`).
+  [`AppUser`](../backend/src/main/java/com/flavors/entity/AppUser.java) is the example to copy.
+- Hibernate checks every entity against the schema at startup (`ddl-auto: validate`), and every integration
+  test starts the app. **One entity that doesn't match its table breaks every test**, so run
+  `./mvnw verify` before pushing.
+- Type mapping: `timestamptz` → `Instant`, `date` → `LocalDate`, `*_cents` → `long`, status columns →
+  an enum with `@Enumerated(EnumType.STRING)`, `jsonb` → `@JdbcTypeCode(SqlTypes.JSON)`.
+
+### Endpoints and security
+
+- Put each endpoint under the area of the role that may call it: `/api/creator/`, `/api/brand/`,
+  `/api/admin/`, or `/api/public/` for diner pages. `SecurityConfig` then returns 401/403 for you; don't add
+  role checks by hand.
+- Get the logged-in user with `@AuthenticationPrincipal CurrentUser user` (`user.getId()`, `user.getRole()`).
+- The role check doesn't know who owns what. "This campaign belongs to the current brand" (NF-1) is checked
+  in your service, using `user.getId()`.
+- Errors go back as JSON `ProblemDetail` (see [Architecture.md §5](Architecture.md#5-security--built)).
+- Frontend: every POST/PUT/PATCH/DELETE must send the value of the `XSRF-TOKEN` cookie in the
+  `X-XSRF-TOKEN` header, or it gets a 403. The API client in step 9 will do this for you.
+
+### Tests
+
+- **Controller tests** (`*Test`, fast, no database): `@WebMvcTest(YourController.class)` +
+  `@Import(SecurityConfig.class)` (plus any mapper the controller uses: `@WebMvcTest` only loads the web layer), logging in with
+  `.with(user(new CurrentUser(id, email, Role.BRAND, "x", true)))`. See
+  [`MeControllerTest`](../backend/src/test/java/com/flavors/controller/MeControllerTest.java).
+- **POST/PUT/DELETE in tests** need the CSRF cookie and header, as in
+  [`RoleGuardTest`](../backend/src/test/java/com/flavors/config/RoleGuardTest.java)
+  (`.cookie(new Cookie("XSRF-TOKEN", t)).header("X-XSRF-TOKEN", t)`). Spring's `csrf().asHeader()` helper
+  does **not** work with this setup.
+- **Database tests** (`*IT`): `@SpringBootTest` + `@Import(TestcontainersConfiguration.class)`. All tests share
+  one database and nothing is rolled back, so give each test its own data (e.g. random emails) and never rely
+  on a table being empty. See the tests in `backend/src/test/java/com/flavors/db/`.
+
+### Open decisions
+
+- **SPIKE-1** (which social platform) and **SPIKE-2** (which payment provider) are still open. The `platform`
+  and `provider` columns accept any text until then; don't hard-code one value.
+
+## Deployment setup (one-time, by the repository admin)
+
+The workflows in `.github/workflows/` deploy to Railway, but they need the following to exist first.
+Nothing here is in git because it is account configuration and secrets.
+
+**Railway** (https://railway.com)
+
+1. Create a project `flavors` with two environments, `staging` and `production`.
+2. In each environment add a **PostgreSQL** service and an **app** service. The app service builds from this
+   GitHub repository using `railway.json` (Dockerfile build, health check `/actuator/health`). Name it `app`, or set
+   the GitHub variable `RAILWAY_SERVICE` to its name.
+3. On each app service set the variables below. Reference the database service's variables rather than copying
+   values, so they follow the database:
+
+   | Variable | Value |
+   |---|---|
+   | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | `${{Postgres.PGHOST}}` etc. (Railway reference variables) |
+   | `FLAVORS_SEED_ADMIN_ENABLED` | `true` (can be switched off after the first start) |
+   | `FLAVORS_ADMIN_EMAIL`, `FLAVORS_ADMIN_PASSWORD` | the first admin's login; use a strong password |
+   | `FLAVORS_APP_BASE_URL` | the public app URL used in password-reset links |
+   | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | the SMTP server used for password-reset email |
+   | `FLAVORS_MAIL_FROM` | the From address for password-reset email |
+   | `SPRING_PROFILES_ACTIVE` | `prod` on the production environment: it loads `application-prod.yml`, which switches the Swagger docs off. Leave it unset (or `staging`) on staging, where the docs stay on |
+
+4. Generate a public domain for each app service (Settings, Networking).
+5. In each environment create a **project token** (Project settings, Tokens).
+
+**GitHub** (repository Settings)
+
+| Where | Name | Value |
+|---|---|---|
+| Secrets | `RAILWAY_TOKEN_STAGING` | the staging project token |
+| Secrets | `RAILWAY_TOKEN_PRODUCTION` | the production project token |
+| Variables | `STAGING_URL` | e.g. `https://flavors-staging.up.railway.app` (no trailing slash) |
+| Variables | `PRODUCTION_URL` | the production domain |
+| Variables | `RAILWAY_SERVICE` | only if the app service is not named `app` |
+| Environments | `production` | add **Required reviewers**, so a production deploy waits for approval |
+
+After CI has run once, add its checks (`backend`, `frontend`, `docker`) as **required status checks** in the branch
+protection rules of `main` and `develop`.
+
+## Environment variables
+
+Nothing secret is committed. Locally, the `dev` profile has defaults that match `docker-compose.yml`.
+On Railway, the variables are set per environment (staging, production).
+
+| Variable | Used for | Example / default |
+|---|---|---|
+| `SPRING_PROFILES_ACTIVE` | Which config profile to load: `dev`, `staging` or `prod` | `dev` |
+| `PORT` | HTTP port the app listens on (Railway sets it) | `8080` |
+| `PGHOST` | Postgres host | `localhost` |
+| `PGPORT` | Postgres port | `5432` |
+| `PGDATABASE` | Database name | `flavors` |
+| `PGUSER` | Database user | `flavors` |
+| `PGPASSWORD` | Database password | (local default from `docker-compose.yml`) |
+| `FLAVORS_SEED_ADMIN_ENABLED` | Create the admin account on startup if it doesn't exist | `false` |
+| `FLAVORS_ADMIN_EMAIL` | Email of the seeded admin (required when seeding is enabled) | `admin@flavors.local` |
+| `FLAVORS_ADMIN_PASSWORD` | Password of the seeded admin (required when seeding is enabled) | (never commit) |
+| `FLAVORS_APP_BASE_URL` | Public base URL used in password-reset links | `http://localhost:5173` |
+| `MAIL_HOST` | SMTP host | `localhost` |
+| `MAIL_PORT` | SMTP port | `1025` |
+| `MAIL_USERNAME` | SMTP username, when authentication is enabled | (empty) |
+| `MAIL_PASSWORD` | SMTP password, when authentication is enabled | (never commit) |
+| `MAIL_AUTH` | Enable SMTP authentication | `false` |
+| `MAIL_STARTTLS` | Enable SMTP STARTTLS | `false` |
+| `FLAVORS_MAIL_FROM` | From address for password-reset email | `no-reply@flavors.local` |
+
+The `PG*` names match what Railway's Postgres service exposes, so staging and production need no renaming.
+
+### Connecting Instagram (EEC-33, EEC-88)
+
+Creators connect their Instagram professional account through **Unified Login** (Meta no longer offers the older
+"Instagram Login" to new apps). All five variables are optional: without them the app starts normally, and
+*Connect Instagram* answers "not available yet" (HTTP 503).
+
+| Variable | Used for | Example / default |
+|---|---|---|
+| `FLAVORS_INSTAGRAM_CLIENT_ID` | The **Meta app id** (App settings → Basic) | (none) |
+| `FLAVORS_INSTAGRAM_CLIENT_SECRET` | The **Meta app secret**, same page | (never commit) |
+| `FLAVORS_INSTAGRAM_CONFIG_ID` | The configuration made in the Meta app (below) | (none) |
+| `FLAVORS_INSTAGRAM_REDIRECT_URI` | Where Meta sends the browser back. Must be registered exactly in the Meta app | `https://<app domain>/api/creator/social/instagram/callback` (local: `http://localhost:5173/api/creator/social/instagram/callback`) |
+| `FLAVORS_TOKEN_ENCRYPTION_KEY` | Encrypts the access tokens stored in `social_account`. 32 random bytes in Base64: `openssl rand -base64 32`. Use a different key per environment, and don't change it afterwards (stored tokens could no longer be read, and creators would have to reconnect) | (never commit) |
+
+**Setting up the Meta app (once)**
+
+1. developers.facebook.com → create an app → use case **Manage messaging & content on Instagram** → *API setup with Unified login*.
+2. Create a **configuration**: login variation *General*, access token *System-user token*, expiration **Never**, business asset
+   *Instagram account*, permissions **`instagram_basic`** and **`instagram_manage_insights`** only. Its id is `FLAVORS_INSTAGRAM_CONFIG_ID`.
+   (A token that expires would make every creator reconnect: the app does not renew it.)
+3. Register the redirect URL of every environment (localhost, staging, production) in the same page.
+4. In the app's *Roles*, add the Instagram accounts that will connect as **Instagram testers** and accept the invite in Instagram.
+   While the app is in Development mode only people with a role on it can connect.
+5. The Instagram account must be a professional (Creator or Business) account that belongs to a **business portfolio**: at login
+   the creator picks the portfolio and the account to share. No Facebook Page is needed.
+
+How it runs: *Connect* sends the browser to Facebook's login dialog with the configuration id. Meta redirects back with a one-time
+code, the server trades it for a system-user token (kept encrypted) and reads the shared account from
+`/me/assigned_instagram_accounts`. The token belongs to the creator's business portfolio and stops working only if she removes
+the app or moves the account; then the next daily pull shows "Needs reconnection".
+
+### Daily social refresh (EEC-37)
+
+Every connected account is pulled once a day. A failed
+pull keeps the last figures and shows "Needs reconnection". The job does nothing where the Instagram settings or
+`FLAVORS_TOKEN_ENCRYPTION_KEY` are missing, so a half-configured environment never flags anyone.
+
+| Variable | Used for | Default |
+|---|---|---|
+| `FLAVORS_SOCIAL_REFRESH_CRON` | When the job runs (Spring cron: seconds first) | `0 0 3 * * *` (03:00) |
+| `FLAVORS_SOCIAL_REFRESH_ZONE` | Time zone of the cron | `Asia/Beirut` |
+| `FLAVORS_SOCIAL_REFRESH_ENABLED` | `false` turns the job off | `true` |
+
+To try it locally, set the cron to every minute: `FLAVORS_SOCIAL_REFRESH_CRON="0 * * * * *"`.

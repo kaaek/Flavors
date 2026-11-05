@@ -1,0 +1,87 @@
+# Continuous integration, and the automatic deploy to staging. See docs/Architecture.md §11.
+name: CI
+
+on:
+  pull_request:
+  push:
+    # main is built by deploy-production.yml, which calls this workflow, so it isn't listed here
+    # (it would run twice).
+    branches: [develop, 'release/**']
+  workflow_call:
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      # The integration tests start Postgres through Testcontainers; GitHub's runners have Docker.
+      - run: ./mvnw -B verify
+        working-directory: backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Proves the production image still builds; nothing is pushed anywhere.
+      - run: docker build -t flavors:ci .
+
+  # Staging gets every merge to develop, but only after all three checks pass.
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [backend, frontend, docker]
+    runs-on: ubuntu-latest
+    environment: staging
+    # Deploys must not overlap, and a running deploy must not be cancelled half way.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    env:
+      # A Railway project token, scoped to the staging environment.
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Deploy to Railway (staging)
+        run: npx --yes @railway/cli up --ci --service "${{ vars.RAILWAY_SERVICE || 'app' }}" --environment staging
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "${{ vars.STAGING_URL }}/actuator/health" | grep -q '"status":"UP"'; then
+              echo "staging is up"; exit 0
+            fi
+            echo "not up yet (attempt $i)"; sleep 15
+          done
+          echo "staging did not become healthy"; exit 1

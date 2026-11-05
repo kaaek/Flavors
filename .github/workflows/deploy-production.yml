@@ -1,0 +1,46 @@
+# Production deploy. Runs when a release PR is merged into main; a reviewer must approve the
+# deployment (GitHub environment "production") before anything is released. See docs/Architecture.md §11.
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  # Manual fallback, e.g. to redeploy after fixing a Railway setting.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # The same checks as on every PR, run again on the exact commit being released.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    # The environment's "required reviewers" rule makes the job wait here for a human approval.
+    environment: production
+    env:
+      # A Railway project token, scoped to the production environment.
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Deploy to Railway (production)
+        run: npx --yes @railway/cli up --ci --service "${{ vars.RAILWAY_SERVICE || 'app' }}" --environment production
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS "${{ vars.PRODUCTION_URL }}/actuator/health" | grep -q '"status":"UP"'; then
+              echo "production is up"; exit 0
+            fi
+            echo "not up yet (attempt $i)"; sleep 15
+          done
+          echo "production did not become healthy"; exit 1

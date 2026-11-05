@@ -1,0 +1,115 @@
+/* Brand foundation (EEC-86). tokens.css and components.css are copies of design/: edit them there. */
+@import './styles/tokens.css';
+@import './styles/components.css';
+
+/* Base element styles, so pages written with plain markup already look on-brand.
+   New pages should prefer the fl- classes from design/components.html; these rules are the safety net. */
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: 400 var(--font-size-md) / var(--line-height-normal) var(--font-body);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: var(--letter-spacing-display);
+  line-height: var(--line-height-tight);
+}
+
+a {
+  color: var(--color-link);
+  text-underline-offset: 3px;
+}
+
+main {
+  max-width: 48rem;
+  margin: var(--space-8) auto;
+  padding: 0 var(--space-4);
+}
+
+form,
+label,
+.branch-fields {
+  display: grid;
+  gap: var(--space-2);
+}
+
+form {
+  gap: var(--space-4);
+}
+
+label {
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  min-height: var(--layout-touch-target);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* A bare <button> is the primary action; secondary buttons should use .fl-btn--outline etc. */
+button {
+  font: 700 var(--font-size-sm) / 1 var(--font-body);
+  min-height: var(--layout-touch-target);
+  padding: 0 var(--space-5);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+button:disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+fieldset {
+  display: grid;
+  gap: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: left;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+[role='alert'] {
+  color: var(--color-danger);
+  font-weight: 700;
+}

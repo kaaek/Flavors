@@ -1,0 +1,6 @@
+# Line endings the scripts need, regardless of contributors' OS settings.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.jar binary

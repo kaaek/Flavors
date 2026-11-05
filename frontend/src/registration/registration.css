@@ -1,0 +1,68 @@
+.fl-registration {
+  max-width: var(--layout-content-max);
+}
+
+.fl-registration__success {
+}
+
+.fl-registration__logo {
+  display: inline-block;
+  margin-bottom: var(--space-6);
+}
+
+.fl-registration__logo img {
+  height: var(--space-10);
+  width: auto;
+  display: block;
+}
+
+.fl-registration__intro {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.fl-registration__intro h1 {
+  font-size: var(--font-size-4xl);
+  margin: 0 0 var(--space-3);
+}
+
+.fl-registration__intro p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-lg);
+  margin: 0;
+}
+
+.fl-registration__art {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.fl-registration__form {
+  max-width: var(--layout-prose-max);
+  margin: 0 auto;
+}
+
+.fl-registration__success {
+  max-width: var(--layout-prose-max);
+}
+
+.fl-registration__success-art {
+  width: var(--layout-art-small);
+  max-width: 100%;
+  display: block;
+}
+
+@media (max-width: 48rem) {
+  .fl-registration__intro {
+    grid-template-columns: 1fr;
+  }
+
+  .fl-registration__intro h1 {
+    font-size: var(--font-size-3xl);
+  }
+}

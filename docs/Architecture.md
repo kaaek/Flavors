@@ -1,0 +1,529 @@
+# Flavors architecture
+
+This is how Flavors is built and why. Each section says whether it is **built** or still **planned**;
+planned parts are the agreed design for EEC-27 (project foundation) and later stories.
+
+## 1. Overview
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        SPA["React SPA<br/>(creator portal, brand dashboard,<br/>admin console, public diner pages)"]
+    end
+    subgraph Railway["Railway (staging / production)"]
+        APP["Spring Boot app<br/>serves the SPA + /api/**"]
+        DB[("PostgreSQL 17")]
+    end
+    SPA -- "same origin: HTTPS, session cookie" --> APP
+    APP -- JDBC --> DB
+```
+
+- **One deployable.** The Spring Boot jar serves the built React files *and* the JSON API from the
+  same origin. So there is no CORS, the browser sends the session cookie on its own, and each
+  environment is one service plus one database.
+- **Monorepo:** `backend/` (Maven), `frontend/` (Vite), `docs/`, with one `Dockerfile` at the root
+  that builds both.
+
+| Layer | Choice | Why |
+|---|---|---|
+| Language/runtime | Java 25 (LTS) | Agreed by the team; current LTS |
+| Framework | Spring Boot 4.1 (Maven) | Agreed stack; Maven is the most familiar build tool for the team |
+| Database | PostgreSQL 17 | Agreed stack; triggers make the append-only audit log possible |
+| Migrations | Flyway (SQL files) | The schema is reviewable SQL, versioned in git |
+| Frontend | React + TypeScript + Vite | Lighter than Angular for a forms-and-dashboards app |
+| Hosting | Railway | Docker deploys, managed Postgres, built-in environments, low cost |
+| CI/CD | GitHub Actions | Lives next to the code; free for this use |
+
+## 2. Environments and branches
+
+| Environment | Runs | Deployed when | Database |
+|---|---|---|---|
+| local | `./mvnw spring-boot:run` (profile `dev`) + `npm run dev` | — | Docker Compose Postgres, or Testcontainers |
+| staging | Railway `staging` | Every push to `develop` (after CI passes) | Railway Postgres (staging) |
+| production | Railway `production` | Push to `main` (a release PR was merged), after a reviewer approves the deployment | Railway Postgres (production) |
+
+Branch model: `main` ← `release/sprint-N` ← `develop` ← `EEC-NN-short-name`. Details are in
+[README.md](README.md#branch-conventions).
+
+## 3. Backend
+
+### 3.1 Package layout (n-layered)
+
+Code is grouped by **layer**, not by feature: every story puts its classes in the same named packages.
+
+```
+com.flavors
+├── FlavorsApplication
+├── controller/     REST endpoints (@RestController): MeController, PortfolioController
+├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService, PortfolioService
+│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl, PortfolioServiceImpl
+├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository, CreatorProfileRepository, SocialAccountRepository, CampaignRepository, PortfolioFeatureRepository
+├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, PortfolioFeature
+├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus
+├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser, PortfolioResponse, UpdatePortfolioRequest
+├── mapper/         entity/principal <-> DTO converters: MeMapper, PortfolioMapper
+├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder, SchedulingConfig
+├── exception/      domain exceptions and the @RestControllerAdvice (GlobalExceptionHandler): IdempotencyConflictException, InvalidPortfolioException, PortfolioNotAvailableException, AlreadyFeaturedException, FeatureNotFoundException
+└── util/           helpers and value objects: Money
+```
+
+The package is `enums`, not `enum`, because `enum` is a reserved word in Java.
+
+**Rules** (who may call whom):
+
+- A request flows `controller` → `service` → `repository`. A controller never touches a repository, and a
+  repository never calls up into a service.
+- Controllers and services depend on service **interfaces** (`service/`); the implementation lives in
+  `service/impl/` and is named `<Interface>Impl`. A class Spring already defines the contract for
+  (`UserDetailsService`) only needs the `impl` class.
+- **Entities are never sent to or read from the browser directly.** Controllers accept and return `dto/`
+  objects and `mapper/` converts, so a table change can't leak into the API by accident (and a password hash
+  can't be serialized). A mapper is a plain `@Component`.
+- `@Transactional` goes on service implementations, not on controllers or repositories.
+- `entity/` holds only `@Entity` classes. Their enums go in `enums/`.
+- `util/` and `exception/` depend on nothing else in the app, so any layer may use them.
+- `config/` holds Spring wiring and startup runners (`@Configuration`, `ApplicationRunner`); no business rules.
+- Tests mirror the main packages (`service/impl/AuditLoggerImplIT` tests `service/impl/AuditLoggerImpl`);
+  the schema tests live in `db/`.
+
+### 3.2 Configuration — built
+
+- `application.yml` holds the shared settings. Profiles `dev`, `staging` and `prod` override them, selected with
+  `SPRING_PROFILES_ACTIVE`.
+- The datasource is built from the variables Railway exposes (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`,
+  `PGPASSWORD`). The base file has **no defaults**, so a misconfigured environment fails at startup; only
+  `application-dev.yml` has local defaults.
+- `ddl-auto: validate`: Flyway owns the schema, and Hibernate only checks that entities match it.
+- `open-in-view: false`; timestamps are read and written in UTC.
+- `server.forward-headers-strategy: framework`: Railway terminates HTTPS at its proxy, so the app reads
+  `X-Forwarded-*` to know the original request was HTTPS.
+- Actuator exposes only `/actuator/health` (Railway's health check and the CI smoke test poll it).
+- The full list of environment variables is in [README.md](README.md#environment-variables).
+
+### 3.3 Testing — built
+
+- **Unit tests** (`*Test`) run in `mvn test` (Surefire). **Integration tests** (`*IT`) run in `mvn verify`
+  (Failsafe).
+- Tests that touch the database import `TestcontainersConfiguration`, which starts a throwaway
+  `postgres:17-alpine`; `@ServiceConnection` points the datasource at it. Tests therefore run the real
+  migrations against real Postgres, so the triggers, constraints and SQL behave as they do in production.
+- `TestFlavorsApplication` runs the app locally against a Testcontainers database.
+
+## 4. Data model — built
+
+### 4.1 Conventions
+
+| Topic | Rule | Why |
+|---|---|---|
+| Schema changes | Only through Flyway files `backend/src/main/resources/db/migration/V<n>__<name>.sql`. **Never edit a migration that is already merged**; add a new one | Flyway checksums applied files; staging/prod already ran them |
+| Primary keys | `bigint generated always as identity` | Simple and compact; public-facing identifiers (storefront slug, QR token) are separate random values |
+| Time | `timestamptz`, stored in UTC | No time-zone ambiguity; the UI formats for display |
+| Money | `bigint` columns named `*_cents`, USD only | No floating-point rounding errors in fees and ROI |
+| Status/enum columns | `varchar` + `CHECK (col IN (...))` | Easier to evolve and to map with JPA than Postgres enum types |
+| Foreign keys | Always indexed; **no `ON DELETE CASCADE` on business data** | NF-8: campaign records are kept 5 years, and nothing is hard-deleted by accident |
+| JPA entities | Written by the story that first uses a table | The schema is agreed up front; code arrives with the behaviour |
+
+### 4.2 Tables by migration
+
+The full MVP model is created in EEC-27 so that every story builds on one agreed schema.
+
+**V1 — foundation** (built: `V1__foundation.sql`, tested by `AuditLogImmutabilityIT` and `FoundationSchemaIT`)
+- `app_user`: email (unique, case-insensitive), password_hash, role ∈ {CREATOR, BRAND, ADMIN},
+  status ∈ {ACTIVE, SUSPENDED}, created_at, updated_at
+- `password_reset_token`: user_id, token_hash, expires_at, used_at (UC-F19.3)
+- `audit_log`: append-only, see §6
+- `idempotency_key`: see §7
+- Spring Session JDBC tables (`spring_session`, `spring_session_attributes`)
+
+**V2 — accounts** (built: `V2__accounts.sql`, tested by `AccountsSchemaIT`; the `campaign_id` foreign keys
+of `social_post_metric` and `profile_warning` are added in V3, once `campaign` exists)
+- `creator_profile`: user_id (PK/FK), display_name, bio, food_category, location, price_min_cents,
+  price_max_cents (CHECK min ≤ max), verification_status ∈ {PENDING_APPROVAL, APPROVED, REJECTED},
+  rejection_reason, reviewed_by, reviewed_at, storefront_slug (unique)
+- `social_account`: creator_id, platform, external_id, access_token_enc, status ∈ {CONNECTED,
+  NEEDS_RECONNECTION}, followers, engagement_rate, last_pulled_at
+- `social_post_metric`: social_account_id, external_post_id, campaign_id (nullable), views, likes,
+  comments, shares, pulled_at
+- `brand`: user_id (PK/FK), business_name, contact_person, phone
+- `branch`: brand_id, name, location
+- `profile_warning`: user_id, campaign_id, reason, created_at (F9 cancellation warnings)
+
+**V3 — campaigns** (built: `V3__campaigns.sql`, tested by `CampaignsSchemaIT`; also adds the `campaign_id`
+foreign keys left open in V2. A draft may be incomplete; a CHECK requires creator, price and dates once it leaves `DRAFT`)
+- `campaign`: brand_id, creator_id, name, status ∈ {DRAFT, AWAITING_CREATOR_RESPONSE, COUNTERED,
+  REJECTED, DECLINED, EXPIRED, AWAITING_PAYMENT, ACTIVE, PROOF_SUBMITTED, CORRECTIONS_REQUESTED,
+  DISPUTED, COMPLETED, CANCELLED, REMOVED}, price_offered_cents, agreed_price_cents, start_date,
+  last_posting_date, posting_extension_used, content_requirements, sent_at,
+  response_deadline (Timer A), accepted_at, payment_deadline (Timer B),
+  proof_review_deadline (Timer C), correction_rounds_used (CHECK ≤ 2), removed_reason,
+  created_at, updated_at
+- `campaign_branch`, `campaign_deliverable` (platform, type, count)
+- `counter_offer`: campaign_id (**unique**, so there is only one counter-offer), price_cents, deliverables (jsonb),
+  status, decided_at
+- `cancellation`: campaign_id, cancelled_by, stage, outcome, created_at
+- `review`: campaign_id (unique), rating (CHECK 1–5), text, created_at
+
+**V4 — offers and redemptions** (built: `V4__offers_redemptions.sql`, tested by `OffersSchemaIT`; a partial
+unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is a keyed HMAC)
+- `offer`: campaign_id (unique), discount_percent (CHECK 1–100), expires_at, valid_days (bitmask),
+  valid_from / valid_to (time), all_branches, min_purchase_cents, max_redemptions,
+  per_person_limit (default 1)
+- `offer_branch`
+- `offer_claim`: offer_id, phone_enc (bytea), phone_hash (for lookups, NF-14), consent_at,
+  qr_token (unique), status ∈ {UNUSED, REDEEMED}, created_at
+- `redemption`: claim_id (**unique**, so a double scan registers once, FR-F11.7), offer_id,
+  campaign_id, creator_id, brand_id, branch_id, bill_cents, discount_cents, redeemed_at
+- `scan_failure`: qr_token, branch_id, bill_cents, reason, created_at (FR-F11.5)
+
+**V5 — payments, proof, disputes, notifications** (built: `V5__payments_proof_disputes.sql`, tested by
+`PaymentsProofDisputesSchemaIT`; proof rounds are 1–3, i.e. the first submission plus up to 2 corrections)
+- `escrow_payment`: campaign_id (unique), status ∈ {PENDING, HELD, RELEASED, FROZEN, REFUNDED},
+  amount_cents, fee_cents, creator_net_cents, refunded_cents, provider, provider_payment_id (unique),
+  held_at, released_at
+- `payment_transaction`: escrow_id, type ∈ {CHARGE, RELEASE, REFUND}, status, amount_cents,
+  provider_ref (unique), idempotency_key, created_at (history for F23)
+- `proof_submission`: campaign_id, round, status ∈ {DRAFT, SUBMITTED}, submitted_at; unique
+  (campaign_id, round) for submitted rows
+- `proof_link`, `proof_file` (storage_key, content_type, size_bytes)
+- `proof_review`: submission_id, decision ∈ {APPROVED, CORRECTIONS_REQUESTED, REJECTED}, reason,
+  decided_by, decided_at
+- `dispute`: campaign_id (unique), origin ∈ {REJECTION, CANCELLATION}, opened_at, evidence_deadline,
+  status ∈ {OPEN, DECIDED}, creator_share_percent (CHECK 0–100), decided_by, decided_at
+- `dispute_evidence`, `notification` (user_id, campaign_id, type, message, read_at, created_at)
+
+**V6 — portfolio features** (built: `V6__portfolio_features.sql`, tested by `PortfolioFeatureIT`)
+- `portfolio_feature`: campaign_id (PK and FK, so a campaign is featured at most once), creator_id (FK to
+  `creator_profile`), created_at. The rules that span tables (the campaign must be COMPLETED and must belong to the
+  creator) are enforced by `PortfolioServiceImpl`, not by the database.
+
+### 4.3 ER diagram
+
+Tables and their foreign keys (columns are listed in §4.2 and in the migrations). `||--o{` reads
+"one to many", `||--o|` "one to at most one". Left out for readability: the Spring Session tables,
+`idempotency_key` (no foreign keys), the `reviewed_by`/`decided_by`/`cancelled_by` links to `app_user`,
+and the ids `redemption` copies from its claim.
+
+```mermaid
+erDiagram
+    app_user ||--o{ password_reset_token : "resets password with"
+    app_user ||--o{ audit_log : "acts in"
+    app_user ||--o| creator_profile : "is a"
+    app_user ||--o| brand : "is a"
+    app_user ||--o{ profile_warning : "receives"
+    app_user ||--o{ notification : "receives"
+
+    creator_profile ||--o{ social_account : connects
+    social_account ||--o{ social_post_metric : "has posts"
+    brand ||--o{ branch : has
+
+    brand ||--o{ campaign : creates
+    creator_profile ||--o{ campaign : "is hired for"
+    campaign ||--o{ campaign_branch : "runs at"
+    branch ||--o{ campaign_branch : "listed in"
+    campaign ||--o{ campaign_deliverable : requires
+    campaign ||--o| counter_offer : "may get"
+    campaign ||--o{ cancellation : "may have"
+    campaign ||--o| review : "may get"
+    creator_profile ||--o{ portfolio_feature : features
+    campaign ||--o| portfolio_feature : "may be featured as"
+    campaign ||--o{ social_post_metric : "is promoted by"
+    campaign ||--o{ profile_warning : "caused"
+
+    campaign ||--o| offer : has
+    offer ||--o{ offer_branch : "valid at"
+    branch ||--o{ offer_branch : "listed in"
+    offer ||--o{ offer_claim : "claimed as"
+    offer_claim ||--o| redemption : "redeemed as"
+    branch ||--o{ redemption : "happens at"
+    branch ||--o{ scan_failure : "logs"
+
+    campaign ||--o| escrow_payment : "paid through"
+    escrow_payment ||--o{ payment_transaction : "moves money by"
+    campaign ||--o{ proof_submission : "proven by"
+    proof_submission ||--o{ proof_link : contains
+    proof_submission ||--o{ proof_file : contains
+    proof_submission ||--o| proof_review : "decided by"
+    campaign ||--o| dispute : "may have"
+    dispute ||--o{ dispute_evidence : collects
+    campaign ||--o{ notification : "is about"
+```
+
+### 4.4 Which story uses which table
+
+Each story writes the JPA entities for its tables (§4.1). Story IDs are from the spec.
+
+| Tables | Stories |
+|---|---|
+| `app_user`, `audit_log`, `idempotency_key`, Spring Session | TECH-1 (EEC-27); then UC-F19.1–F19.3, F21.1 |
+| `password_reset_token` | UC-F19.3 |
+| `creator_profile` | UC-F19.1, F20.1, F1.1, F1.2, F2.1, F17.1 |
+| `social_account`, `social_post_metric` | UC-F19.4, F1.3, F13.1, F14.1 |
+| `brand`, `branch` | UC-F19.2 |
+| `campaign`, `campaign_branch`, `campaign_deliverable` | UC-F3.1, F4.1, F22.1 |
+| `counter_offer` | UC-F4.1 |
+| `cancellation`, `profile_warning` | UC-F9.1 |
+| `review` | UC-F1.4 |
+| `portfolio_feature` | UC-F1.2, F1.1 |
+| `offer`, `offer_branch` | UC-F10.1, F17.1 |
+| `offer_claim` | UC-F10.2 |
+| `redemption`, `scan_failure` | UC-F11.1, F12.1, F13.1, F14.1 |
+| `escrow_payment`, `payment_transaction` | UC-F7.1, F7.2, F23.1, F25.1 |
+| `proof_submission`, `proof_link`, `proof_file` | UC-F5.1 |
+| `proof_review` | UC-F6.1 |
+| `dispute`, `dispute_evidence` | UC-F8.1 |
+| `notification` | UC-F18.1 |
+
+Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and a
+read-only `campaign` (EEC-36). Later stories add columns and methods to these classes instead of writing second copies.
+
+## 5. Security — built
+
+- **Roles:** `CREATOR`, `BRAND`, `ADMIN` (Spring authorities `ROLE_*`). Diners and cashiers have
+  no account: diner pages are *public* (unauthenticated), and the cashier's scan page runs inside
+  the restaurant's BRAND session.
+- **URL rules** (`SecurityFilterChain`):
+
+  | Path | Access |
+  |---|---|
+  | `/api/public/**` | everyone (storefront, offer claim, QR page) |
+  | `/api/creator/**` | CREATOR |
+  | `/api/brand/**` | BRAND |
+  | `/api/admin/**` | ADMIN |
+  | other `/api/**` | any logged-in user |
+  | `/actuator/health` | everyone |
+  | other `/actuator/**` | nobody (not exposed anyway; denied in case one is exposed by mistake) |
+  | everything else (SPA files and routes) | everyone |
+
+- **Finer checks** use method security (`@PreAuthorize`) inside features, e.g. "this campaign
+  belongs to the current brand" (NF-1).
+- **Errors:** JSON `ProblemDetail`. **401** means not logged in, **403** means logged in with the wrong role.
+  There are no redirects to a login page; the SPA decides what to show.
+- **Sessions:** server-side sessions stored in Postgres (Spring Session JDBC), so users stay logged in
+  across redeploys. The cookie is HttpOnly, Secure (staging/prod) and SameSite=Lax.
+- **CSRF:** on, using Spring Security's SPA mode. The token travels in the `XSRF-TOKEN` cookie (readable by
+  JavaScript) that the frontend echoes back in the `X-XSRF-TOKEN` header on every POST/PUT/PATCH/DELETE.
+  `<AuthProvider>`'s initial `GET /api/me` forces Spring's SPA support to write that cookie before the first login.
+- **No request cache, form login, HTTP Basic or default logout:** they are for server-rendered pages. The
+  request cache would also create a session row for every anonymous 401.
+- **Passwords:** BCrypt (delegating encoder, hashes stored as `{bcrypt}...`). `AppUserDetailsServiceImpl` loads
+  accounts case-insensitively by email; a suspended user loads as disabled, so login is refused (FR-F19.12).
+- **Logged-in user:** `CurrentUser` (id, email, role), injected with `@AuthenticationPrincipal`. It is
+  Java-serialized into the session table, so change its fields with care.
+- **Tests:** `RoleGuardTest` (every role × area, 401/403 bodies, CSRF), `MeControllerTest`, `SecurityIT`
+  (health public, no session on 401, CSRF cookie), `AppUserDetailsServiceImplIT`.
+- **Authentication endpoints:** UC-F19.3 adds session login and logout plus one-use, SHA-256-hashed password-reset
+  tokens that expire after one hour. A newer request invalidates all earlier unused tokens. A successful reset
+  invalidates all of that user's sessions. Reset mail is sent only after the token transaction commits; mail
+  failures are logged without changing the generic public response, which is identical whether the email exists.
+- **MVP login-abuse limit:** failed logins are audited, but automated rate limiting and account lockout are not
+  included in the MVP. They must be added before exposing the application to unrestricted public traffic.
+
+## 6. Audit log (NF-7) — built
+
+"Every important action stores user, date and time; these records cannot be edited or deleted."
+
+- **Table** `audit_log`: id, occurred_at (DB clock, `now()`), actor_user_id (nullable),
+  actor_label (e.g. email or `system`), action, entity_type, entity_id, details (jsonb).
+- **Guarantee at the database level:** a `BEFORE UPDATE OR DELETE` row trigger and a `BEFORE TRUNCATE`
+  statement trigger raise an exception. This holds even if application code tries, through JPA,
+  JDBC or a mistaken bulk query.
+- **App level:** `AuditLogEntry` is `@Immutable` with no setters. `AuditLogRepository` extends Spring's
+  bare `Repository` and exposes only `save` and finders, so there is no delete or update to call.
+- **API:** `AuditLogger.record(action, entityType, entityId, details)` takes the actor from the security
+  context (or `system` for jobs and the seeder). It joins the caller's transaction, so the audit row
+  and the business change commit or roll back together; it uses `Propagation.MANDATORY`, so calling it
+  outside a transaction fails instead of auditing something that may roll back. `details` is a
+  `Map<String, Object>` stored as jsonb.
+- **Tests:** `AuditLogImmutabilityIT` (database triggers block UPDATE/DELETE/TRUNCATE) and `AuditLoggerImplIT`
+  (actor, `system`, rollback together, no transaction, JPA cannot change an entry, no delete methods).
+
+## 7. Idempotency (NF-6) — built
+
+"A failed payment or decision is retried without creating a duplicate."
+
+`IdempotencyService.execute(scope, key, requestFingerprint, action, resultType)`:
+
+1. `INSERT ... ON CONFLICT DO NOTHING` an `IN_PROGRESS` row for (scope, key), then
+   `SELECT ... FOR UPDATE`. The row lock makes concurrent retries wait for each other.
+2. If the row is `COMPLETED` with the same fingerprint, return the stored response without running the action.
+3. If the fingerprint differs (same key reused for a different request), reject with a conflict.
+4. Otherwise run the action, store its response as JSON and mark the row `COMPLETED`, all in one
+   transaction. If the action throws, everything rolls back and a later retry can run it again.
+
+Notes: the service uses plain SQL (`JdbcTemplate`), not JPA, because it relies on `ON CONFLICT` and `FOR UPDATE`;
+the request fingerprint is stored as a SHA-256 hash; and the action runs in the same transaction, so it must only
+do database work (an external call inside it cannot be rolled back). Mapping `IdempotencyConflictException` to an
+HTTP 409 comes with the global exception handler. **Tests:** `IdempotencyServiceImplIT` (repeat, conflict, other scope,
+retry after failure, 8 concurrent retries).
+
+Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provider webhooks
+(scope `webhook:<provider>`, key = event id, EX-F7.1.3), and release, refund and dispute decisions
+(UC-F7.2, F8.1). QR double scans are handled by the `redemption.claim_id` unique constraint instead.
+
+## 8. Admin account seeding — built
+
+- `AdminSeeder` runs at startup when `FLAVORS_SEED_ADMIN_ENABLED=true`. It reads
+  `FLAVORS_ADMIN_EMAIL` / `FLAVORS_ADMIN_PASSWORD`, and creates the ADMIN user (BCrypt hash) plus an
+  `ADMIN_SEEDED` audit entry **only if that email doesn't exist yet**, so it is safe to run on every start.
+  It fails fast if enabled without credentials.
+- No password is ever in git or in a migration.
+- It uses the Spring property names `flavors.seed.admin.enabled`, `flavors.admin.email` and `flavors.admin.password`
+  (the environment variables above, by Spring's relaxed binding). The account and its audit entry are created in one
+  transaction, and a startup race with another instance is tolerated (the unique email index decides).
+- **Tests:** `AdminSeederIT` (account + BCrypt hash + `ADMIN_SEEDED` entry, running again changes nothing, fails fast
+  without credentials).
+
+## 9. Money and language — built
+
+- The API exchanges **integer cents** only. The backend `Money` value object (long cents, HALF_UP percentage
+  maths) is used for fees (15%), refunds and ROI.
+- `Money.percent(n)` rounds HALF_UP to the cent. To split an amount, compute one part with `percent` and the other
+  with `minus`, so the parts always add up to the total (tested for fee + net). Overflow throws. Test: `MoneyTest`.
+- The frontend formats with `Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'})`, e.g.
+  `formatUSD(123450)` → `$1,234.50`. Locale and currency constants live in `frontend/src/lib/locale.ts`; `money.ts` is tested by `money.test.ts`.
+- The UI is English only, with no i18n framework yet; Arabic is out of the MVP (NF-16).
+
+## 10. Frontend — built
+
+- Vite + React + TypeScript, React Router, Vitest + Testing Library, Prettier. The linter is **oxlint**, not ESLint:
+  it is what the current Vite template ships with, and it needs no config files for our rules.
+  Run from `frontend/`: `npm run lint`, `npm test`, `npm run format:check`, `npm run build`.
+- `api/client.ts`: a fetch wrapper that sends credentials and the CSRF header and parses ProblemDetail errors.
+- `<AuthProvider>` asks `GET /api/me` once; `useMe()` returns `{ state, refresh }` (`loading`, `anonymous`, `authenticated`,
+  `error`). `<RequireRole role="...">` redirects to `/login` on 401 and shows "Not allowed" for the wrong role (403). A
+  server failure is its own state, so an outage never looks like being logged out.
+- **App shell and navigation (EEC-86):** every logged-in page lives inside `layout/AppShell.tsx`, the top bar of `design/screens.html`
+  (logo to the role's home, one link per page, the role chip, the email, Log out) plus the page. `App.tsx` mounts one shell per
+  role area (`<RoleArea role="...">` = `RequireRole` + `AppShell`), so the bar is only ever shown to the right role.
+  **`layout/navItems.ts` is the single list of top bar links**: a new page is a `<Route>` in `App.tsx` and, if it belongs in
+  the bar, one line there. Only pages that exist are listed, so no link leads to a dead end. `auth/homeByRole.ts` says where each
+  role lands (login, the logo, "Go to my home", and `/` for someone already logged in).
+
+  | Role | Pages (top bar) | Also reachable |
+  |---|---|---|
+  | Creator | Home `/creator`, Portfolio `/creator/portfolio`, Social accounts `/creator/social`, Profile status `/creator/status` | Connect Instagram returns to `/creator/social?instagram=<result>` |
+  | Brand | Home `/brand`, Account `/brand/account` | |
+  | Admin | Home `/admin`, Approvals `/admin/creators` (with the pending count) | |
+  | Public | `/`, `/login`, `/forgot-password`, `/reset-password`, `/register`, `/register/brand`, `/register/creator` | `/s/:slug` (storefront) and `/claim/:token` (diner QR page) are placeholders |
+
+  Each role has a home page built from endpoints that exist (`CreatorHome`, `BrandHome`, `AdminHome`). An unknown address inside a
+  role's area shows "Page not found" inside the bar; elsewhere it shows it alone. `linkAudit.test.tsx` starts at each role's home,
+  follows every link on every page it reaches and fails on a dead end or a top bar page that cannot be reached.
+- In dev, Vite proxies `/api` to `localhost:8080`. In production, `SpaForwardingConfig` answers non-API,
+  non-file paths with `index.html` so client-side routes work on reload. It is a fallback inside the static-file
+  handler, not a `@GetMapping` controller: controllers are matched before static files, so a catch-all controller
+  would also swallow `/assets/*.js`. A missing file (a path with a dot) or a missing `/api/**` path stays a 404.
+  Tested by `SpaForwardingIT` against a placeholder `static/index.html` in the test resources.
+- **Brand and styling (EEC-86):** no UI framework; the design system in `design/` is the UI kit. `index.css` imports
+  `styles/tokens.css` (semantic tokens) and `styles/components.css` (`fl-` classes), and styles bare elements as a safety
+  net. These two files and the logo/icons in `public/` are **copies** made by `design/sync-to-frontend.sh`, because the
+  Docker build context is `frontend/` only. Fonts (Lato, Marcellus) load from Google Fonts in `index.html`; offline they fall
+  back to system fonts. Usage rules: `docs/README.md`, "Styling pages".
+- **Money input:** `lib/money.ts` formats integer cents for display; `lib/moneyInput.ts` goes the other way, reading dollars
+  typed by a person into integer cents by string maths (never `* 100`, which gives 19.99 * 100 = 1998.9999...) and back.
+- Pages that exist: auth, both registrations, the three role homes, brand account, creator status, Social accounts, Manage Portfolio
+  (`creator/PortfolioPage.tsx`, see §12) and admin approvals. All use the design's `fl-` components; page layout helpers
+  (`fl-page`, `fl-stack`, `fl-row`, `fl-stats`, `fl-kv`, `fl-pagehead`) and the one cream background are in `layout/layout.css`.
+  Icons: `<Icon name="plus"/>` draws from `public/icons.svg` (copied from `design/icons`).
+- **Tests:** `AppShell.test.tsx` and `linkAudit.test.tsx` (navigation), `RequireRole.test.tsx` (loading, right role, 401, wrong role, server error), `client.test.ts` (CSRF header,
+  ProblemDetail errors), `money.test.ts`, `moneyInput.test.ts`, `PortfolioPage.test.tsx`. When a test mocks `apiFetch`, write
+  `beforeEach(() => { mock.mockReset() })` with braces: Vitest runs a function returned from `beforeEach` as a cleanup, and
+  `mockReset()` returns the mock.
+
+## 11. Build, deploy and CI/CD — built (Railway and GitHub setup is manual)
+
+- **Dockerfile** (multi-stage): `node:22` builds the frontend → Maven (Temurin 25) packages the jar
+  with the SPA in `static/` → `eclipse-temurin:25-jre` runs it as a non-root user on `$PORT`.
+- **`docker-compose.yml`**: local Postgres 17 only (built). **`railway.json`** (built): Dockerfile build, health check `/actuator/health`.
+  The image build skips tests (`-DskipTests`); CI runs them separately.
+- **`.github/workflows/ci.yml`**, on PRs and pushes to `develop` and `release/**` (pushes to `main` run it through `deploy-production.yml`, so it doesn't run twice):
+  `backend` (`./mvnw -B verify`), `frontend` (lint, test, build) and `docker` (image builds).
+  `deploy-staging` runs only on push to `develop`, after all three pass: it runs `railway up` to staging and then a health smoke test.
+- **`.github/workflows/deploy-production.yml`**: on push to `main`, plus `workflow_dispatch` as a
+  manual fallback. It re-runs CI, then waits for the GitHub `production` environment's required reviewer
+  before running `railway up` to production and a health smoke test.
+- **Railway** (manual setup): project `flavors` with environments `staging` and `production`, each with a
+  Postgres service and an `app` service (Dockerfile build, health check `/actuator/health`). GitHub
+  secrets `RAILWAY_TOKEN_STAGING` and `RAILWAY_TOKEN_PRODUCTION` hold the deploy tokens.
+
+## 12. Creator portfolio (UC-F1.2) — built
+
+The creator's Manage Portfolio page and API (EEC-36). Only an **approved** creator has a portfolio (FR-F20.4); every call below
+returns 409 before approval.
+
+| Method and path | Who | What |
+|---|---|---|
+| `GET /api/creator/portfolio` | CREATOR | Her profile (bio, category, location, price range in cents), connected social accounts with followers, engagement and "last updated", and her COMPLETED campaigns with a `featured` flag |
+| `PUT /api/creator/portfolio` | CREATOR | Full replace of bio, category, location and price range. Never touches the featured campaigns |
+| `PATCH /api/creator/portfolio` | CREATOR | Partial edit: only the fields sent change, and the merged result is validated |
+| `POST /api/creator/portfolio/featured` | CREATOR | Body `{campaignId}`. Features one of her COMPLETED campaigns: 201, 400 if not completed or not hers (EX-F1.2.1), 409 if already featured |
+| `DELETE /api/creator/portfolio/featured/{campaignId}` | CREATOR | Stops featuring one campaign: 204, 404 if she does not feature it |
+
+- The creator is always the logged-in user (`@AuthenticationPrincipal`), never an id from the request, so she can only change her own portfolio.
+- **Featured campaigns are never removed by an edit.** Removal only happens through DELETE. Details are atomic: an invalid PUT or PATCH saves nothing (EX-F1.2.2), and TC-F1.2.1 is two calls (edit, then feature).
+- **PATCH** is bound to a map, so a field that is left out (keeps its value) differs from one sent as null (sets null; only the bio may be empty). Unknown fields and an empty body are refused with 400.
+- **Rules:** minimum price can't be above the maximum or negative; category and location are required; lengths are limited (bio 1000, category 50, location 100, enforced by `CreatorProfile`, because the bio column has no database limit).
+- **Errors** are JSON `ProblemDetail` from `GlobalExceptionHandler`: **400** "Invalid portfolio" (detail has the message), **404** "Not featured", **409** "Portfolio not available", "Already featured" or "Conflict". "Conflict" comes from a database constraint, for example two parallel requests featuring the same campaign; the database message is not sent.
+- `PortfolioFeature` implements `Persistable`, so saving a new row is a plain INSERT and a duplicate fails on the primary key instead of being mistaken for an update.
+- The social-account token is never mapped by `SocialAccount` and never sent.
+- "Verified" (completed **and** at least one redemption, FR-F1.3) is not stored; the brand's view of a portfolio (EEC-35) works it out when it is read.
+- **Page** `/creator/portfolio` (`frontend/src/creator/PortfolioPage.tsx`, API calls in `creator/portfolioApi.ts`), creators only (`RequireRole`):
+  - A details form (bio, category, location, minimum and maximum price). Prices are typed in dollars and converted to integer cents by `lib/moneyInput.ts` (string maths, no `* 100`). Save sends PUT; an empty bio is sent as `null`; when an edit is refused (400) the server's message is shown.
+  - The connected accounts, read-only (connecting is UC-F19.4): followers, engagement, "last updated" and "Needs reconnection".
+  - The completed campaigns as checkboxes, each saved immediately (tick = POST, untick = DELETE). A 409 "Already featured", or a 404 on DELETE, only syncs the box with the real state; other errors show the server's message.
+  - A 409 on load shows the "available after an admin approves" message instead of the form. There are empty states for no accounts and no completed campaigns.
+  - It uses plain markup, styled by the base rules in `index.css` (no `fl-` classes yet).
+- **Tests:** `PortfolioServiceImplIT` (TC-F1.2.1 to TC-F1.2.3, PATCH rules, parallel requests), `PortfolioControllerTest` (every verb: 401, 403, CSRF, JSON shape, error bodies), `CreatorProfileTest`, `CreatorProfileIT`, `SocialAccountIT`, `PortfolioFeatureIT`; frontend: `PortfolioPage.test.tsx` (loading, empty and unapproved states, save, refused edit, feature and unfeature) and `moneyInput.test.ts`.
+- **Planned:** the brand's read-only view of a portfolio (EEC-35).
+
+## 13. Scheduled jobs and the daily social refresh (UC-F1.3) — built
+
+`SchedulingConfig` turns on `@Scheduled`. The only job so far is `SocialRefreshJob` (`service/impl/`, EEC-37):
+
+- **When:** `flavors.social.refresh-cron` (default `0 0 3 * * *`) in `flavors.social.refresh-zone` (default `Asia/Beirut`);
+  `flavors.social.refresh-enabled=false` switches it off. The variables are in [README.md](README.md#daily-social-refresh-eec-37).
+- **What:** for every `CONNECTED` account it calls `SocialAccountService.refresh(id)` (FR-F1.2). A failed pull or a revoked
+  token keeps the last figures and their time and flags `NEEDS_RECONNECTION` (FR-F1.9, EX-F1.3.1). Disconnected accounts are
+  not pulled (TC-F1.3.2). One account's unexpected error is logged (id only, never a token or URL) and the loop goes on.
+- **One instance at a time:** `runDaily()` takes a Postgres transaction-level advisory lock (`pg_try_advisory_xact_lock`) on a
+  dedicated connection. A second app instance skips the run; the lock disappears with the transaction, even if the app dies.
+- **Not configured, not flagged:** where Instagram or `FLAVORS_TOKEN_ENCRYPTION_KEY` isn't set, the run is skipped entirely,
+  so a missing setting can't mark every creator "Needs reconnection".
+- **No long transaction:** `refresh()` reads in a short transaction, calls Instagram with none, then writes in a short one.
+  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect and disconnect
+  do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
+  is never undone by the stale result.
+- **Token:** a business system-user token from a Unified Login configuration with expiry "Never" (EEC-88), so nothing is renewed.
+  It stops working only if the creator removes the app from her business portfolio or moves the account; the next pull then
+  flags `NEEDS_RECONNECTION`. EEC-88 replaced the Instagram-login flow because Meta no longer offers it to new apps, which also
+  overturns SPIKE-1's "no Facebook Page or business portfolio" assumption: a business portfolio is required (a Page is not).
+- **Tests:** `SocialRefreshJobTest`, `SocialRefreshJobIT` (TC-F1.3.1, TC-F1.3.2, failure isolation, the lock),
+  `SocialAccountServiceImplIT` (disconnect/reconnect during a pull), `InstagramClientImplTest` (login URL, code exchange, account
+  list and pull against a local stand-in for graph.facebook.com). A real pull against Instagram can only be checked with a Meta app and a tester account.
+- **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
+
+## 14. Search (UC-F2.1, plus brand search) — built
+
+Brands search creators (EEC-39); creators search brands (added at the team's request, no Jira story yet). Migration `V8__search.sql`.
+
+- **Endpoints:** `GET /api/brand/creators/search`, `GET /api/brand/creators/facets` (locations and categories for dropdown suggestions),
+  `GET /api/creator/brands/search`. The role guard is the existing `/api/brand/**` and `/api/creator/**` rule, so anonymous gets 401 and the
+  wrong role 403 (TC-F2.1.3). Brands also got `GET`/`PATCH /api/brand/profile` for the new `cuisine` and `description` fields.
+- **Plain search (`q`):** the text is split into words (`util/SearchText`); **every word must match some field**. A word matches by
+  case-insensitive substring or by `word_similarity >= 0.3` (`pg_trgm`), so "burgers beirut" finds Burgers creators in Beirut and
+  "burgr" still matches. Creator fields: name, food category, location, bio. Brand fields: name, cuisine, description, branch name and
+  location. Results are ranked by relevance (category and location above name, bio lowest), then by name.
+- **Advanced filters** (AND with `q`): location, category, platform, followers, engagement, price range, previous ROI, redemptions.
+  The price filter matches when the ranges **overlap** (FR-F2.5). Only `APPROVED` creators with an active user are returned (TC-F2.1.4).
+- **ROI and redemptions** are always `null` until the campaign and redemption stories exist; using those filters returns nothing (FR-F2.5).
+- **Social figures** come from the creator's highest-follower connected account. Creators without one still appear with "—"; a social
+  filter leaves them out. Until the Instagram connection works (Sprint 2 fix), these figures are empty.
+- **Privacy:** brand results never include phone or contact person.
+- **SQL:** the search repositories use `NamedParameterJdbcTemplate` (ranking and `pg_trgm` don't fit JPQL). Only fixed fragments are
+  concatenated; all user text is bound as parameters, with `%` and `_` escaped.
+- **Deployment:** `pg_trgm` is a trusted extension on PostgreSQL 13+, so the database owner can create it; not yet checked on Railway.
+- **Tests:** `SearchTextTest`, `CreatorSearchControllerTest`, `BrandSearchControllerTest`, `BrandProfileControllerTest`,
+  `CreatorSearchServiceImplIT`, `BrandSearchServiceImplIT`, `BrandProfileServiceImplIT`, `SearchSchemaIT`; frontend
+  `CreatorSearchPage.test.tsx`, `BrandSearchPage.test.tsx`.
+- **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); the "Create campaign" button on a result is
+  disabled until the campaign story; results link to `/s/:slug`, still a placeholder.
