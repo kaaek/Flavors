@@ -15,6 +15,8 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +52,8 @@ class SocialAccountController {
 
     /** The page that shows the outcome; the value after "=" says which one. */
     static final String RESULT_PAGE = "/creator/social?instagram=";
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SocialAccountController.class);
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -100,6 +104,9 @@ class SocialAccountController {
         } catch (SocialConnectionUnavailableException e) {
             return result("unavailable");
         } catch (SocialPlatformException | CreatorProfileMissingException e) {
+            // The page only says "try again"; this is where the real reason can be found. The message never has a
+            // token, a URL or Meta's own text (InstagramClientImpl).
+            LOGGER.warn("Connecting Instagram failed for creator {}: {}", user.getId(), e.getMessage());
             return result("failed");
         }
     }

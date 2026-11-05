@@ -87,7 +87,8 @@ class InstagramClientImplTest {
 
         assertThat(requests).singleElement().satisfies(r -> assertThat(r)
                 .startsWith("/oauth/access_token?").contains("client_id=app-id")
-                .contains("client_secret=app-secret").contains("code=the-code"));
+                .contains("client_secret=app-secret").contains("code=the-code")
+                .contains("redirect_uri=" + REDIRECT.replace(":", "%3A").replace("/", "%2F")));
     }
 
     @Test
@@ -98,7 +99,10 @@ class InstagramClientImplTest {
         assertThatThrownBy(() -> client.exchangeCode("the-code"))
                 .isInstanceOf(SocialPlatformException.class)
                 .isNotInstanceOf(SocialTokenInvalidException.class)
-                .hasMessageNotContaining("app-secret").hasMessageNotContaining("the-code");
+                .hasMessageNotContaining("app-secret").hasMessageNotContaining("the-code")
+                // Enough to find the cause in a log: which call, the status, and Meta's error numbers (not its text).
+                .hasMessageContaining("code exchange").hasMessageContaining("status 400")
+                .hasMessageContaining("code 100").hasMessageNotContaining("Code was used");
     }
 
     // ---- Which account ----
