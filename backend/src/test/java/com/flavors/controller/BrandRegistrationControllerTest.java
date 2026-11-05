@@ -36,7 +36,7 @@ class BrandRegistrationControllerTest {
     @Test
     void registersACompleteBrand() throws Exception {
         when(registration.register(any())).thenReturn(
-                new BrandRegistrationResponse(7, "karim@example.com", Role.BRAND));
+                new BrandRegistrationResponse(7, "karim@example.com", Role.BRAND, "Burgers", null));
 
         mvc.perform(post("/api/public/auth/register/brand")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -46,7 +46,8 @@ class BrandRegistrationControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(7))
                 .andExpect(jsonPath("$.email").value("karim@example.com"))
-                .andExpect(jsonPath("$.role").value("BRAND"));
+                .andExpect(jsonPath("$.role").value("BRAND"))
+                .andExpect(jsonPath("$.cuisine").value("Burgers"));
     }
 
     @Test

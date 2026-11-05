@@ -25,5 +25,9 @@ public record BrandRegistrationRequest(
         @NotBlank(message = "Password is required.")
         String password,
         @NotEmpty(message = "Add at least one branch.")
-        List<@Valid BranchRegistrationRequest> branches) {
+        List<@Valid BranchRegistrationRequest> branches,
+        @Size(max = 50, message = "Cuisine must be at most 50 characters.")
+        String cuisine,
+        @Size(max = 1000, message = "Description must be at most 1000 characters.")
+        String description) {
 }

@@ -89,6 +89,6 @@ class BrandRegistrationServiceImplIT {
 
     private static BrandRegistrationRequest request(String email, List<BranchRegistrationRequest> branchList) {
         return new BrandRegistrationRequest("Karim's Kitchen", "Karim", email, "+961 1 234567",
-                "correct horse", branchList);
+                "correct horse", branchList, null, null);
     }
 }
