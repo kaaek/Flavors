@@ -35,6 +35,8 @@ class InstagramClientImplTest {
     private final List<String> requests = new ArrayList<>();
     /** What the stand-in answers per path: status and JSON. */
     private final Map<String, Object[]> answers = new ConcurrentHashMap<>();
+    /** The Content-Type the stand-in sends; graph.facebook.com really sends text/javascript. */
+    private String contentType = "application/json";
 
     @AfterEach
     void stopStandIn() {
@@ -103,6 +105,26 @@ class InstagramClientImplTest {
                 // Enough to find the cause in a log: which call, the status, and Meta's error numbers (not its text).
                 .hasMessageContaining("code exchange").hasMessageContaining("status 400")
                 .hasMessageContaining("code 100").hasMessageNotContaining("Code was used");
+    }
+
+    @Test
+    void readsAnAnswerSentAsTextJavascriptLikeGraphFacebookDoes() throws IOException {
+        contentType = "text/javascript; charset=UTF-8";
+        InstagramClientImpl client = standIn();
+        answer("/me/assigned_instagram_accounts", 200, "{\"data\":[{\"id\":\"1784\",\"username\":\"lara.eats\"}]}");
+
+        assertThat(client.assignedAccounts("tok")).containsExactly(new InstagramClient.AccountRef("1784", "lara.eats"));
+    }
+
+    @Test
+    void anAnswerThatIsNotJsonIsAPlatformErrorNamingTheCall() throws IOException {
+        InstagramClientImpl client = standIn();
+        answer("/me/assigned_instagram_accounts", 200, "<html>maintenance</html>");
+
+        assertThatThrownBy(() -> client.assignedAccounts("tok"))
+                .isInstanceOf(SocialPlatformException.class)
+                .hasMessageContaining("account list").hasMessageContaining("not readable JSON")
+                .hasMessageNotContaining("maintenance");
     }
 
     // ---- Which account ----
@@ -196,7 +218,7 @@ class InstagramClientImplTest {
             Object[] answer = answers.get(exchange.getRequestURI().getPath());
             int status = answer == null ? 404 : (int) answer[0];
             byte[] body = (answer == null ? "{}" : (String) answer[1]).getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.getResponseHeaders().add("Content-Type", contentType);
             exchange.sendResponseHeaders(status, body.length);
             exchange.getResponseBody().write(body);
             exchange.close();

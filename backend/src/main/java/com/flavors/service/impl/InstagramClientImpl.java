@@ -13,13 +13,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Talks to the Instagram API with Unified Login (EEC-88): the creator logs in on Meta's page, picks her business
@@ -43,7 +45,8 @@ class InstagramClientImpl implements InstagramClient {
     /** The Graph API's error code for a revoked, expired or otherwise invalid token. */
     private static final Pattern INVALID_TOKEN = Pattern.compile("\"code\"\\s*:\\s*190\\b");
 
-    private static final ParameterizedTypeReference<Map<String, Object>> JSON = new ParameterizedTypeReference<>() {
+    private static final JsonMapper MAPPER = JsonMapper.builder().build();
+    private static final TypeReference<Map<String, Object>> AS_MAP = new TypeReference<>() {
     };
 
     private final RestClient http;
@@ -104,7 +107,7 @@ class InstagramClientImpl implements InstagramClient {
                                 + "&redirect_uri={redirect}",
                         clientId, clientSecret, code, redirectUri)
                 .retrieve()
-                .body(JSON));
+                .body(String.class));
         return text(token, "access_token");
     }
 
@@ -114,7 +117,7 @@ class InstagramClientImpl implements InstagramClient {
         Map<String, Object> accounts = call("account list", () -> http.get()
                 .uri(graphUrl + "/me/assigned_instagram_accounts?fields=id,username&access_token={token}", accessToken)
                 .retrieve()
-                .body(JSON));
+                .body(String.class));
         List<AccountRef> result = new ArrayList<>();
         for (Map<String, Object> account : maps(accounts.get("data"))) {
             String username = account.get("username") == null ? null : String.valueOf(account.get("username"));
@@ -128,7 +131,7 @@ class InstagramClientImpl implements InstagramClient {
         Map<String, Object> profile = call("profile read", () -> http.get()
                 .uri(graphUrl + "/{id}?fields=username,followers_count&access_token={token}", externalId, accessToken)
                 .retrieve()
-                .body(JSON));
+                .body(String.class));
         String username = profile.get("username") == null ? null : String.valueOf(profile.get("username"));
         long followers = number(profile.get("followers_count"));
 
@@ -136,7 +139,7 @@ class InstagramClientImpl implements InstagramClient {
                 .uri(graphUrl + "/{id}/media?fields=id,like_count,comments_count&limit={limit}&access_token={token}",
                         externalId, RECENT_POSTS, accessToken)
                 .retrieve()
-                .body(JSON));
+                .body(String.class));
         List<PostFigures> posts = new ArrayList<>();
         for (Map<String, Object> post : maps(media.get("data"))) {
             posts.add(figuresOf(post, accessToken));
@@ -160,7 +163,7 @@ class InstagramClientImpl implements InstagramClient {
                     .uri(graphUrl + "/{post}/insights?metric=views,likes,comments,shares&access_token={token}",
                             postId, accessToken)
                     .retrieve()
-                    .body(JSON));
+                    .body(String.class));
             for (Map<String, Object> metric : maps(insights.get("data"))) {
                 long value = firstValue(metric);
                 switch (String.valueOf(metric.get("name"))) {
@@ -179,14 +182,18 @@ class InstagramClientImpl implements InstagramClient {
         return new PostFigures(postId, views, likes, comments, shares);
     }
 
-    /** Runs one request and turns every failure into our own exceptions, without the URL or Meta's text. */
-    private static Map<String, Object> call(String what, Supplier<Map<String, Object>> request) {
+    /**
+     * Runs one request and turns every failure into our own exceptions, without the URL or Meta's text. The answer is
+     * read as text and parsed here, not by Spring's converters: graph.facebook.com sends its JSON as
+     * {@code text/javascript}, which Spring's JSON converter refuses.
+     */
+    private static Map<String, Object> call(String what, Supplier<String> request) {
         try {
-            Map<String, Object> body = request.get();
-            if (body == null) {
+            String text = request.get();
+            if (text == null || text.isBlank()) {
                 throw new SocialPlatformException("Meta sent an empty answer to the " + what + ".");
             }
-            return body;
+            return MAPPER.readValue(text, AS_MAP);
         } catch (RestClientResponseException e) {
             String answer = e.getResponseBodyAsString();
             if (e.getStatusCode().value() == 401 || INVALID_TOKEN.matcher(answer).find()) {
@@ -196,8 +203,13 @@ class InstagramClientImpl implements InstagramClient {
             // never its free text or the URL: those can carry details that don't belong in a log.
             throw new SocialPlatformException("Meta answered the " + what + " with status " + e.getStatusCode().value()
                     + errorDetails(answer) + ".");
+        } catch (JacksonException e) {
+            throw new SocialPlatformException("Meta's answer to the " + what + " was not readable JSON.");
         } catch (RestClientException e) {
-            throw new SocialPlatformException("Meta could not be reached for the " + what + ".");
+            // The exception's type says what happened (timeout, refused connection, unreadable answer); its text could
+            // hold the URL, so only the type is kept.
+            throw new SocialPlatformException(
+                    "Meta could not be reached for the " + what + " (" + e.getClass().getSimpleName() + ").");
         }
     }
 
