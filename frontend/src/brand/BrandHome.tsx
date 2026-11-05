@@ -20,9 +20,14 @@ export function BrandHome() {
           <h1>Brand dashboard</h1>
           <p>Your restaurant account at a glance.</p>
         </div>
-        <Link className="fl-btn fl-btn--outline" to="/brand/account">
-          Manage branches
-        </Link>
+        <div className="fl-row">
+          <Link className="fl-btn fl-btn--primary" to="/brand/creators">
+            Find creators
+          </Link>
+          <Link className="fl-btn fl-btn--outline" to="/brand/account">
+            Manage branches
+          </Link>
+        </div>
       </header>
 
       {branches.status === 'error' && (
@@ -70,9 +75,12 @@ export function BrandHome() {
         />
         <h2>No campaigns yet</h2>
         <p>
-          Creating campaigns and finding creators arrives in the next stories. Your branches are
-          ready for it.
+          Creating campaigns arrives in the next story. Meanwhile you can find creators and save the
+          ones you like.
         </p>
+        <Link className="fl-btn fl-btn--outline" to="/brand/creators">
+          Find creators
+        </Link>
       </div>
     </div>
   )

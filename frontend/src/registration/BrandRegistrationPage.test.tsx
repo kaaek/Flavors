@@ -52,3 +52,27 @@ it('registers the brand with every entered branch', async () => {
     await screen.findByText('Your brand account is ready. You can now log in.'),
   ).toBeInTheDocument()
 })
+
+it('sends the optional cuisine and description when filled in', async () => {
+  const user = userEvent.setup()
+  apiFetchMock.mockResolvedValue({ id: 7, email: 'karim@example.com', role: 'BRAND' })
+  render(
+    <MemoryRouter>
+      <BrandRegistrationPage />
+    </MemoryRouter>,
+  )
+
+  await user.type(screen.getByLabelText('Business name'), "Karim's Kitchen")
+  await user.type(screen.getByLabelText('Contact person'), 'Karim')
+  await user.type(screen.getByLabelText('Email'), 'karim@example.com')
+  await user.type(screen.getByLabelText('Phone number'), '+961 1 234567')
+  await user.type(screen.getByLabelText('Password'), 'correct horse')
+  await user.type(screen.getByLabelText('Cuisine (optional)'), 'Burgers')
+  await user.type(screen.getByLabelText('About your restaurant (optional)'), 'Smash burgers')
+  await user.type(screen.getByLabelText('Branch name'), 'Hamra')
+  await user.type(screen.getByLabelText('Location'), 'Beirut')
+  await user.click(screen.getByRole('button', { name: 'Create brand account' }))
+
+  const body = apiFetchMock.mock.calls[0][1]?.body as Record<string, unknown>
+  expect(body).toMatchObject({ cuisine: 'Burgers', description: 'Smash burgers' })
+})

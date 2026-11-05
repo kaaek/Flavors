@@ -9,6 +9,8 @@ import type { Role } from './auth/authContext'
 import './auth/authPages.css'
 import { BrandAccountPage } from './brand/BrandAccountPage'
 import { BrandHome } from './brand/BrandHome'
+import { CreatorSearchPage } from './brand/CreatorSearchPage'
+import { BrandSearchPage } from './creator/BrandSearchPage'
 import { CreatorHome } from './creator/CreatorHome'
 import { CreatorStatusPage } from './creator/CreatorStatusPage'
 import { PortfolioPage } from './creator/PortfolioPage'
@@ -67,6 +69,7 @@ export function AppRoutes() {
 
       <Route element={<RoleArea role="CREATOR" />}>
         <Route path="/creator" element={<CreatorHome />} />
+        <Route path="/creator/brands" element={<BrandSearchPage />} />
         <Route path="/creator/portfolio" element={<PortfolioPage />} />
         <Route path="/creator/social" element={<SocialAccountsPage />} />
         <Route path="/creator/status" element={<CreatorStatusPage />} />
@@ -75,6 +78,7 @@ export function AppRoutes() {
 
       <Route element={<RoleArea role="BRAND" />}>
         <Route path="/brand" element={<BrandHome />} />
+        <Route path="/brand/creators" element={<CreatorSearchPage />} />
         <Route path="/brand/account" element={<BrandAccountPage />} />
         <Route path="/brand/*" element={<NotFoundPage />} />
       </Route>

@@ -15,6 +15,11 @@ interface RegistrationResponse {
 }
 
 const emptyBranch = (): BranchInput => ({ name: '', location: '' })
+/** `{ name: 'text' }` when the field has text, otherwise nothing to spread into the request. */
+function optionalText(data: FormData, name: string) {
+  const value = String(data.get(name) ?? '').trim()
+  return value ? { [name]: value } : {}
+}
 const fieldClass = (error?: string) => `fl-field${error ? ' is-invalid' : ''}`
 
 export function BrandRegistrationPage() {
@@ -46,6 +51,9 @@ export function BrandRegistrationPage() {
           email: data.get('email'),
           phone: data.get('phone'),
           password: data.get('password'),
+          // Optional: only sent when filled in, so the API sees them as absent rather than empty.
+          ...optionalText(data, 'cuisine'),
+          ...optionalText(data, 'description'),
           branches,
         },
       })
@@ -211,6 +219,44 @@ export function BrandRegistrationPage() {
           {errors.password && (
             <span className="fl-error" id="brand-password-error" role="alert">
               {errors.password}
+            </span>
+          )}
+        </div>
+
+        <div className={fieldClass(errors.cuisine)}>
+          <label className="fl-label" htmlFor="cuisine">
+            Cuisine (optional)
+          </label>
+          <input
+            className="fl-input"
+            id="cuisine"
+            name="cuisine"
+            placeholder="e.g. Burgers"
+            maxLength={50}
+            aria-invalid={Boolean(errors.cuisine)}
+            aria-describedby={errors.cuisine ? 'cuisine-error' : undefined}
+          />
+          {errors.cuisine && (
+            <span className="fl-error" id="cuisine-error" role="alert">
+              {errors.cuisine}
+            </span>
+          )}
+        </div>
+
+        <div className={fieldClass(errors.description)}>
+          <label className="fl-label" htmlFor="description">
+            About your restaurant (optional)
+          </label>
+          <textarea
+            className="fl-textarea"
+            id="description"
+            name="description"
+            aria-invalid={Boolean(errors.description)}
+            aria-describedby={errors.description ? 'description-error' : undefined}
+          />
+          {errors.description && (
+            <span className="fl-error" id="description-error" role="alert">
+              {errors.description}
             </span>
           )}
         </div>
