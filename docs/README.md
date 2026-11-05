@@ -159,7 +159,7 @@ git push -u origin EEC-31-creator-registration
 
 ## Contributing
 
-Read [Architecture.md](Architecture.md) first: it settles the schema, security and conventions. This
+The pull-request process (reviewers, template, checks) is in [CONTRIBUTING.md](../CONTRIBUTING.md). Read [Architecture.md](Architecture.md) first: it settles the schema, security and conventions. This
 section covers what you need day to day on top of it.
 
 ### Database changes
