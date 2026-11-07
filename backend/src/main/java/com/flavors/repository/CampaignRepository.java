@@ -35,7 +35,8 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
     /**
      * The campaign row, locked until the transaction ends (UC-F4.1). Every answer to a request (accept, reject,
      * counter, approve, decline) and the expiry job load it this way, so two of them on the same campaign run one
-     * after the other, and the second one sees the first one's result and refuses.
+     * after the other, and the second one sees the first one's result and refuses. Delivery-proof drafts and
+     * submissions (EEC-46) take the same lock.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Campaign c where c.id = :id")

@@ -29,8 +29,9 @@ import org.hibernate.annotations.CreationTimestamp;
  * its deliverables ({@code campaign_deliverable}).
  *
  * <p>This class maps the columns the stories so far use: the portfolio reads a few of them, the brand's
- * create-and-send story (EEC-40) writes the draft and sends it, and the creator's answer (EEC-43) moves
- * the status on. The later stories (payment, proof...) add the other columns and methods.
+ * create-and-send story (EEC-40) writes the draft and sends it, the creator's answer (EEC-43) moves
+ * the status on, and delivery proof (EEC-46) records the submission and Timer C. The later stories
+ * (payment release, disputes...) add the other columns and methods.
  */
 @Entity
 public class Campaign {
@@ -91,6 +92,12 @@ public class Campaign {
 
     /** Timer B: {@link #acceptedAt} + {@link #PAYMENT_WINDOW}. */
     private Instant paymentDeadline;
+
+    /** Timer C: five days after the latest final proof submission. */
+    private Instant proofReviewDeadline;
+
+    @Column(nullable = false)
+    private short correctionRoundsUsed;
 
     @ElementCollection
     @CollectionTable(name = "campaign_branch", joinColumns = @JoinColumn(name = "campaign_id"))
@@ -341,5 +348,24 @@ public class Campaign {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    /** The first version is round 1; each accepted correction request opens one later round. */
+    public int currentProofRound() {
+        return correctionRoundsUsed + 1;
+    }
+
+    public void markProofSubmitted(Instant submittedAt, Instant reviewDeadline) {
+        status = CampaignStatus.PROOF_SUBMITTED;
+        proofReviewDeadline = reviewDeadline;
+        updatedAt = submittedAt;
+    }
+
+    public Instant getProofReviewDeadline() {
+        return proofReviewDeadline;
+    }
+
+    public int getCorrectionRoundsUsed() {
+        return correctionRoundsUsed;
     }
 }
