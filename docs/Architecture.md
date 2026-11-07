@@ -273,8 +273,9 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 | `dispute`, `dispute_evidence` | UC-F8.1 |
 | `notification` | UC-F18.1 |
 
-Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and a
-read-only `campaign` (EEC-36). Later stories add columns and methods to these classes instead of writing second copies.
+Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and
+`campaign` (EEC-36); `proof_submission`, `proof_link`, `proof_file` (EEC-46, which also lets `campaign` record a proof
+submission and Timer C). Later stories add columns and methods to these classes instead of writing second copies.
 
 ## 5. Security — built
 
@@ -500,7 +501,8 @@ returns 409 before approval.
 - **Tests:** `SocialRefreshJobTest`, `SocialRefreshJobIT` (TC-F1.3.1, TC-F1.3.2, failure isolation, the lock),
   `SocialAccountServiceImplIT` (disconnect/reconnect during a pull), `InstagramClientImplTest` (login URL, code exchange, account
   list and pull against a local stand-in for graph.facebook.com). A real pull against Instagram can only be checked with a Meta app and a tester account.
-- **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
+- **Planned:** FR-F1.8 needs a separate, explicit post-link matching contract. EEC-46 stores proof links but does not guess
+  which Instagram metric row they identify, because the current `PostFigures` contract exposes no permalink.
 
 ## 14. Search (UC-F2.1, plus brand search) — built
 
@@ -527,3 +529,37 @@ Brands search creators (EEC-39); creators search brands (added at the team's req
   `CreatorSearchPage.test.tsx`, `BrandSearchPage.test.tsx`.
 - **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); the "Create campaign" button on a result is
   disabled until the campaign story; results link to `/s/:slug`, still a placeholder.
+
+## 15. Campaign delivery proof (UC-F5.1, EEC-46) - backend built
+
+The creator can prepare one draft for the campaign's current round, replace its links/screenshots, and submit it once.
+The campaign must be `ACTIVE`, or `CORRECTIONS_REQUESTED` for a later round. Submitting changes it to `PROOF_SUBMITTED`
+and sets Timer C to five days from the submission. A proof holds at most 10 links. Screenshots are optional (the campaign
+has no setting that requires them yet); when present there may be at most five, each at most 5 MiB, and its declared
+content type must match a PNG, JPEG, GIF or WebP signature. SVG is deliberately refused.
+
+| Method and path | Who | What |
+|---|---|---|
+| `GET /api/creator/campaigns/{campaignId}/proof` | assigned CREATOR | All submitted versions plus her current draft |
+| `PUT /api/creator/campaigns/{campaignId}/proof/draft` | assigned CREATOR | Save multipart `proof` JSON and optional `files`; null fields keep existing values and empty lists clear them |
+| `POST /api/creator/campaigns/{campaignId}/proof/submit` | assigned CREATOR | Validate and freeze the current round as a submitted version; returns 201 |
+| `GET /api/brand/campaigns/{campaignId}/proof` | owning BRAND | Submitted versions only; never the draft |
+| `GET /api/admin/campaigns/{campaignId}/proof` | ADMIN | Submitted versions only |
+| `GET /api/proof-files/{fileId}` | authorized CREATOR, BRAND or ADMIN | Proxy one private screenshot after ownership/state checks |
+
+- A pessimistic lock on the campaign serializes draft/final writes. Database partial unique indexes still enforce one draft
+  and one submitted version per round if two app instances receive the same operation.
+- A final submission requires at least one non-blank absolute HTTP(S) link. Drafts may be incomplete. Every submitted row is
+  immutable through this API and later correction rounds create new rows, so earlier versions are retained.
+- `PROOF_DRAFT_SAVED` and `PROOF_SUBMITTED` are written through the append-only audit log in the same transaction.
+- Screenshot metadata is transactional PostgreSQL data. Bytes use `ProofFileStorage`: filesystem under the `dev` and test
+  profiles, and a private S3-compatible Railway Bucket elsewhere. New objects are removed after a database rollback; replaced
+  draft objects are removed only after commit. An unknown commit outcome keeps the objects to avoid losing evidence.
+  Submitted objects have no delete endpoint.
+- API responses expose an authenticated download URL, never the storage key. Downloads use `Cache-Control: no-store`,
+  `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`.
+- The frontend proof page is intentionally deferred until the campaign route/shell from the campaign stories is present.
+- Tests: `DeliveryProofControllerTest`, `DeliveryProofServiceImplTest`, `ProofImageValidatorTest`,
+  `FileSystemProofFileStorageTest`, `S3ProofFileStorageTest`, and
+  `DeliveryProofServiceImplIT` (draft privacy, final submission/Timer C, invalid links, version retention, ownership,
+  transactional object cleanup, concurrent submission, limits and content validation).

@@ -241,7 +241,7 @@ Nothing here is in git because it is account configuration and secrets.
 **Railway** (https://railway.com)
 
 1. Create a project `flavors` with two environments, `staging` and `production`.
-2. In each environment add a **PostgreSQL** service and an **app** service. The app service builds from this
+2. In each environment add a **PostgreSQL** service, a private Railway **Bucket** named `proof-files`, and an **app** service. Create the bucket in the same region as the app. The app service builds from this
    GitHub repository using `railway.json` (Dockerfile build, health check `/actuator/health`). Name it `app`, or set
    the GitHub variable `RAILWAY_SERVICE` to its name.
 3. On each app service set the variables below. Reference the database service's variables rather than copying
@@ -250,6 +250,12 @@ Nothing here is in git because it is account configuration and secrets.
    | Variable | Value |
    |---|---|
    | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | `${{Postgres.PGHOST}}` etc. (Railway reference variables) |
+   | `FLAVORS_PROOF_STORAGE_TYPE` | `s3` |
+   | `FLAVORS_PROOF_STORAGE_BUCKET` | `${{proof-files.BUCKET}}` |
+   | `FLAVORS_PROOF_STORAGE_ENDPOINT` | `${{proof-files.ENDPOINT}}` |
+   | `FLAVORS_PROOF_STORAGE_REGION` | `${{proof-files.REGION}}` |
+   | `FLAVORS_PROOF_STORAGE_ACCESS_KEY` | `${{proof-files.ACCESS_KEY_ID}}` |
+   | `FLAVORS_PROOF_STORAGE_SECRET_KEY` | `${{proof-files.SECRET_ACCESS_KEY}}` |
    | `FLAVORS_SEED_ADMIN_ENABLED` | `true` (can be switched off after the first start) |
    | `FLAVORS_ADMIN_EMAIL`, `FLAVORS_ADMIN_PASSWORD` | the first admin's login; use a strong password |
    | `FLAVORS_APP_BASE_URL` | the public app URL used in password-reset links |
@@ -299,8 +305,25 @@ On Railway, the variables are set per environment (staging, production).
 | `MAIL_AUTH` | Enable SMTP authentication | `false` |
 | `MAIL_STARTTLS` | Enable SMTP STARTTLS | `false` |
 | `FLAVORS_MAIL_FROM` | From address for password-reset email | `no-reply@flavors.local` |
+| `FLAVORS_PROOF_STORAGE_TYPE` | Delivery-proof screenshot storage adapter | `filesystem` in dev/tests; `s3` elsewhere |
+| `FLAVORS_PROOF_STORAGE_PATH` | Local proof screenshot directory; used only by the `filesystem` adapter | `./data/proof-files` |
+| `FLAVORS_PROOF_STORAGE_BUCKET` | Railway Bucket's globally unique S3 name (`BUCKET`, not `RAILWAY_BUCKET_NAME`) | (required for `s3`) |
+| `FLAVORS_PROOF_STORAGE_ENDPOINT` | Railway Bucket's base S3 endpoint | (required for `s3`) |
+| `FLAVORS_PROOF_STORAGE_REGION` | Railway Bucket's S3 region | (required for `s3`) |
+| `FLAVORS_PROOF_STORAGE_ACCESS_KEY` | Railway Bucket access-key id | (required for `s3`; never commit) |
+| `FLAVORS_PROOF_STORAGE_SECRET_KEY` | Railway Bucket secret access key | (required for `s3`; never commit) |
 
 The `PG*` names match what Railway's Postgres service exposes, so staging and production need no renaming.
+
+### Delivery-proof screenshot storage (EEC-46)
+
+Development and tests write private screenshots under `FLAVORS_PROOF_STORAGE_PATH`. Staging and production use one
+private Railway Bucket instance per environment. In Railway, create the bucket first and then add the six app-service
+variables above as **reference variables** using Railway's autocomplete; do not copy credential values into Git.
+
+The browser never receives a bucket credential or object key. It uploads through the backend, and authorized users read
+screenshots through `/api/proof-files/{fileId}`. The backend checks the campaign owner and submission state before proxying
+the private object. No bucket CORS rule or public access is needed.
 
 ### Connecting Instagram (EEC-33, EEC-88)
 
