@@ -11,3 +11,8 @@ server:
       cookie:
         # Local development runs on plain http://localhost.
         secure: false
+
+flavors:
+  proof-storage:
+    type: filesystem
+    filesystem-root: ${FLAVORS_PROOF_STORAGE_PATH:./data/proof-files}

@@ -20,6 +20,8 @@
 
     <properties>
         <java.version>25</java.version>
+        <!-- Railway Buckets speak the S3 API. Pin the client so builds stay reproducible. -->
+        <aws.sdk.version>2.57.11</aws.sdk.version>
     </properties>
 
     <!-- Spring Boot 4 splits auto-configuration into modules: each feature has its own
@@ -76,6 +78,11 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${aws.sdk.version}</version>
         </dependency>
 
         <!-- Tests -->

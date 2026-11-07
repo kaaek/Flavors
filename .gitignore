@@ -17,6 +17,10 @@ npm-debug.log*
 .env.*
 !.env.example
 
+# --- Local delivery-proof uploads (Railway uses a private bucket) ---
+/backend/data/proof-files/
+/data/proof-files/
+
 # --- Personal notes for Claude Code (not shared) ---
 CLAUDE.md
 

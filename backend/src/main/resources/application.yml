@@ -43,6 +43,13 @@ spring:
     jdbc:
       initialize-schema: never
 
+  servlet:
+    multipart:
+      # One proof may contain at most five images of 5 MiB. The request allowance includes
+      # multipart headers and the small JSON/link portion; the service still enforces every rule.
+      max-file-size: 5MB
+      max-request-size: 27MB
+
 server:
   # Railway tells the app which port to use through PORT.
   port: ${PORT:8080}
@@ -81,3 +88,13 @@ flavors:
     base-url: ${FLAVORS_APP_BASE_URL:http://localhost:5173}
   mail:
     from: ${FLAVORS_MAIL_FROM:no-reply@flavors.local}
+  proof-storage:
+    # Staging/production fail at startup if Railway bucket settings are absent. Dev and tests
+    # override this with filesystem storage, so no cloud credentials are needed locally.
+    type: ${FLAVORS_PROOF_STORAGE_TYPE:s3}
+    filesystem-root: ${FLAVORS_PROOF_STORAGE_PATH:./data/proof-files}
+    bucket: ${FLAVORS_PROOF_STORAGE_BUCKET:}
+    endpoint: ${FLAVORS_PROOF_STORAGE_ENDPOINT:}
+    region: ${FLAVORS_PROOF_STORAGE_REGION:}
+    access-key: ${FLAVORS_PROOF_STORAGE_ACCESS_KEY:}
+    secret-key: ${FLAVORS_PROOF_STORAGE_SECRET_KEY:}
