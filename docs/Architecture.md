@@ -58,8 +58,8 @@ com.flavors
 ├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService, PortfolioService, CampaignService
 │   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl, PortfolioServiceImpl, CampaignServiceImpl
 ├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository, CreatorProfileRepository, SocialAccountRepository, CampaignRepository, NotificationRepository, PortfolioFeatureRepository
-├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, PortfolioFeature
-├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus
+├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, CampaignDeliverable, Notification, PortfolioFeature
+├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus, DeliverablePlatform, DeliverableType
 ├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser, PortfolioResponse, UpdatePortfolioRequest
 ├── mapper/         entity/principal <-> DTO converters: MeMapper, PortfolioMapper
 ├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder, SchedulingConfig
