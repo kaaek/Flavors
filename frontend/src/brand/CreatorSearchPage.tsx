@@ -260,10 +260,6 @@ export function CreatorSearchPage() {
         )}
       </div>
 
-      <p className="fl-hint">
-        Campaigns are not built yet, so “Create campaign” is switched off for now.
-      </p>
-
       {results.status === 'error' && (
         <div className="fl-alert fl-alert--danger" role="alert">
           <Icon name="alert" />
@@ -336,14 +332,13 @@ export function CreatorSearchPage() {
                     <td>
                       <div className="fl-row">
                         <SaveCreatorButton creatorId={item.creatorId} initiallySaved={item.saved} />
-                        {/* A live link would be a dead end until the campaign story exists (and fail the link audit). */}
-                        <button
+                        <Link
                           className="fl-btn fl-btn--primary fl-btn--sm"
-                          type="button"
-                          disabled
+                          to={`/brand/campaigns/new?creator=${item.creatorId}`}
+                          aria-label={`Start a campaign with ${item.displayName}`}
                         >
-                          Create campaign
-                        </button>
+                          Start a campaign
+                        </Link>
                       </div>
                     </td>
                   </tr>

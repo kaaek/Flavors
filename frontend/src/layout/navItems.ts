@@ -25,6 +25,7 @@ export const navItems: Record<Role, NavItem[]> = {
   BRAND: [
     { label: 'Home', to: homeByRole.BRAND, end: true },
     { label: 'Find creators', to: '/brand/creators' },
+    { label: 'Campaigns', to: '/brand/campaigns' },
     { label: 'Account', to: '/brand/account' },
   ],
   ADMIN: [

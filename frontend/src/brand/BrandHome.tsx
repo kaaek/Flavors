@@ -73,14 +73,19 @@ export function BrandHome() {
           alt=""
           aria-hidden="true"
         />
-        <h2>No campaigns yet</h2>
+        <h2>Campaigns</h2>
         <p>
-          Creating campaigns arrives in the next story. Meanwhile you can find creators and save the
-          ones you like.
+          Tell a creator what you want and what you offer. Find a creator to start from, or open
+          your campaigns.
         </p>
-        <Link className="fl-btn fl-btn--outline" to="/brand/creators">
-          Find creators
-        </Link>
+        <div className="fl-row">
+          <Link className="fl-btn fl-btn--primary" to="/brand/campaigns">
+            Your campaigns
+          </Link>
+          <Link className="fl-btn fl-btn--outline" to="/brand/creators">
+            Find creators
+          </Link>
+        </div>
       </div>
     </div>
   )
