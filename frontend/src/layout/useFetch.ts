@@ -17,3 +17,18 @@ export function useFetch<T>(path: string): Result<T> {
   }, [path])
   return result
 }
+
+/** Like {@link useFetch}, for a call that is not a plain GET of a path (e.g. one of the typed functions in api/). */
+export function useFetchWith<T>(load: () => Promise<T>): Result<T> {
+  const [result, setResult] = useState<Result<T>>({ status: 'loading' })
+  useEffect(() => {
+    let cancelled = false
+    load()
+      .then((data) => !cancelled && setResult({ status: 'ready', data }))
+      .catch(() => !cancelled && setResult({ status: 'error' }))
+    return () => {
+      cancelled = true
+    }
+  }, [load])
+  return result
+}
