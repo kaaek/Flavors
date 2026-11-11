@@ -527,3 +527,11 @@ Brands search creators (EEC-39); creators search brands (added at the team's req
   `CreatorSearchPage.test.tsx`, `BrandSearchPage.test.tsx`.
 - **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); the "Create campaign" button on a result is
   disabled until the campaign story; results link to `/s/:slug`, still a placeholder.
+
+## 16. Accepting a campaign needs a connected account (FT-68) — built
+
+A creator who has no social account in status `CONNECTED` cannot accept a campaign request: `CampaignResponseServiceImpl.acceptCampaign` answers
+**409** "Account disconnected" (`SocialAccountDisconnectedException`) until she reconnects her Instagram account. The check runs after the
+status and deadline checks. Rejecting is not blocked, and neither is the counter-offer, since FT-68 only mentions accepting. Timer A
+keeps running, so she can reconnect and still answer within her 3 days.
+**Tests:** `CampaignResponseServiceImplTest`.
