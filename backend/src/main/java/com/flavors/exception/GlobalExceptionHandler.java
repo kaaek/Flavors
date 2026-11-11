@@ -76,6 +76,12 @@ public class GlobalExceptionHandler {
     ProblemDetail creatorNotApproved(CreatorNotApprovedException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
+    @ExceptionHandler(SocialAccountDisconnectedException.class)
+ProblemDetail socialAccountDisconnected(SocialAccountDisconnectedException exception) {
+    ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    problem.setTitle("Account disconnected");
+    return problem;
+}
 
     @ExceptionHandler(InvalidPortfolioException.class)
     ResponseEntity<ProblemDetail> invalidPortfolio(InvalidPortfolioException e) {

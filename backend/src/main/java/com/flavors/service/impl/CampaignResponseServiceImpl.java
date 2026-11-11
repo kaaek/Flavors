@@ -21,6 +21,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.flavors.enums.SocialAccountStatus;
+import com.flavors.exception.SocialAccountDisconnectedException;
+import com.flavors.repository.SocialAccountRepository;
 @Service
 @Transactional
 public class CampaignResponseServiceImpl implements CampaignResponseService {
@@ -30,19 +33,22 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
     private final CampaignDeliverableRepository deliverableRepository;
     private final NotificationRepository notificationRepository;
     private final Clock clock;
-
-    @Autowired
+    private final SocialAccountRepository socialAccountRepository;
+        
+            @Autowired
     public CampaignResponseServiceImpl(
             CampaignRepository campaignRepository,
             CounterOfferRepository counterOfferRepository,
             CampaignDeliverableRepository deliverableRepository,
-            NotificationRepository notificationRepository) {
+            NotificationRepository notificationRepository,
+            SocialAccountRepository socialAccountRepository) {
 
         this(
                 campaignRepository,
                 counterOfferRepository,
                 deliverableRepository,
                 notificationRepository,
+                socialAccountRepository,
                 Clock.systemUTC());
     }
 
@@ -51,12 +57,14 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
             CounterOfferRepository counterOfferRepository,
             CampaignDeliverableRepository deliverableRepository,
             NotificationRepository notificationRepository,
+            SocialAccountRepository socialAccountRepository,
             Clock clock) {
 
         this.campaignRepository = campaignRepository;
         this.counterOfferRepository = counterOfferRepository;
         this.deliverableRepository = deliverableRepository;
         this.notificationRepository = notificationRepository;
+        this.socialAccountRepository = socialAccountRepository;
         this.clock = clock;
     }
 
@@ -68,7 +76,8 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
         Instant now = clock.instant();
         requireStatus(campaign, CampaignStatus.AWAITING_CREATOR_RESPONSE);
         requireResponseWindowOpen(campaign, now);
-
+        requireConnectedAccount(creatorId);
+        
         campaign.accept(now);
         campaignRepository.save(campaign);
     }
@@ -291,5 +300,12 @@ public int expireOverdueCampaignResponses() {
                     "responseDeadline",
                     "The creator response deadline has passed.");
         }
+ }
+    /** FT-68: with no connected social account she can't accept a new campaign until she reconnects. */
+    private void requireConnectedAccount(Long creatorId) {
+        if (!socialAccountRepository.existsByCreatorIdAndStatus(
+                creatorId, SocialAccountStatus.CONNECTED)) {
+            throw new SocialAccountDisconnectedException();
+        }
     }
-}
+}  

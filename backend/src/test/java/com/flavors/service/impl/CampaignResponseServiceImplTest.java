@@ -31,6 +31,12 @@ import org.mockito.ArgumentCaptor;
 import com.flavors.dto.CounterOfferRequest;
 import com.flavors.exception.ValidationFailedException;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import com.flavors.enums.SocialAccountStatus;
+import com.flavors.exception.SocialAccountDisconnectedException;
+import com.flavors.repository.SocialAccountRepository;
+
 class CampaignResponseServiceImplTest {
 
     private static final Long CAMPAIGN_ID = 10L;
@@ -45,7 +51,7 @@ class CampaignResponseServiceImplTest {
     private CounterOfferRepository counterOfferRepository;
     private CampaignDeliverableRepository deliverableRepository;
     private NotificationRepository notificationRepository;
-
+    private SocialAccountRepository socialAccountRepository;
     private CampaignResponseServiceImpl service;
 
     @BeforeEach
@@ -54,7 +60,7 @@ class CampaignResponseServiceImplTest {
         counterOfferRepository = mock(CounterOfferRepository.class);
         deliverableRepository = mock(CampaignDeliverableRepository.class);
         notificationRepository = mock(NotificationRepository.class);
-
+        socialAccountRepository = mock(SocialAccountRepository.class);
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
         service = new CampaignResponseServiceImpl(
@@ -62,6 +68,7 @@ class CampaignResponseServiceImplTest {
                 counterOfferRepository,
                 deliverableRepository,
                 notificationRepository,
+                socialAccountRepository,
                 clock);
     }
 
@@ -77,7 +84,8 @@ class CampaignResponseServiceImplTest {
 
         when(campaignRepository.findById(CAMPAIGN_ID))
                 .thenReturn(Optional.of(campaign));
-
+        when(socialAccountRepository.existsByCreatorIdAndStatus(
+                CREATOR_ID, SocialAccountStatus.CONNECTED)).thenReturn(true);
         service.acceptCampaign(CREATOR_ID, CAMPAIGN_ID);
 
         assertThat(campaign.getStatus())
@@ -265,5 +273,39 @@ class CampaignResponseServiceImplTest {
         verify(counterOfferRepository).existsByCampaignId(CAMPAIGN_ID);
         verify(counterOfferRepository, org.mockito.Mockito.never())
                 .save(org.mockito.ArgumentMatchers.any(CounterOffer.class));
+    }
+        @Test
+    void acceptCampaign_shouldBeRefusedWhenAccountIsDisconnected() {
+        Campaign campaign = CampaignTestFactory.awaitingCreatorResponse(
+                CAMPAIGN_ID, BRAND_ID, CREATOR_ID, "Test campaign",
+                ORIGINAL_PRICE, NOW.plusSeconds(86400));
+
+        when(campaignRepository.findById(CAMPAIGN_ID))
+                .thenReturn(Optional.of(campaign));
+        when(socialAccountRepository.existsByCreatorIdAndStatus(
+                CREATOR_ID, SocialAccountStatus.CONNECTED)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.acceptCampaign(CREATOR_ID, CAMPAIGN_ID))
+                .isInstanceOf(SocialAccountDisconnectedException.class);
+
+        assertThat(campaign.getStatus())
+                .isEqualTo(CampaignStatus.AWAITING_CREATOR_RESPONSE);
+        verify(campaignRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectCampaign_shouldStillWorkWhenAccountIsDisconnected() {
+        Campaign campaign = CampaignTestFactory.awaitingCreatorResponse(
+                CAMPAIGN_ID, BRAND_ID, CREATOR_ID, "Test campaign",
+                ORIGINAL_PRICE, NOW.plusSeconds(86400));
+
+        when(campaignRepository.findById(CAMPAIGN_ID))
+                .thenReturn(Optional.of(campaign));
+        when(socialAccountRepository.existsByCreatorIdAndStatus(
+                CREATOR_ID, SocialAccountStatus.CONNECTED)).thenReturn(false);
+
+        service.rejectCampaign(CREATOR_ID, CAMPAIGN_ID);
+
+        assertThat(campaign.getStatus()).isEqualTo(CampaignStatus.REJECTED);
     }
 }

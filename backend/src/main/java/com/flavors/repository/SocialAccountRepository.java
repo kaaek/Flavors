@@ -15,7 +15,8 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
 
     /** All accounts a creator connected, for her portfolio and her Manage Portfolio page. */
     List<SocialAccount> findByCreatorId(Long creatorId);
-
+    /** True when she has at least one account in this status (FT-68 asks for CONNECTED). */
+    boolean existsByCreatorIdAndStatus(Long creatorId, SocialAccountStatus status);
     /** One of her own accounts; someone else's account is "not found" (NF-1). */
     Optional<SocialAccount> findByIdAndCreatorId(Long id, Long creatorId);
 
