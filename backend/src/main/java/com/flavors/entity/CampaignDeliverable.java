@@ -1,12 +1,16 @@
 package com.flavors.entity;
 
+import com.flavors.enums.DeliverablePlatform;
+import com.flavors.enums.DeliverableType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 
-/** One deliverable belonging to a campaign (table campaign_deliverable, V3). */
+/** One thing the creator has to publish, e.g. 2 x Instagram reel (table {@code campaign_deliverable}, V3). */
 @Entity
 public class CampaignDeliverable {
 
@@ -14,24 +18,22 @@ public class CampaignDeliverable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Long campaignId;
+    private DeliverablePlatform platform;
 
-    @Column(nullable = false, length = 30)
-    private String platform;
-
-    @Column(nullable = false, length = 30)
-    private String type;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private DeliverableType type;
 
     @Column(nullable = false)
-    private Integer count;
+    private int count;
 
     /** For JPA only. */
     protected CampaignDeliverable() {
     }
 
-    public CampaignDeliverable(Long campaignId, String platform, String type, Integer count) {
-        this.campaignId = campaignId;
+    public CampaignDeliverable(DeliverablePlatform platform, DeliverableType type, int count) {
         this.platform = platform;
         this.type = type;
         this.count = count;
@@ -41,19 +43,15 @@ public class CampaignDeliverable {
         return id;
     }
 
-    public Long getCampaignId() {
-        return campaignId;
-    }
-
-    public String getPlatform() {
+    public DeliverablePlatform getPlatform() {
         return platform;
     }
 
-    public String getType() {
+    public DeliverableType getType() {
         return type;
     }
 
-    public Integer getCount() {
+    public int getCount() {
         return count;
     }
 }

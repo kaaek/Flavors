@@ -77,6 +77,30 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
+    /** The campaign form has wrong or missing fields: {@code errors} names each one so the form can highlight it. */
+    @ExceptionHandler(CampaignValidationException.class)
+    ResponseEntity<ProblemDetail> campaignInvalid(CampaignValidationException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setTitle("Invalid campaign");
+        problem.setProperty("errors", e.getErrors());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
+    }
+
+    @ExceptionHandler(NoBranchException.class)
+    ResponseEntity<ProblemDetail> noBranch(NoBranchException e) {
+        return problem(HttpStatus.CONFLICT, "No branch", e.getMessage());
+    }
+
+    @ExceptionHandler(CampaignNotFoundException.class)
+    ResponseEntity<ProblemDetail> campaignNotFound(CampaignNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Campaign not found", e.getMessage());
+    }
+
+    @ExceptionHandler(CampaignNotEditableException.class)
+    ResponseEntity<ProblemDetail> campaignNotEditable(CampaignNotEditableException e) {
+        return problem(HttpStatus.CONFLICT, "Campaign already sent", e.getMessage());
+    }
+
     @ExceptionHandler(InvalidPortfolioException.class)
     ResponseEntity<ProblemDetail> invalidPortfolio(InvalidPortfolioException e) {
         return problem(HttpStatus.BAD_REQUEST, "Invalid portfolio", e.getMessage());

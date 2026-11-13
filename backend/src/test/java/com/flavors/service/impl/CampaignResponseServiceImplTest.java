@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 import com.flavors.entity.Campaign;
 import com.flavors.entity.CampaignTestFactory;
 import com.flavors.enums.CampaignStatus;
-import com.flavors.repository.CampaignDeliverableRepository;
+
 import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.CounterOfferRepository;
 import com.flavors.repository.NotificationRepository;
@@ -43,7 +43,7 @@ class CampaignResponseServiceImplTest {
 
     private CampaignRepository campaignRepository;
     private CounterOfferRepository counterOfferRepository;
-    private CampaignDeliverableRepository deliverableRepository;
+    
     private NotificationRepository notificationRepository;
     private AuditLogger auditLogger;
     private CampaignResponseServiceImpl service;
@@ -52,7 +52,7 @@ class CampaignResponseServiceImplTest {
     void setUp() {
         campaignRepository = mock(CampaignRepository.class);
         counterOfferRepository = mock(CounterOfferRepository.class);
-        deliverableRepository = mock(CampaignDeliverableRepository.class);
+        
         notificationRepository = mock(NotificationRepository.class);
         auditLogger = mock(AuditLogger.class);
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
@@ -60,7 +60,6 @@ class CampaignResponseServiceImplTest {
         service = new CampaignResponseServiceImpl(
                 campaignRepository,
                 counterOfferRepository,
-                deliverableRepository,
                 notificationRepository,
                 auditLogger,
                 clock);
@@ -195,8 +194,7 @@ class CampaignResponseServiceImplTest {
         assertThat(counterOffer.getStatus())
                 .isEqualTo(CounterOfferStatus.APPROVED);
 
-        verify(deliverableRepository).deleteByCampaignId(CAMPAIGN_ID);
-        verify(deliverableRepository).saveAll(anyList());
+        assertThat(campaign.getDeliverables()).hasSize(1);
         verify(campaignRepository).save(campaign);
         verify(counterOfferRepository).save(counterOffer);
     }
