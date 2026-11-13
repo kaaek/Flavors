@@ -1,5 +1,5 @@
 package com.flavors.service.impl;
-
+import com.flavors.service.AuditLogger;
 import com.flavors.dto.CounterOfferRequest;
 import com.flavors.dto.DeliverableItem;
 import com.flavors.entity.Campaign;
@@ -25,24 +25,27 @@ import org.springframework.beans.factory.annotation.Autowired;
 @Transactional
 public class CampaignResponseServiceImpl implements CampaignResponseService {
 
-        private final CampaignRepository campaignRepository;
+    private final CampaignRepository campaignRepository;
     private final CounterOfferRepository counterOfferRepository;
     private final CampaignDeliverableRepository deliverableRepository;
     private final NotificationRepository notificationRepository;
+    private final AuditLogger auditLogger;
     private final Clock clock;
 
-    @Autowired
+        @Autowired
     public CampaignResponseServiceImpl(
             CampaignRepository campaignRepository,
             CounterOfferRepository counterOfferRepository,
             CampaignDeliverableRepository deliverableRepository,
-            NotificationRepository notificationRepository) {
+            NotificationRepository notificationRepository,
+            AuditLogger auditLogger) {
 
         this(
                 campaignRepository,
                 counterOfferRepository,
                 deliverableRepository,
                 notificationRepository,
+                auditLogger,
                 Clock.systemUTC());
     }
 
@@ -51,12 +54,14 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
             CounterOfferRepository counterOfferRepository,
             CampaignDeliverableRepository deliverableRepository,
             NotificationRepository notificationRepository,
+            AuditLogger auditLogger,
             Clock clock) {
 
         this.campaignRepository = campaignRepository;
         this.counterOfferRepository = counterOfferRepository;
         this.deliverableRepository = deliverableRepository;
         this.notificationRepository = notificationRepository;
+        this.auditLogger = auditLogger;
         this.clock = clock;
     }
 
@@ -71,6 +76,7 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
 
         campaign.accept(now);
         campaignRepository.save(campaign);
+        auditLogger.record("CAMPAIGN_ACCEPTED", "campaign", campaignId);
     }
 
     @Override
@@ -84,6 +90,7 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
 
         campaign.reject(now);
         campaignRepository.save(campaign);
+        auditLogger.record("CAMPAIGN_REJECTED", "campaign", campaignId);
     }
 
 
@@ -188,6 +195,7 @@ public void submitCounterOffer(
         deliverableRepository.saveAll(newDeliverables);
         campaignRepository.save(campaign);
         counterOfferRepository.save(counterOffer);
+        auditLogger.record("COUNTER_OFFER_APPROVED", "campaign", campaignId);
     }
 
     @Override
@@ -204,7 +212,7 @@ public void submitCounterOffer(
 
         campaignRepository.save(campaign);
         counterOfferRepository.save(counterOffer);
-
+        auditLogger.record("COUNTER_OFFER_DECLINED", "campaign", campaignId);
         notificationRepository.save(new Notification(
                 campaign.getCreatorId(),
                 campaignId,
@@ -224,7 +232,7 @@ public int expireOverdueCampaignResponses() {
     for (Campaign campaign : overdueCampaigns) {
         campaign.expireResponse(now);
         campaignRepository.save(campaign);
-
+        auditLogger.record("CAMPAIGN_RESPONSE_EXPIRED", "campaign", campaign.getId());
         notificationRepository.save(new Notification(
                 campaign.getBrandId(),
                 campaign.getId(),

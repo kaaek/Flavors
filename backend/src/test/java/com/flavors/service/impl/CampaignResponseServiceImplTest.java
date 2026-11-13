@@ -1,6 +1,6 @@
 
 package com.flavors.service.impl;
-
+import com.flavors.service.AuditLogger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -45,7 +45,7 @@ class CampaignResponseServiceImplTest {
     private CounterOfferRepository counterOfferRepository;
     private CampaignDeliverableRepository deliverableRepository;
     private NotificationRepository notificationRepository;
-
+    private AuditLogger auditLogger;
     private CampaignResponseServiceImpl service;
 
     @BeforeEach
@@ -54,7 +54,7 @@ class CampaignResponseServiceImplTest {
         counterOfferRepository = mock(CounterOfferRepository.class);
         deliverableRepository = mock(CampaignDeliverableRepository.class);
         notificationRepository = mock(NotificationRepository.class);
-
+        auditLogger = mock(AuditLogger.class);
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
         service = new CampaignResponseServiceImpl(
@@ -62,6 +62,7 @@ class CampaignResponseServiceImplTest {
                 counterOfferRepository,
                 deliverableRepository,
                 notificationRepository,
+                auditLogger,
                 clock);
     }
 
@@ -90,6 +91,7 @@ class CampaignResponseServiceImplTest {
                 .isEqualTo(NOW.plusSeconds(3 * 86400));
 
         verify(campaignRepository).save(campaign);
+        verify(auditLogger).record("CAMPAIGN_ACCEPTED", "campaign", CAMPAIGN_ID);
     }
 
     @Test
