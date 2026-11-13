@@ -575,4 +575,19 @@ brand is "not found" (404), never "forbidden".
   `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
   and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
   `CreatorSearchPage.test.tsx`.
-- **Not built yet:** the creator's answer (EEC-43), the follower offer (EEC-41), payment, and the job that expires Timer A.
+- **Not built yet:** the follower offer (EEC-41) and payment.
+## 16. Respond to a campaign request (UC-F4.1) — built
+
+- **Endpoints** (`CampaignResponseController`, all `POST`, `204` on success). Creator: `/api/creator/campaigns/{id}/accept`, `/reject`, `/counter-offer`
+  (body `{priceCents?, deliverables?}`). Brand: `/api/brand/campaigns/{id}/counter-offer/approve` and `/decline`. The URL prefix decides the role
+  (SecurityConfig), and the caller is always the logged-in user.
+- **Rules** (`CampaignResponseServiceImpl`): someone else's campaign is "not found" (NF-1). The creator's answers need status
+  `AWAITING_CREATOR_RESPONSE` and an open `response_deadline`. A campaign has at most one counter-offer (`counter_offer`); a second one is refused
+  (EX-F4.1.4), and a counter-offer must change the price, the deliverables or both. Approve and decline need status `COUNTERED`.
+- **Outcomes:** accept → `AWAITING_PAYMENT` and Timer B starts. Reject → `REJECTED`. Approve → `AWAITING_PAYMENT` at the counter price with the new
+  deliverables (`Campaign.replaceDeliverables`). Decline → `DECLINED`, the creator gets a `COUNTER_OFFER_DECLINED` notification, nothing is charged.
+- **Timer A:** `CampaignResponseExpirationJob` runs every minute (`flavors.campaign.response-expiration-cron`, zone `Asia/Beirut`), expires requests
+  past `response_deadline` and notifies the brand (`CAMPAIGN_RESPONSE_EXPIRED`).
+- **Audit:** every answer and every expiry is audited (`CAMPAIGN_ACCEPTED`, `CAMPAIGN_REJECTED`, `COUNTER_OFFER_SUBMITTED`, `COUNTER_OFFER_APPROVED`,
+  `COUNTER_OFFER_DECLINED`, `CAMPAIGN_RESPONSE_EXPIRED`).
+- **Tests:** `CampaignResponseServiceImplTest` (TC-F4.1.1 to TC-F4.1.6), `CampaignResponseControllerTest` (roles, CSRF, status codes).
