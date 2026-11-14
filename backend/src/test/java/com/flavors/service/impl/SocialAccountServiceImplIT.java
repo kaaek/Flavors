@@ -33,8 +33,16 @@ import com.flavors.service.InstagramClient;
 import com.flavors.service.SocialAccountService;
 import com.flavors.util.TokenCipher;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -81,6 +89,9 @@ class SocialAccountServiceImplIT {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    DataSource dataSource;
 
     @BeforeEach
     void instagramIsSetUp() {
@@ -392,6 +403,42 @@ class SocialAccountServiceImplIT {
         assertThat(accounts.findByCreatorId(lara)).hasSize(1);
     }
 
+    @Test
+    void aReconnectionCommittedWhileRemoveWaitsForTheLockIsRespected() throws Exception {
+        long lara = newCreator();
+        instagramAccepts("code-1", "token-1", newExternalId());
+        long id = service.connectInstagram(lara, "code-1").id();
+        service.disconnect(lara, id);
+
+        // Her reconnect holds the account's row and has set it to CONNECTED, but has not committed yet.
+        try (Connection reconnect = dataSource.getConnection()) {
+            reconnect.setAutoCommit(false);
+            try (PreparedStatement statement = reconnect.prepareStatement(
+                    "UPDATE social_account SET status = 'CONNECTED' WHERE id = ?")) {
+                statement.setLong(1, id);
+                statement.executeUpdate();
+            }
+
+            ExecutorService removal = Executors.newSingleThreadExecutor();
+            try {
+                Future<?> remove = removal.submit(() -> service.remove(lara, id));
+                awaitRemovalWaitingForAccountLock();
+                reconnect.commit();
+
+                // The reconnect is committed, so the removal must see CONNECTED and refuse, not delete the account.
+                assertThatThrownBy(() -> remove.get(30, TimeUnit.SECONDS))
+                        .isInstanceOf(ExecutionException.class)
+                        .hasCauseInstanceOf(SocialAccountRemovalNotAllowedException.class);
+            } finally {
+                removal.shutdownNow();
+            }
+        }
+
+        assertThat(accounts.findById(id).orElseThrow().getStatus()).isEqualTo(SocialAccountStatus.CONNECTED);
+        assertThat(postMetrics.findBySocialAccountId(id)).hasSize(2);
+        assertThat(auditCount("SOCIAL_ACCOUNT_REMOVED", id)).isZero();
+    }
+
     // ---- Set-up checks ----
 
     @Test
@@ -459,6 +506,21 @@ class SocialAccountServiceImplIT {
                 VALUES (?, ?, 'Summer burgers', 'COMPLETED', 50000, 50000, current_date - 10, current_date - 3)
                 RETURNING id
                 """, Long.class, brand, creator);
+    }
+
+    /** Returns once some statement on social_account is blocked waiting for a lock, i.e. remove() is waiting. */
+    private void awaitRemovalWaitingForAccountLock() throws InterruptedException {
+        for (int attempt = 0; attempt < 500; attempt++) {
+            Integer waiting = jdbc.queryForObject("""
+                    SELECT count(*) FROM pg_stat_activity
+                    WHERE wait_event_type = 'Lock' AND query ILIKE '%social_account%'
+                    """, Integer.class);
+            if (waiting != null && waiting > 0) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        throw new AssertionError("remove() never waited for the account lock");
     }
 
     private int auditCount(String action, long accountId) {

@@ -1,6 +1,7 @@
 package com.flavors.service.impl;
 
 import com.flavors.enums.SocialAccountStatus;
+import com.flavors.exception.SocialAccountNotFoundException;
 import com.flavors.repository.SocialAccountRepository;
 import com.flavors.service.InstagramClient;
 import com.flavors.service.SocialAccountService;
@@ -93,6 +94,9 @@ public class SocialRefreshJob {
                 } else {
                     needReconnection++;
                 }
+            } catch (SocialAccountNotFoundException e) {
+                // The creator removed it after this run listed it. Nothing is left to pull, so it is not an error.
+                LOGGER.info("Daily social refresh skipped account {}: it was removed during the run.", id);
             } catch (RuntimeException e) {
                 // One account's unexpected failure must not stop the others. Only the id is logged: an Instagram
                 // URL or token must never reach the log.

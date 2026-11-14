@@ -25,7 +25,11 @@ public class SocialPostMetric {
     @Column(nullable = false)
     private String externalPostId;
 
-    /** The campaign this post was made for; null for the creator's other posts. Set by the proof story. */
+    /**
+     * The campaign this post was made for; null for the creator's other posts. Set by the proof story (EEC-46).
+     * Invariant: whoever sets this must first take {@code SocialAccountRepository.lockById} for the post's account.
+     * {@code SocialAccountServiceImpl.remove()} checks for campaign links and then deletes, and relies on that lock.
+     */
     private Long campaignId;
 
     @Column(nullable = false)

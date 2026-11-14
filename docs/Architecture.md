@@ -509,6 +509,12 @@ returns 409 before approval.
   (`SocialAccountsPage`) shows a "Remove" button, with an "are you sure?" step, only on cards that need reconnection.
   Connecting the same Instagram account again afterwards creates a new row. Tests: `SocialAccountServiceImplIT`,
   `SocialAccountControllerTest`, `SocialAccountsPage.test.tsx`.
+  **Locking:** `remove()` and `disconnect()` lock the account (`lockById`) before they read its status or owner, so the
+  status they check is the committed one (a reconnect committed just before is seen, and the account is kept). A
+  daily pull that finds the account already removed skips it and does not count it as an error.
+  **Invariant for campaign links:** any future writer that sets `social_post_metric.campaign_id` (EEC-46) must take
+  `accounts.lockById` for that account first. `remove()` checks for campaign links and then deletes, in two statements,
+  and relies on that lock; without it a link committed in between would be deleted silently.
 - **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
 
 ## 14. Search (UC-F2.1, plus brand search) — built

@@ -114,20 +114,25 @@ class SocialAccountServiceImpl implements SocialAccountService {
 
     @Override
     public void disconnect(long creatorId, long accountId) {
-        SocialAccount owned = accounts.findByIdAndCreatorId(accountId, creatorId)
-                .orElseThrow(SocialAccountNotFoundException::new);
-        SocialAccount account = accounts.lockById(owned.getId()).orElseThrow(SocialAccountNotFoundException::new);
+        SocialAccount account = lockOwned(creatorId, accountId);
         account.markNeedsReconnection();
         tokens.clear(account.getId());
         auditLogger.record("SOCIAL_ACCOUNT_DISCONNECTED", "social_account", account.getId());
     }
 
+    /**
+     * Refused (409) unless the account is still 'Needs reconnection' and has no campaign results. The account is
+     * locked before anything is read, so the status checked is the committed one: a reconnect that committed a
+     * moment ago is seen, and the account is kept.
+     *
+     * <p>Invariant: any writer that links a post to a campaign ({@code SocialPostMetric.campaignId}) must take
+     * {@code accounts.lockById} for that account first. The campaign check below and the delete after it are two
+     * statements; without that lock, a link committed in between would be deleted silently.
+     */
     @Override
     public void remove(long creatorId, long accountId) {
-        SocialAccount owned = accounts.findByIdAndCreatorId(accountId, creatorId)
-                .orElseThrow(SocialAccountNotFoundException::new);
         // Locked like disconnect, so a pull that is running finishes before the account disappears.
-        SocialAccount account = accounts.lockById(owned.getId()).orElseThrow(SocialAccountNotFoundException::new);
+        SocialAccount account = lockOwned(creatorId, accountId);
         if (account.getStatus() != SocialAccountStatus.NEEDS_RECONNECTION) {
             throw new SocialAccountRemovalNotAllowedException("Disconnect this account before removing it.");
         }
@@ -240,6 +245,16 @@ class SocialAccountServiceImpl implements SocialAccountService {
             auditLogger.record("SOCIAL_ACCOUNT_NEEDS_RECONNECTION", "social_account", account.getId(),
                     Map.of("reason", reason));
         }
+    }
+
+    /**
+     * The creator's own account, locked. Lock first and check the owner on the locked row: a plain load before the
+     * lock could return a status that a concurrent commit has already changed. Someone else's account is "not found".
+     */
+    private SocialAccount lockOwned(long creatorId, long accountId) {
+        return accounts.lockById(accountId)
+                .filter(a -> a.getCreatorId().equals(creatorId))
+                .orElseThrow(SocialAccountNotFoundException::new);
     }
 
     private void requireReady() {
