@@ -11,6 +11,7 @@ import com.flavors.entity.CreatorProfile;
 import com.flavors.enums.Role;
 import com.flavors.exception.CampaignNotFoundException;
 import com.flavors.exception.CampaignResponseStateException;
+import com.flavors.exception.SocialAccountDisconnectedException;
 import com.flavors.exception.ValidationFailedException;
 import com.flavors.repository.AppUserRepository;
 import com.flavors.repository.CreatorProfileRepository;
@@ -58,7 +59,16 @@ class CampaignResponseServiceImplIT {
     @Autowired
     JdbcTemplate jdbc;
 
+    /** A creator with one CONNECTED Instagram account, so she can accept a campaign (FT-68). */
     private long newCreator() {
+        long id = newCreatorWithoutAccount();
+        jdbc.update("INSERT INTO social_account (creator_id, platform, external_id, status) VALUES (?, 'INSTAGRAM', ?, 'CONNECTED')",
+                id, UUID.randomUUID().toString());
+        return id;
+    }
+
+    /** A creator with no social account at all: she can't accept until she connects one (FT-68). */
+    private long newCreatorWithoutAccount() {
         long id = users.save(new AppUser(UUID.randomUUID() + "@test.local", "{noop}not-a-real-hash", Role.CREATOR)).getId();
         profiles.save(new CreatorProfile(id, "Lara", "Burgers", "Beirut", 1000, 5000));
         return id;
@@ -303,6 +313,59 @@ class CampaignResponseServiceImplIT {
                 .isInstanceOf(CampaignResponseStateException.class);
 
         assertThat(statusOf(campaign)).isNotEqualTo("AWAITING_PAYMENT");
+    }
+
+    // FT-68: without a CONNECTED account the creator can't accept, and nothing changes.
+    @Test
+    void acceptingWithoutAConnectedAccountIsRefusedAndNothingChanges() {
+        long brand = newBrand();
+        long creator = newCreatorWithoutAccount();
+        long campaign = openRequest(brand, creator);
+
+        assertThatThrownBy(() -> service.acceptCampaign(creator, campaign))
+                .isInstanceOf(SocialAccountDisconnectedException.class);
+
+        assertThat(statusOf(campaign)).isEqualTo("AWAITING_CREATOR_RESPONSE");
+        assertThat(auditCount("CAMPAIGN_ACCEPTED", campaign)).isZero();
+        assertThat(notificationCount(brand, campaign, "CAMPAIGN_ACCEPTED")).isZero();
+    }
+
+    @Test
+    void rejectingStillWorksWithoutAConnectedAccount() {
+        long brand = newBrand();
+        long creator = newCreatorWithoutAccount();
+        long campaign = openRequest(brand, creator);
+
+        service.rejectCampaign(creator, campaign);
+
+        assertThat(statusOf(campaign)).isEqualTo("REJECTED");
+        assertThat(auditCount("CAMPAIGN_REJECTED", campaign)).isEqualTo(1);
+    }
+
+    @Test
+    void counterOfferingStillWorksWithoutAConnectedAccount() {
+        long brand = newBrand();
+        long creator = newCreatorWithoutAccount();
+        long campaign = openRequest(brand, creator);
+
+        service.submitCounterOffer(creator, campaign, new CounterOfferRequest(65_000L, null));
+
+        assertThat(statusOf(campaign)).isEqualTo("COUNTERED");
+        assertThat(notificationCount(brand, campaign, "COUNTER_OFFER_RECEIVED")).isEqualTo(1);
+    }
+
+    // The deadline is checked before the account: an expired request says so, whatever her accounts are.
+    @Test
+    void anExpiredRequestWithoutAConnectedAccountGivesTheDeadlineError() {
+        long brand = newBrand();
+        long creator = newCreatorWithoutAccount();
+        long campaign = newRequest(brand, creator, -60);
+
+        assertThatThrownBy(() -> service.acceptCampaign(creator, campaign))
+                .isInstanceOf(CampaignResponseStateException.class)
+                .hasMessageContaining("deadline");
+
+        assertThat(statusOf(campaign)).isEqualTo("AWAITING_CREATOR_RESPONSE");
     }
 
     @Test

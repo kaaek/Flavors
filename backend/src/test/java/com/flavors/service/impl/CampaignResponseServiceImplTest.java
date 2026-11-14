@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.flavors.dto.CounterOfferRequest;
@@ -21,12 +22,15 @@ import com.flavors.enums.CampaignStatus;
 import com.flavors.enums.CounterOfferStatus;
 import com.flavors.enums.DeliverablePlatform;
 import com.flavors.enums.DeliverableType;
+import com.flavors.enums.SocialAccountStatus;
 import com.flavors.exception.CampaignNotFoundException;
 import com.flavors.exception.CampaignResponseStateException;
+import com.flavors.exception.SocialAccountDisconnectedException;
 import com.flavors.exception.ValidationFailedException;
 import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.CounterOfferRepository;
 import com.flavors.repository.NotificationRepository;
+import com.flavors.repository.SocialAccountRepository;
 import com.flavors.service.AuditLogger;
 import java.time.Clock;
 import java.time.Instant;
@@ -54,6 +58,7 @@ class CampaignResponseServiceImplTest {
     private CounterOfferRepository counterOfferRepository;
     private NotificationRepository notificationRepository;
     private AuditLogger auditLogger;
+    private SocialAccountRepository socialAccountRepository;
 
     private CampaignResponseServiceImpl service;
 
@@ -63,6 +68,9 @@ class CampaignResponseServiceImplTest {
         counterOfferRepository = mock(CounterOfferRepository.class);
         notificationRepository = mock(NotificationRepository.class);
         auditLogger = mock(AuditLogger.class);
+        socialAccountRepository = mock(SocialAccountRepository.class);
+        when(socialAccountRepository.existsByCreatorIdAndStatus(CREATOR_ID, SocialAccountStatus.CONNECTED))
+                .thenReturn(true);
 
         service = new CampaignResponseServiceImpl(
                 campaignRepository,
@@ -70,6 +78,7 @@ class CampaignResponseServiceImplTest {
                 notificationRepository,
                 auditLogger,
                 TransactionOperations.withoutTransaction(),
+                socialAccountRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -183,6 +192,7 @@ void anotherBrandCannotRetrieveTheCounterOffer() {
         assertThat(campaign.getPaymentDeadline()).isNull();
         verify(auditLogger).record("CAMPAIGN_REJECTED", "campaign", CAMPAIGN_ID);
         assertThat(savedNotifications(1).get(0).getType()).isEqualTo(Notification.CAMPAIGN_REJECTED);
+        verifyNoInteractions(socialAccountRepository);
     }
 
     @Test
@@ -336,6 +346,21 @@ void anotherBrandCannotRetrieveTheCounterOffer() {
         service.acceptCampaign(CREATOR_ID, CAMPAIGN_ID);
 
         assertThat(campaign.getStatus()).isEqualTo(CampaignStatus.AWAITING_PAYMENT);
+    }
+
+    // FT-68: a creator with no CONNECTED social account can't accept.
+    @Test
+    void accept_isRefusedWhenTheCreatorHasNoConnectedAccount() {
+        Campaign campaign = openRequest();
+        when(socialAccountRepository.existsByCreatorIdAndStatus(CREATOR_ID, SocialAccountStatus.CONNECTED))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> service.acceptCampaign(CREATOR_ID, CAMPAIGN_ID))
+                .isInstanceOf(SocialAccountDisconnectedException.class);
+
+        assertThat(campaign.getStatus()).isEqualTo(CampaignStatus.AWAITING_CREATOR_RESPONSE);
+        verify(campaignRepository, never()).save(any());
+        verify(auditLogger, never()).record("CAMPAIGN_ACCEPTED", "campaign", CAMPAIGN_ID);
     }
 
     // TC-F4.1.6: a second counter-offer finds the request already COUNTERED.

@@ -10,12 +10,15 @@ import com.flavors.entity.Notification;
 import com.flavors.enums.CampaignStatus;
 import com.flavors.enums.DeliverablePlatform;
 import com.flavors.enums.DeliverableType;
+import com.flavors.enums.SocialAccountStatus;
 import com.flavors.exception.CampaignNotFoundException;
 import com.flavors.exception.CampaignResponseStateException;
+import com.flavors.exception.SocialAccountDisconnectedException;
 import com.flavors.exception.ValidationFailedException;
 import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.CounterOfferRepository;
 import com.flavors.repository.NotificationRepository;
+import com.flavors.repository.SocialAccountRepository;
 import com.flavors.service.AuditLogger;
 import com.flavors.service.CampaignResponseService;
 import java.time.Clock;
@@ -56,6 +59,7 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
     private final NotificationRepository notificationRepository;
     private final AuditLogger auditLogger;
     private final TransactionOperations transactions;
+    private final SocialAccountRepository socialAccountRepository;
     private final Clock clock;
 
     @Autowired
@@ -64,10 +68,11 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
             CounterOfferRepository counterOfferRepository,
             NotificationRepository notificationRepository,
             AuditLogger auditLogger,
-            TransactionOperations transactions) {
+            TransactionOperations transactions,
+            SocialAccountRepository socialAccountRepository) {
 
         this(campaignRepository, counterOfferRepository, notificationRepository, auditLogger, transactions,
-                Clock.systemUTC());
+                socialAccountRepository, Clock.systemUTC());
     }
 
     CampaignResponseServiceImpl(
@@ -76,6 +81,7 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
             NotificationRepository notificationRepository,
             AuditLogger auditLogger,
             TransactionOperations transactions,
+            SocialAccountRepository socialAccountRepository,
             Clock clock) {
 
         this.campaignRepository = campaignRepository;
@@ -83,6 +89,7 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
         this.notificationRepository = notificationRepository;
         this.auditLogger = auditLogger;
         this.transactions = transactions;
+        this.socialAccountRepository = socialAccountRepository;
         this.clock = clock;
     }
 
@@ -93,6 +100,7 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
         Instant now = clock.instant();
         requireStatus(campaign, CampaignStatus.AWAITING_CREATOR_RESPONSE);
         requireResponseWindowOpen(campaign, now);
+        requireConnectedAccount(creatorId);
 
         campaign.accept(now);
         campaignRepository.save(campaign);
@@ -379,6 +387,13 @@ private CounterOfferResponse toCounterOfferResponse(CounterOffer counterOffer) {
     private void requireResponseWindowOpen(Campaign campaign, Instant now) {
         if (campaign.getResponseDeadline() == null || !campaign.getResponseDeadline().isAfter(now)) {
             throw new CampaignResponseStateException("The response deadline for this request has passed.");
+        }
+    }
+
+    /** FT-68: with no connected social account she can't accept a new campaign until she reconnects. */
+    private void requireConnectedAccount(Long creatorId) {
+        if (!socialAccountRepository.existsByCreatorIdAndStatus(creatorId, SocialAccountStatus.CONNECTED)) {
+            throw new SocialAccountDisconnectedException();
         }
     }
 }

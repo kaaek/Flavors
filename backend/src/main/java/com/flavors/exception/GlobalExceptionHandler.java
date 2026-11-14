@@ -105,6 +105,12 @@ public class GlobalExceptionHandler {
     ResponseEntity<ProblemDetail> campaignResponseState(CampaignResponseStateException e) {
         return problem(HttpStatus.CONFLICT, "Request can't be answered", e.getMessage());
     }
+
+    @ExceptionHandler(SocialAccountDisconnectedException.class)
+    ResponseEntity<ProblemDetail> socialAccountDisconnected(SocialAccountDisconnectedException e) {
+        return problem(HttpStatus.CONFLICT, "Account disconnected", e.getMessage());
+    }
+
     @ExceptionHandler(InvalidPortfolioException.class)
     ResponseEntity<ProblemDetail> invalidPortfolio(InvalidPortfolioException e) {
         return problem(HttpStatus.BAD_REQUEST, "Invalid portfolio", e.getMessage());

@@ -595,6 +595,7 @@ brand is "not found" (404), never "forbidden".
   refuses `FOR UPDATE`, so they use a plain `findById` with the same visibility filter and no lock.
 - **Outcomes:** accept → `AWAITING_PAYMENT` and Timer B starts. Reject → `REJECTED`. Approve → `AWAITING_PAYMENT` at the counter price with the new
   deliverables (`Campaign.replaceDeliverables`). Decline → `DECLINED`, nothing is charged.
+- **Connected account (FT-68):** a creator with no social account in status `CONNECTED` can't accept a campaign request. `CampaignResponseServiceImpl.acceptCampaign` answers **409** "Account disconnected" (`SocialAccountDisconnectedException`) until she reconnects, after the status and deadline checks. Reject and counter-offer are not blocked, and the campaign stays `AWAITING_CREATOR_RESPONSE` on a refused accept. Tests: `CampaignResponseServiceImplTest` and `CampaignResponseServiceImplIT`.
 - **Timer A covers the whole negotiation:** the creator and the brand together have 3 days from the send to agree. `CampaignResponseExpirationJob`
   runs every minute (`flavors.campaign.response-expiration-cron`, zone `Asia/Beirut`) and expires `AWAITING_CREATOR_RESPONSE` and `COUNTERED`
   requests past `response_deadline`, one campaign per transaction, so one bad row cannot undo the others and two overlapping runs do not
