@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.flavors.TestcontainersConfiguration;
 import com.flavors.dto.EscrowResponse;
+import com.flavors.dto.PaymentResult;
 import com.flavors.dto.PaymentStartResponse;
 import com.flavors.entity.AppUser;
 import com.flavors.entity.CreatorProfile;
@@ -232,6 +233,24 @@ class PaymentServiceImplIT {
         assertThat(notificationCount(creator, campaign, "CAMPAIGN_PAYMENT_EXPIRED")).isEqualTo(1);
     }
 
+    // A payment made before the deadline but confirmed only by the sweep (after the clock passed it) is held.
+    @Test
+    void aPaymentMadeInTimeWinsOverTimerBEvenWhenItIsConfirmedLater() {
+        long brand = newBrand();
+        long creator = newCreator();
+        long campaign = newAcceptedCampaign(brand, creator);
+        pay(brand, campaign);
+        simulated.setOutcome(latestReference(campaign), ProviderPaymentStatus.PAID);
+        makeOverdue(campaign);
+
+        payments.expireOverduePayments();
+
+        assertThat(statusOf(campaign)).isEqualTo("ACTIVE");
+        assertThat(escrowStatusOf(campaign)).isEqualTo("HELD");
+        assertThat(countTransactions(campaign, "SUCCEEDED")).isEqualTo(1);
+        assertThat(auditCount("PAYMENT_WINDOW_EXPIRED", campaign)).isZero();
+    }
+
     @Test
     void aPaymentAfterTheWindowIsRecordedButNotHeld() {
         long brand = newBrand();
@@ -243,12 +262,28 @@ class PaymentServiceImplIT {
         payments.expireOverduePayments();
 
         simulated.setOutcome(reference, ProviderPaymentStatus.PAID);
-        payments.reconcile(reference);
+        PaymentResult result = payments.reconcile(reference).orElseThrow();
 
+        assertThat(result.held()).isFalse();
         assertThat(statusOf(campaign)).isEqualTo("EXPIRED");
         assertThat(escrowStatusOf(campaign)).isEqualTo("PENDING");
         assertThat(auditCount("PAYMENT_NOT_HELD", campaign)).isEqualTo(1);
         assertThat(countTransactions(campaign, "SUCCEEDED")).isEqualTo(1);
+    }
+
+    // The idempotent replay of a key after expiry is refused, not sent to the provider again.
+    @Test
+    void aReplayedKeyAfterExpiryIsRefused() {
+        long brand = newBrand();
+        long creator = newCreator();
+        long campaign = newAcceptedCampaign(brand, creator);
+        String key = UUID.randomUUID().toString();
+        payments.startPayment(brand, campaign, key);
+        makeOverdue(campaign);
+        payments.expireOverduePayments();
+
+        assertThatThrownBy(() -> payments.startPayment(brand, campaign, key))
+                .isInstanceOf(CampaignResponseStateException.class);
     }
 
     @Test

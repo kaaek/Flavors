@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * Whish settings, all from the environment and never committed (docs/README.md).
  *
- * @param mode       {@code mock} (default: simulated checkout, no network; dev and tests), {@code sandbox} or
+ * @param mode       {@code mock} (default: no network, no money; dev and tests), {@code sandbox} or
  *                   {@code live} (call Whish at {@code baseUrl}), or {@code disabled} (no payments; production default)
  * @param baseUrl    Whish API base, e.g. https://lb.sandbox.whish.money/itel-service/api
  * @param channel    merchant channel, sent as the {@code channel} header

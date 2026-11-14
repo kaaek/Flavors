@@ -62,7 +62,7 @@ it('shows Awaiting payment with the time left and the amount to pay (TC-F7.1.5)'
 
 it('starts the payment with a new Idempotency-Key and sends the payer to the checkout', async () => {
   apiFetchMock.mockResolvedValueOnce(awaiting).mockResolvedValueOnce({
-    checkoutUrl: '/payments/simulated/abc',
+    checkoutUrl: 'https://pay.example.test/checkout/abc',
     amountCents: 65000,
     currency: 'USD',
     status: 'PENDING',
@@ -71,7 +71,7 @@ it('starts the payment with a new Idempotency-Key and sends the payer to the che
 
   fireEvent.click(await screen.findByRole('button', { name: 'Pay $650.00' }))
 
-  await waitFor(() => expect(redirectMock).toHaveBeenCalledWith('/payments/simulated/abc'))
+  await waitFor(() => expect(redirectMock).toHaveBeenCalledWith('https://pay.example.test/checkout/abc'))
   const [path, options] = apiFetchMock.mock.calls[1]
   expect(path).toBe('/api/brand/campaigns/42/payment')
   expect(options).toMatchObject({
@@ -120,4 +120,20 @@ it('tells the payer when the payment did not go through and that they can try ag
 
   expect(await screen.findByText(/The payment was not completed/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Pay $650.00' })).toBeEnabled()
+})
+
+it('says a payment received after the window is received but not held', async () => {
+  apiFetchMock.mockResolvedValue({ ...awaiting, status: 'EXPIRED', escrowStatus: 'PENDING' })
+  renderAt('/brand/campaigns/42?payment=received')
+
+  expect(await screen.findByText(/received a payment after the payment window closed/)).toBeInTheDocument()
+  expect(screen.queryByText(/held in escrow and the campaign is active/)).not.toBeInTheDocument()
+})
+
+it('hides the escrow block for an expired campaign that was never paid', async () => {
+  apiFetchMock.mockResolvedValue({ ...awaiting, status: 'EXPIRED', escrowStatus: 'PENDING' })
+  renderAt('/brand/campaigns/42')
+
+  expect(await screen.findByLabelText('Campaign details')).toBeInTheDocument()
+  expect(screen.queryByText('Escrow', { selector: 'dt' })).not.toBeInTheDocument()
 })

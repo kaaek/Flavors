@@ -13,11 +13,13 @@ import com.flavors.dto.HostedPaymentRequest;
 import com.flavors.dto.HostedPaymentSession;
 import com.flavors.enums.ProviderPaymentStatus;
 import com.flavors.exception.PaymentProviderException;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -37,8 +39,8 @@ class WhishPaymentProviderTest {
 
     private static HostedPaymentRequest request(String reference) {
         return new HostedPaymentRequest(reference, 65_000L, "USD", "Flavors campaign 42",
-                "https://flavors.example.test/api/public/payments/callback",
-                "https://flavors.example.test/api/public/payments/return");
+                "https://flavors.example.test/api/public/payments/callback?externalId=" + reference,
+                "https://flavors.example.test/api/public/payments/return?externalId=" + reference);
     }
 
     @Test
@@ -64,6 +66,40 @@ class WhishPaymentProviderTest {
 
         assertThat(session.checkoutUrl()).isEqualTo("https://pay.whish.example/c/9");
         server.verify();
+    }
+
+    @Test
+    void startSendsTheCallbackAndReturnUrlsWithTheReference() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        WhishPaymentProvider whish = provider(builder, server);
+        String[] sent = new String[1];
+        server.expect(requestTo(BASE + "/payment/whish"))
+                .andExpect(request -> sent[0] = ((org.springframework.mock.http.client.MockClientHttpRequest) request)
+                        .getBodyAsString())
+                .andRespond(withSuccess("{\"status\":true,\"data\":{\"collectUrl\":\"https://pay.whish.example/c/10\"}}",
+                        MediaType.APPLICATION_JSON));
+
+        whish.startHostedPayment(request("ref-5"));
+
+        Map<String, Object> body = JsonMapper.builder().build().readValue(sent[0], new TypeReference<>() {});
+        assertThat(body)
+                .containsEntry("successCallbackUrl",
+                        "https://flavors.example.test/api/public/payments/callback?externalId=ref-5")
+                .containsEntry("failureCallbackUrl",
+                        "https://flavors.example.test/api/public/payments/callback?externalId=ref-5")
+                .containsEntry("successRedirectUrl",
+                        "https://flavors.example.test/api/public/payments/return?externalId=ref-5")
+                .containsEntry("failureRedirectUrl",
+                        "https://flavors.example.test/api/public/payments/return?externalId=ref-5");
+        server.verify();
+    }
+
+    @Test
+    void theCollectUrlAndStatusComeFromTheDataObjectOrTheTopLevelOnly() {
+        assertThat(statusAnswering("{\"data\":{\"collectStatus\":\"success\"}}")).isEqualTo(ProviderPaymentStatus.PAID);
+        assertThat(statusAnswering("{\"collectStatus\":\"success\"}")).isEqualTo(ProviderPaymentStatus.PAID);
+        assertThat(statusAnswering("{\"data\":{\"other\":{\"collectStatus\":\"success\"}}}")).isEqualTo(ProviderPaymentStatus.PENDING);
     }
 
     @Test

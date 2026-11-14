@@ -19,7 +19,7 @@ import { LOCALE } from '../lib/locale'
 import { formatUSD } from '../lib/money'
 import { parseUSDToCents } from '../lib/moneyInput'
 import { timeLeftText } from '../lib/timeLeft'
-import { isAwaitingPayment } from '../api/payments'
+import { isAwaitingPayment, showsEscrow } from '../api/payments'
 import { CampaignStatusChip } from '../brand/CampaignStatusChip'
 import '../brand/campaigns.css'
 
@@ -68,7 +68,7 @@ export function CreatorCampaignDetailPage() {
   // The brand's payment shows up here without a reload: checked every 30 seconds while it is pending.
   const [refreshed, setRefreshed] = useState<Campaign | null>(null)
   const current = refreshed ?? (result.status === 'ready' ? result.data : null)
-  const awaitingPayment = current ? isAwaitingPayment(current.status, current.escrowStatus) : false
+  const awaitingPayment = current ? isAwaitingPayment(current.status) : false
   useEffect(() => {
     if (!awaitingPayment) return
     const timer = window.setInterval(() => {
@@ -286,7 +286,7 @@ export function CreatorCampaignDetailPage() {
             </>
           )}
 
-          {campaign.escrowStatus && (
+          {campaign.escrowStatus && showsEscrow(campaign.status, campaign.escrowStatus) && (
             <>
               <dt>Escrow</dt>
               <dd>{escrowLabel[campaign.escrowStatus]}</dd>

@@ -1,7 +1,6 @@
 package com.flavors.controller;
 
 import com.flavors.dto.PaymentResult;
-import com.flavors.enums.PaymentTransactionStatus;
 import com.flavors.exception.PaymentProviderException;
 import com.flavors.service.PaymentService;
 import java.net.URI;
@@ -45,14 +44,14 @@ public class PaymentCallbackController {
             result = Optional.empty();
         }
         String target = result
-                .map(r -> "/brand/campaigns/" + r.campaignId() + "?payment=" + outcomeOf(r.status()))
+                .map(r -> "/brand/campaigns/" + r.campaignId() + "?payment=" + outcomeOf(r))
                 .orElse("/brand/campaigns?payment=pending");
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(target)).build();
     }
 
-    private static String outcomeOf(PaymentTransactionStatus status) {
-        return switch (status) {
-            case SUCCEEDED -> "held";
+    private static String outcomeOf(PaymentResult result) {
+        return switch (result.status()) {
+            case SUCCEEDED -> result.held() ? "held" : "received";
             case FAILED -> "failed";
             case PENDING -> "pending";
         };

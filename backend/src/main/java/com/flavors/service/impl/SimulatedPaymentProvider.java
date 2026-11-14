@@ -11,9 +11,9 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
- * The default provider for dev and tests (flavors.whish.mode=mock): a hosted checkout page inside Flavors, no
- * network and no money. The payer's choice on that page is kept in memory and reported through
- * {@link #queryStatus}, so the same code path runs as with a real provider. Off in the prod profile.
+ * The default provider for dev and tests (flavors.whish.mode=mock): no network and no money. Its checkout is the
+ * return URL, so a payer who follows it is only asked for the status and stays pending. Outcomes are set in code
+ * through {@link #setOutcome}, so no HTTP path can mark a payment paid. Off in the prod profile.
  */
 @Component
 @Profile("!prod")
@@ -29,7 +29,7 @@ public class SimulatedPaymentProvider implements PaymentProvider {
 
     @Override
     public HostedPaymentSession startHostedPayment(HostedPaymentRequest request) {
-        return new HostedPaymentSession("/payments/simulated/" + request.reference());
+        return new HostedPaymentSession(request.redirectUrl());
     }
 
     @Override
@@ -37,7 +37,7 @@ public class SimulatedPaymentProvider implements PaymentProvider {
         return outcomes.getOrDefault(reference, ProviderPaymentStatus.PENDING);
     }
 
-    /** The mock checkout page reports the payer's choice here. */
+    /** Tests set the outcome the next status check reports. */
     public void setOutcome(String reference, ProviderPaymentStatus outcome) {
         outcomes.put(reference, outcome);
     }

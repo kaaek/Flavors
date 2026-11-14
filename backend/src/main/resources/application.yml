@@ -82,7 +82,7 @@ flavors:
   mail:
     from: ${FLAVORS_MAIL_FROM:no-reply@flavors.local}
   # Whish Money (EEC-44, docs/README.md). Credentials come from the environment only and are never committed.
-  # mock = simulated checkout inside Flavors (default, dev and tests); sandbox | live = call Whish at WHISH_BASE_URL;
+  # mock = no network and no money (default, dev and tests); sandbox | live = call Whish at WHISH_BASE_URL;
   # disabled = no payments (production default until the merchant account is ready).
   whish:
     mode: ${WHISH_MODE:mock}

@@ -68,7 +68,7 @@ public class WhishPaymentProvider implements PaymentProvider {
                 "successRedirectUrl", request.redirectUrl(),
                 "failureRedirectUrl", request.redirectUrl());
         Object answer = post(properties.createPath(), body);
-        Object collectUrl = findValue(answer, "collectUrl");
+        Object collectUrl = field(answer, "collectUrl");
         if (!(collectUrl instanceof String url) || url.isBlank()) {
             throw new PaymentProviderException("Whish did not return a collect URL.");
         }
@@ -79,7 +79,7 @@ public class WhishPaymentProvider implements PaymentProvider {
     @Override
     public ProviderPaymentStatus queryStatus(String reference, long amountCents, String currency) {
         Object answer = post(properties.statusPath(), Map.of("currency", currency, "externalId", reference));
-        Object collectStatus = findValue(answer, "collectStatus");
+        Object collectStatus = field(answer, "collectStatus");
         if (COLLECTED.equals(collectStatus)) {
             return ProviderPaymentStatus.PAID;
         }
@@ -108,28 +108,15 @@ public class WhishPaymentProvider implements PaymentProvider {
         }
     }
 
-    /** The first value of this key anywhere in the answer, so both {@code {"collectUrl": ...}} and nested layouts work. */
-    static Object findValue(Object node, String key) {
-        if (node instanceof Map<?, ?> map) {
-            if (map.containsKey(key)) {
-                return map.get(key);
-            }
-            for (Object child : map.values()) {
-                Object found = findValue(child, key);
-                if (found != null) {
-                    return found;
-                }
-            }
+    /** Read from the envelope's "data" object first, then from the top level. */
+    static Object field(Object answer, String key) {
+        if (!(answer instanceof Map<?, ?> envelope)) {
+            return null;
         }
-        if (node instanceof java.util.List<?> list) {
-            for (Object child : list) {
-                Object found = findValue(child, key);
-                if (found != null) {
-                    return found;
-                }
-            }
+        if (envelope.get("data") instanceof Map<?, ?> data && data.containsKey(key)) {
+            return data.get(key);
         }
-        return null;
+        return envelope.get(key);
     }
 
     private static void requireSetting(String value, String name) {

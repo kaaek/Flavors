@@ -10,7 +10,7 @@ import {
   type CounterOffer,
 } from '../api/campaigns'
 import { ApiError } from '../api/client'
-import { isAwaitingPayment, startCampaignPayment } from '../api/payments'
+import { isAwaitingPayment, showsEscrow, startCampaignPayment } from '../api/payments'
 import { Icon } from '../layout/Icon'
 import { useFetchWith } from '../layout/useFetch'
 import { LOCALE } from '../lib/locale'
@@ -35,7 +35,7 @@ export function CampaignDetailPage() {
   const load = useCallback(() => getCampaign(campaignId), [campaignId])
   const result = useFetchWith<Campaign>(load)
   const justSent = (location.state as { sent?: boolean } | null)?.sent === true
-  // Set by the payment return (api PaymentCallbackController): held, failed or pending.
+  // Set by the payment return (api PaymentCallbackController): held, received (after the window), failed or pending.
   const paymentResult = new URLSearchParams(location.search).get('payment')
   const [counterOffer, setCounterOffer] = useState<CounterOffer | null>(null)
   const [counterOfferLoading, setCounterOfferLoading] = useState(false)
@@ -80,7 +80,7 @@ export function CampaignDetailPage() {
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
   const current = campaignOverride ?? (result.status === 'ready' ? result.data : null)
-  const awaitingPayment = current ? isAwaitingPayment(current.status, current.escrowStatus) : false
+  const awaitingPayment = current ? isAwaitingPayment(current.status) : false
 
   // The provider's answer can arrive after this page opened, so the escrow is checked again every 30 seconds.
   useEffect(() => {
@@ -185,6 +185,15 @@ export function CampaignDetailPage() {
         <div className="fl-alert fl-alert--success" role="status">
           <Icon name="check-circle" />
           <div>Payment received. It is held in escrow and the campaign is active.</div>
+        </div>
+      )}
+      {paymentResult === 'received' && (
+        <div className="fl-alert fl-alert--danger" role="alert">
+          <Icon name="alert" />
+          <div>
+            We received a payment after the payment window closed. It is not held in escrow and the
+            campaign is not active. Refunds are not automated yet.
+          </div>
         </div>
       )}
       {paymentResult === 'failed' && (
@@ -338,7 +347,7 @@ export function CampaignDetailPage() {
               <dd>{when.format(new Date(campaign.acceptedAt))}</dd>
             </>
           )}
-          {campaign.escrowStatus && (
+          {campaign.escrowStatus && showsEscrow(campaign.status, campaign.escrowStatus) && (
             <>
               <dt>Escrow</dt>
               <dd>{escrowLabel[campaign.escrowStatus]}</dd>

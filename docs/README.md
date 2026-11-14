@@ -355,7 +355,7 @@ is never committed. Without it the default is the **mock**, which runs the whole
 
 | Variable | Used for | Default |
 |---|---|---|
-| `WHISH_MODE` | `mock` (simulated checkout, dev and tests), `sandbox` or `live` (call Whish), `disabled` (no payments). Production runs `disabled` until it is set to `sandbox` or `live` | `mock` (`disabled` in prod) |
+| `WHISH_MODE` | `mock` (no network and no money, dev and tests), `sandbox` or `live` (call Whish), `disabled` (no payments). Production runs `disabled` until it is set to `sandbox` or `live` | `mock` (`disabled` in prod) |
 | `WHISH_BASE_URL` | Whish API base, e.g. the sandbox `https://lb.sandbox.whish.money/itel-service/api` | (none, required for `sandbox`/`live`) |
 | `WHISH_CHANNEL` | Merchant channel, sent as the `channel` header | (none) |
 | `WHISH_SECRET` | Merchant secret, sent as the `secret` header. Never log or commit it | (none) |

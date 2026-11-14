@@ -1,7 +1,6 @@
 package com.flavors.service;
 
 import com.flavors.dto.EscrowResponse;
-import com.flavors.dto.PaymentCheckout;
 import com.flavors.dto.PaymentResult;
 import com.flavors.dto.PaymentStartResponse;
 import java.time.Duration;
@@ -41,7 +40,4 @@ public interface PaymentService {
 
     /** The escrow of a campaign this creator received. @throws com.flavors.exception.PaymentNotFoundException if none yet */
     EscrowResponse getEscrowForCreator(long creatorId, long campaignId);
-
-    /** What the hosted checkout shows for one attempt. */
-    PaymentCheckout checkout(String reference);
 }

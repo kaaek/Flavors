@@ -101,7 +101,7 @@ class PaymentControllerTest {
 
     @Test
     void theReturnRedirectsToTheCampaignWithTheOutcome() throws Exception {
-        given(payments.reconcile("ref-9")).willReturn(Optional.of(new PaymentResult(42L, PaymentTransactionStatus.SUCCEEDED)));
+        given(payments.reconcile("ref-9")).willReturn(Optional.of(new PaymentResult(42L, PaymentTransactionStatus.SUCCEEDED, true)));
 
         mvc.perform(get("/api/public/payments/return").param("externalId", "ref-9"))
                 .andExpect(status().isFound())
@@ -109,8 +109,16 @@ class PaymentControllerTest {
     }
 
     @Test
+    void aPaymentReceivedAfterTheWindowIsReportedAsReceivedNotHeld() throws Exception {
+        given(payments.reconcile("ref-7")).willReturn(Optional.of(new PaymentResult(42L, PaymentTransactionStatus.SUCCEEDED, false)));
+
+        mvc.perform(get("/api/public/payments/return").param("externalId", "ref-7"))
+                .andExpect(header().string("Location", "/brand/campaigns/42?payment=received"));
+    }
+
+    @Test
     void aFailedPaymentReturnsToTheCampaignAsFailed() throws Exception {
-        given(payments.reconcile("ref-8")).willReturn(Optional.of(new PaymentResult(42L, PaymentTransactionStatus.FAILED)));
+        given(payments.reconcile("ref-8")).willReturn(Optional.of(new PaymentResult(42L, PaymentTransactionStatus.FAILED, false)));
 
         mvc.perform(get("/api/public/payments/return").param("externalId", "ref-8"))
                 .andExpect(header().string("Location", "/brand/campaigns/42?payment=failed"));

@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { CampaignStatus } from './campaigns'
+import type { CampaignStatus, EscrowStatus } from './campaigns'
 
 export type PaymentState = 'PENDING' | 'SUCCEEDED' | 'FAILED'
 
@@ -21,28 +21,9 @@ export const startCampaignPayment = (campaignId: number, idempotencyKey: string)
     headers: { 'Idempotency-Key': idempotencyKey },
   })
 
-/** What the test checkout shows for one attempt. */
-export interface SimulatedCheckout {
-  campaignId: number
-  campaignName: string
-  amountCents: number
-  currency: string
-  status: PaymentState
-}
+/** Polling continues only while the campaign waits for the brand's payment. */
+export const isAwaitingPayment = (status: CampaignStatus) => status === 'AWAITING_PAYMENT'
 
-export const getSimulatedCheckout = (reference: string) =>
-  apiFetch<SimulatedCheckout>(`/api/public/payments/simulated/${encodeURIComponent(reference)}`)
-
-/** The test checkout's buttons: PAID (the payer paid) or FAILED (the card was refused). */
-export const completeSimulatedCheckout = (reference: string, outcome: 'PAID' | 'FAILED') =>
-  apiFetch<SimulatedCheckout>(
-    `/api/public/payments/simulated/${encodeURIComponent(reference)}/complete`,
-    {
-      method: 'POST',
-      body: { outcome },
-    },
-  )
-
-/** Campaign statuses in which the escrow can still change, so the page keeps checking. */
-export const isAwaitingPayment = (status: CampaignStatus, escrow: string | null | undefined) =>
-  status === 'AWAITING_PAYMENT' || escrow === 'PENDING'
+/** The escrow block is shown while a payment can still come in, or once it is held. An expired campaign that was never paid has none. */
+export const showsEscrow = (status: CampaignStatus, escrow: EscrowStatus | null) =>
+  escrow !== null && (status === 'AWAITING_PAYMENT' || escrow === 'HELD')
