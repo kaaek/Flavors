@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -310,29 +311,46 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
      * same, so a creator cannot find out that a draft naming her exists.
      */
     private Campaign lockCampaignOfCreator(Long creatorId, Long campaignId) {
-        return campaignRepository.findByIdForUpdate(campaignId)
-                .filter(campaign -> campaign.getStatus() != CampaignStatus.DRAFT
-                        && Objects.equals(campaign.getCreatorId(), creatorId))
+        return visibleToCreator(campaignRepository.findByIdForUpdate(campaignId), creatorId);
+    }
+
+    /** Same visibility as {@link #lockCampaignOfCreator}, without the lock: for reads, which run in a read-only transaction. */
+    private Campaign readCampaignOfCreator(Long creatorId, Long campaignId) {
+        return visibleToCreator(campaignRepository.findById(campaignId), creatorId);
+    }
+
+    private Campaign visibleToCreator(Optional<Campaign> campaign, Long creatorId) {
+        return campaign
+                .filter(c -> c.getStatus() != CampaignStatus.DRAFT && Objects.equals(c.getCreatorId(), creatorId))
                 .orElseThrow(CampaignNotFoundException::new);
     }
 
     /** The brand's own campaign, locked; another brand's campaign is "not found". */
     private Campaign lockCampaignOfBrand(Long brandId, Long campaignId) {
-        return campaignRepository.findByIdForUpdate(campaignId)
-                .filter(campaign -> Objects.equals(campaign.getBrandId(), brandId))
+        return visibleToBrand(campaignRepository.findByIdForUpdate(campaignId), brandId);
+    }
+
+    /** Same visibility as {@link #lockCampaignOfBrand}, without the lock: for reads, which run in a read-only transaction. */
+    private Campaign readCampaignOfBrand(Long brandId, Long campaignId) {
+        return visibleToBrand(campaignRepository.findById(campaignId), brandId);
+    }
+
+    private Campaign visibleToBrand(Optional<Campaign> campaign, Long brandId) {
+        return campaign
+                .filter(c -> Objects.equals(c.getBrandId(), brandId))
                 .orElseThrow(CampaignNotFoundException::new);
     }
         @Override
 @Transactional(readOnly = true)
 public CounterOfferResponse getCounterOfferForCreator(Long creatorId, Long campaignId) {
-    lockCampaignOfCreator(creatorId, campaignId);
+    readCampaignOfCreator(creatorId, campaignId);
     return toCounterOfferResponse(findCounterOffer(campaignId));
 }
 
 @Override
 @Transactional(readOnly = true)
 public CounterOfferResponse getCounterOfferForBrand(Long brandId, Long campaignId) {
-    lockCampaignOfBrand(brandId, campaignId);
+    readCampaignOfBrand(brandId, campaignId);
     return toCounterOfferResponse(findCounterOffer(campaignId));
 }
 

@@ -164,6 +164,27 @@ class CampaignResponseServiceImplIT {
         assertThat(auditCount("COUNTER_OFFER_DECLINED", campaign)).isEqualTo(1);
     }
 
+    // The two read endpoints run in read-only transactions, where PostgreSQL refuses SELECT ... FOR UPDATE.
+    @Test
+    void theCounterOfferCanBeReadByItsCreatorAndItsBrandAndByNobodyElse() {
+        long brand = newBrand();
+        long lara = newCreator();
+        long campaign = openRequest(brand, lara);
+        service.submitCounterOffer(lara, campaign, new CounterOfferRequest(65_000L, null));
+
+        var seenByCreator = service.getCounterOfferForCreator(lara, campaign);
+        var seenByBrand = service.getCounterOfferForBrand(brand, campaign);
+
+        assertThat(seenByCreator.priceCents()).isEqualTo(65_000L);
+        assertThat(seenByCreator.campaignId()).isEqualTo(campaign);
+        assertThat(seenByBrand.priceCents()).isEqualTo(65_000L);
+        assertThat(seenByBrand.campaignId()).isEqualTo(campaign);
+        assertThatThrownBy(() -> service.getCounterOfferForCreator(newCreator(), campaign))
+                .isInstanceOf(CampaignNotFoundException.class);
+        assertThatThrownBy(() -> service.getCounterOfferForBrand(newBrand(), campaign))
+                .isInstanceOf(CampaignNotFoundException.class);
+    }
+
     // TC-F4.1.4
     @Test
     void anApprovedCounterOfferAwaitsPaymentAtTheNewPriceAndDeliverables() {

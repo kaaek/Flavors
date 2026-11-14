@@ -87,6 +87,7 @@ class CampaignResponseServiceImplTest {
         Campaign campaign = CampaignTestFactory.countered(
                 CAMPAIGN_ID, BRAND_ID, CREATOR_ID, "Test campaign", ORIGINAL_PRICE);
         when(campaignRepository.findByIdForUpdate(CAMPAIGN_ID)).thenReturn(Optional.of(campaign));
+        when(campaignRepository.findById(CAMPAIGN_ID)).thenReturn(Optional.of(campaign));
         when(counterOfferRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(Optional.of(counterOffer));
         return campaign;
     }
@@ -110,7 +111,8 @@ void creatorCanRetrieveTheirCounterOffer() {
     assertThat(result.campaignId()).isEqualTo(CAMPAIGN_ID);
     assertThat(result.priceCents()).isEqualTo(60000L);
     assertThat(result.status()).isEqualTo(CounterOfferStatus.PENDING);
-    verify(campaignRepository).findByIdForUpdate(CAMPAIGN_ID);
+    verify(campaignRepository).findById(CAMPAIGN_ID);
+    verify(campaignRepository, never()).findByIdForUpdate(CAMPAIGN_ID);
     verify(counterOfferRepository).findByCampaignId(CAMPAIGN_ID);
 }
 
@@ -124,7 +126,8 @@ void brandCanRetrieveTheirCounterOffer() {
     assertThat(result.campaignId()).isEqualTo(CAMPAIGN_ID);
     assertThat(result.priceCents()).isEqualTo(60000L);
     assertThat(result.status()).isEqualTo(CounterOfferStatus.PENDING);
-    verify(campaignRepository).findByIdForUpdate(CAMPAIGN_ID);
+    verify(campaignRepository).findById(CAMPAIGN_ID);
+    verify(campaignRepository, never()).findByIdForUpdate(CAMPAIGN_ID);
     verify(counterOfferRepository).findByCampaignId(CAMPAIGN_ID);
 }
 
