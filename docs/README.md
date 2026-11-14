@@ -346,3 +346,30 @@ pull keeps the last figures and shows "Needs reconnection". The job does nothing
 | `FLAVORS_SOCIAL_REFRESH_ENABLED` | `false` turns the job off | `true` |
 
 To try it locally, set the cron to every minute: `FLAVORS_SOCIAL_REFRESH_CRON="0 * * * * *"`.
+
+## Whish Money payments (EEC-44)
+
+Brands pay for accepted campaigns through Whish Money (collect only; the money is held as a Flavors ledger state, see
+[Architecture.md §17](Architecture.md#17-pay-and-hold-the-campaign-payment-uc-f71--built)). All of this comes from the environment and
+is never committed. Without it the default is the **mock**, which runs the whole flow inside Flavors with no network and no money.
+
+| Variable | Used for | Default |
+|---|---|---|
+| `WHISH_MODE` | `mock` (simulated checkout, dev and tests), `sandbox` or `live` (call Whish), `disabled` (no payments). Production runs `disabled` until it is set to `sandbox` or `live` | `mock` (`disabled` in prod) |
+| `WHISH_BASE_URL` | Whish API base, e.g. the sandbox `https://lb.sandbox.whish.money/itel-service/api` | (none, required for `sandbox`/`live`) |
+| `WHISH_CHANNEL` | Merchant channel, sent as the `channel` header | (none) |
+| `WHISH_SECRET` | Merchant secret, sent as the `secret` header. Never log or commit it | (none) |
+| `WHISH_WEBSITE_URL` | Merchant website, sent as the `websiteurl` header | (none) |
+| `FLAVORS_APP_BASE_URL` | The public address of this app. Whish calls the callback and redirects the payer here, so it must be a **public HTTPS** address (local development needs a tunnel) | `http://localhost:5173` |
+
+The paths of the Whish API (`/payment/whish` to create a payment, `/payment/collect/status` to check it) are set in the
+`flavors.whish.create-path` and `flavors.whish.status-path` properties.
+
+**What the merchant account must provide before `sandbox` or `live`:**
+
+1. Whish merchant credentials (channel, secret, website URL) for the sandbox and for production.
+2. The official Whish API specification. Everything the adapter knows comes from unofficial notes: the paths, the headers,
+   the callback format, the limits (reported as 1 to 5,000 USD) and whether USD cards and wallets are both enabled.
+3. The public HTTPS domains that Whish whitelists for the callback and redirect URLs (the deployed backend, e.g. Railway).
+4. An answer for payouts and refunds (EEC-45): Whish has no escrow release or refund API, so these need a manual process or a
+   Whish arrangement.
