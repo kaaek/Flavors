@@ -34,6 +34,9 @@ public class CampaignMapper {
                 campaign.getContentRequirements(),
                 campaign.getSentAt(),
                 campaign.getResponseDeadline(),
+                campaign.getAgreedPriceCents(),
+                campaign.getPaymentDeadline(),
+                campaign.getAcceptedAt(),
                 campaign.getCreatedAt(),
                 campaign.getUpdatedAt());
     }
@@ -47,6 +50,9 @@ public class CampaignMapper {
                 campaign.getCreatorId(),
                 creator == null ? null : creator.getDisplayName(),
                 campaign.getPriceOfferedCents(),
+                campaign.getAgreedPriceCents(),
+                campaign.getPaymentDeadline(),
+                campaign.getAcceptedAt(),
                 campaign.getUpdatedAt());
     }
 }

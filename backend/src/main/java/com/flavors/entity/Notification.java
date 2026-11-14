@@ -17,7 +17,12 @@ public class Notification {
 
     /** A brand sent the creator a campaign request (UC-F3.1). */
     public static final String CAMPAIGN_REQUEST = "CAMPAIGN_REQUEST";
-
+    public static final String CAMPAIGN_ACCEPTED = "CAMPAIGN_ACCEPTED";
+    public static final String CAMPAIGN_REJECTED = "CAMPAIGN_REJECTED";
+    public static final String COUNTER_OFFER_RECEIVED = "COUNTER_OFFER_RECEIVED";
+    public static final String COUNTER_OFFER_APPROVED = "COUNTER_OFFER_APPROVED";
+    public static final String COUNTER_OFFER_DECLINED = "COUNTER_OFFER_DECLINED";
+    public static final String CAMPAIGN_RESPONSE_EXPIRED = "CAMPAIGN_RESPONSE_EXPIRED";
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

@@ -55,6 +55,9 @@ export interface Campaign {
   sentAt: string | null
   /** Timer A: when the creator's 3 days to answer run out. */
   responseDeadline: string | null
+  agreedPriceCents: number | null
+  paymentDeadline: string | null
+  acceptedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -66,7 +69,32 @@ export interface CampaignSummary {
   creatorId: number | null
   creatorName: string | null
   priceOfferedCents: number | null
+  agreedPriceCents: number | null
   updatedAt: string
+}
+export interface CreatorCampaignSummary {
+  id: number
+  name: string
+  status: CampaignStatus
+  brandId: number
+  brandName: string
+  priceOfferedCents: number | null
+  agreedPriceCents: number | null
+  paymentDeadline: string | null
+  acceptedAt: string | null
+  updatedAt: string
+}
+
+export type CounterOfferStatus = 'PENDING' | 'APPROVED' | 'DECLINED'
+
+export interface CounterOffer {
+  id: number
+  campaignId: number
+  priceCents: number
+  deliverables: Deliverable[]
+  status: CounterOfferStatus
+  createdAt: string | null
+  decidedAt: string | null
 }
 
 export interface CampaignCreator {
@@ -95,6 +123,56 @@ export const sendNew = (body: CampaignInput) =>
 /** Saves the details into an existing draft and sends it. */
 export const sendDraft = (id: number, body: CampaignInput) =>
   apiFetch<Campaign>(`${base}/${id}/send`, { method: 'POST', body })
+/** Lists campaigns received by the creator. */
+export const listCreatorCampaigns = () =>
+  apiFetch<CreatorCampaignSummary[]>('/api/creator/campaigns')
+/** Gets one campaign received by the creator. */
+export const getCreatorCampaign = (campaignId: number) =>
+  apiFetch<Campaign>(`/api/creator/campaigns/${campaignId}`)
+
+export interface CounterOfferRequest {
+  priceCents: number | null
+  deliverables: Deliverable[] | null
+}
+
+/** Accepts a campaign request as the creator. */
+export const acceptCreatorCampaign = (campaignId: number) =>
+  apiFetch<void>(`/api/creator/campaigns/${campaignId}/accept`, {
+    method: 'POST',
+  })
+
+/** Rejects a campaign request as the creator. */
+export const rejectCreatorCampaign = (campaignId: number) =>
+  apiFetch<void>(`/api/creator/campaigns/${campaignId}/reject`, {
+    method: 'POST',
+  })
+
+/** Submits a price and/or deliverables counter-offer as the creator. */
+export const submitCreatorCounterOffer = (campaignId: number, body: CounterOfferRequest) =>
+  apiFetch<void>(`/api/creator/campaigns/${campaignId}/counter-offer`, {
+    method: 'POST',
+    body,
+  })
+
+/** Gets a counter-offer for the creator. */
+export const getCreatorCounterOffer = (campaignId: number) =>
+  apiFetch<CounterOffer>(`/api/creator/campaigns/${campaignId}/counter-offer`)
+
+/** Gets a counter-offer for the brand. */
+export const getBrandCounterOffer = (campaignId: number) =>
+  apiFetch<CounterOffer>(`/api/brand/campaigns/${campaignId}/counter-offer`)
+
+/** Approves a counter-offer as the brand. */
+export const approveCounterOffer = (campaignId: number) =>
+  apiFetch<void>(`/api/brand/campaigns/${campaignId}/counter-offer/approve`, {
+    method: 'POST',
+  })
+
+/** Declines a counter-offer as the brand. */
+export const declineCounterOffer = (campaignId: number) =>
+  apiFetch<void>(`/api/brand/campaigns/${campaignId}/counter-offer/decline`, {
+    method: 'POST',
+  })
 
 /** The words shown for each status; the sent ones carry the owner of the next move. */
 export const statusLabel: Record<CampaignStatus, string> = {

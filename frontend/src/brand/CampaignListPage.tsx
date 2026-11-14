@@ -59,6 +59,7 @@ export function CampaignListPage() {
                 <th scope="col">Name</th>
                 <th scope="col">Creator</th>
                 <th scope="col">Price offered</th>
+                <th scope="col">Agreed price</th>
                 <th scope="col">Status</th>
                 <th scope="col">
                   <span className="fl-sr-only">Actions</span>
@@ -86,6 +87,11 @@ export function CampaignListPage() {
                     {campaign.priceOfferedCents === null
                       ? '—'
                       : formatUSD(campaign.priceOfferedCents)}
+                  </td>
+                  <td>
+                    {campaign.agreedPriceCents === null
+                      ? '—'
+                      : formatUSD(campaign.agreedPriceCents)}
                   </td>
                   <td>
                     <CampaignStatusChip status={campaign.status} />

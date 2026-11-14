@@ -31,6 +31,7 @@ it('lists name, creator and status, with Edit on drafts only, and a New campaign
       creatorId: 3,
       creatorName: 'Nour Haddad',
       priceOfferedCents: 25000,
+      agreedPriceCents: 30000,
       updatedAt: '2030-01-01T10:00:00Z',
     },
     {
@@ -40,6 +41,7 @@ it('lists name, creator and status, with Edit on drafts only, and a New campaign
       creatorId: null,
       creatorName: null,
       priceOfferedCents: null,
+      agreedPriceCents: null,
       updatedAt: '2030-01-01T09:00:00Z',
     },
   ])
@@ -49,6 +51,7 @@ it('lists name, creator and status, with Edit on drafts only, and a New campaign
   expect(within(sent).getByText('Nour Haddad')).toBeInTheDocument()
   expect(within(sent).getByText('Awaiting creator response')).toBeInTheDocument()
   expect(within(sent).getByText('$250.00')).toBeInTheDocument()
+  expect(within(sent).getByText('$300.00')).toBeInTheDocument()
   expect(within(sent).queryByRole('link', { name: /Edit/ })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Summer menu launch' })).toHaveAttribute(
     'href',
