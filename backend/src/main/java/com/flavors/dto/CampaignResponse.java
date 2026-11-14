@@ -1,3 +1,4 @@
+
 package com.flavors.dto;
 
 import com.flavors.enums.CampaignStatus;
@@ -22,6 +23,9 @@ public record CampaignResponse(
         Instant sentAt,
         /** Timer A: when the creator's time to answer runs out. */
         Instant responseDeadline,
+        Long agreedPriceCents,
+        Instant paymentDeadline,
+        Instant acceptedAt,
         Instant createdAt,
         Instant updatedAt) {
 

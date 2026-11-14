@@ -11,5 +11,8 @@ public record CampaignSummaryResponse(
         Long creatorId,
         String creatorName,
         Long priceOfferedCents,
+        Long agreedPriceCents,
+        Instant paymentDeadline,
+        Instant acceptedAt,
         Instant updatedAt) {
 }

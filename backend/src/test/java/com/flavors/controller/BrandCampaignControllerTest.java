@@ -102,7 +102,7 @@ class BrandCampaignControllerTest {
     @Test
     void brandListsAndOpensItsCampaignsAndLooksUpACreator() throws Exception {
         when(campaigns.list(7)).thenReturn(List.of(new CampaignSummaryResponse(42L, "Summer", CampaignStatus.DRAFT, null, null,
-                null, Instant.parse("2030-01-01T10:00:00Z"))));
+                null, null, null, null, Instant.parse("2030-01-01T10:00:00Z"))));
         when(campaigns.get(7, 42)).thenReturn(response(CampaignStatus.DRAFT));
         when(campaigns.findCreator(3)).thenReturn(new CampaignCreatorResponse(3L, "Nour", "Burgers", "Beirut"));
 
@@ -179,7 +179,9 @@ class BrandCampaignControllerTest {
                 LocalDate.parse("2030-01-20"),
                 List.of(new CampaignResponse.DeliverableView(DeliverablePlatform.INSTAGRAM, DeliverableType.REEL, 2)),
                 "Be kind", sent ? Instant.parse("2030-01-01T10:00:00Z") : null,
-                sent ? Instant.parse("2030-01-04T10:00:00Z") : null, Instant.parse("2030-01-01T09:00:00Z"),
+                sent ? Instant.parse("2030-01-04T10:00:00Z") : null,
+                null, null, null,
+                Instant.parse("2030-01-01T09:00:00Z"),
                 Instant.parse("2030-01-01T10:00:00Z"));
     }
 

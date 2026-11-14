@@ -35,6 +35,9 @@ const sentCampaign: Campaign = {
   contentRequirements: null,
   sentAt: '2030-01-01T10:00:00Z',
   responseDeadline: '2030-01-04T10:00:00Z',
+  agreedPriceCents: null,
+  paymentDeadline: null,
+  acceptedAt: null,
   createdAt: '2030-01-01T09:00:00Z',
   updatedAt: '2030-01-01T10:00:00Z',
 }
