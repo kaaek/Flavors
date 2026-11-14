@@ -147,10 +147,7 @@ export const rejectCreatorCampaign = (campaignId: number) =>
   })
 
 /** Submits a price and/or deliverables counter-offer as the creator. */
-export const submitCreatorCounterOffer = (
-  campaignId: number,
-  body: CounterOfferRequest,
-) =>
+export const submitCreatorCounterOffer = (campaignId: number, body: CounterOfferRequest) =>
   apiFetch<void>(`/api/creator/campaigns/${campaignId}/counter-offer`, {
     method: 'POST',
     body,

@@ -36,8 +36,7 @@ const day = new Intl.DateTimeFormat(LOCALE, {
 })
 const dateOnly = (iso: string) => day.format(new Date(`${iso}T00:00:00Z`))
 
-const typeLabel = (type: string) =>
-  type.charAt(0) + type.slice(1).toLowerCase()
+const typeLabel = (type: string) => type.charAt(0) + type.slice(1).toLowerCase()
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiError) {
@@ -51,17 +50,13 @@ export function CreatorCampaignDetailPage() {
   const { id } = useParams()
   const campaignId = Number(id)
 
-  const load = useCallback(
-    () => getCreatorCampaign(campaignId),
-    [campaignId],
-  )
+  const load = useCallback(() => getCreatorCampaign(campaignId), [campaignId])
   const result = useFetchWith<Campaign>(load)
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [statusOverride, setStatusOverride] =
-    useState<Campaign['status'] | null>(null)
+  const [statusOverride, setStatusOverride] = useState<Campaign['status'] | null>(null)
 
   const [price, setPrice] = useState('')
   const [changeDeliverables, setChangeDeliverables] = useState(false)
@@ -110,11 +105,7 @@ export function CreatorCampaignDetailPage() {
     if (
       changeDeliverables &&
       (rows.length === 0 ||
-        rows.some(
-          (row) =>
-            !Number.isSafeInteger(Number(row.count)) ||
-            Number(row.count) <= 0,
-        ))
+        rows.some((row) => !Number.isSafeInteger(Number(row.count)) || Number(row.count) <= 0))
     ) {
       setError('Add at least one deliverable and enter a valid count for each.')
       return
@@ -214,9 +205,7 @@ export function CreatorCampaignDetailPage() {
         <dl className="fl-kv">
           <dt>Price offered</dt>
           <dd>
-            {campaign.priceOfferedCents === null
-              ? '—'
-              : formatUSD(campaign.priceOfferedCents)}
+            {campaign.priceOfferedCents === null ? '—' : formatUSD(campaign.priceOfferedCents)}
           </dd>
 
           {campaign.agreedPriceCents !== null && (
@@ -239,8 +228,7 @@ export function CreatorCampaignDetailPage() {
           <dd>
             {campaign.deliverables
               .map(
-                (item) =>
-                  `${item.count} × ${typeLabel(item.platform)} ${item.type.toLowerCase()}`,
+                (item) => `${item.count} × ${typeLabel(item.platform)} ${item.type.toLowerCase()}`,
               )
               .join(', ')}
           </dd>
@@ -259,13 +247,12 @@ export function CreatorCampaignDetailPage() {
             </>
           )}
 
-          {campaign.responseDeadline &&
-            campaign.status === 'AWAITING_CREATOR_RESPONSE' && (
-              <>
-                <dt>Respond by</dt>
-                <dd>{when.format(new Date(campaign.responseDeadline))}</dd>
-              </>
-            )}
+          {campaign.responseDeadline && campaign.status === 'AWAITING_CREATOR_RESPONSE' && (
+            <>
+              <dt>Respond by</dt>
+              <dd>{when.format(new Date(campaign.responseDeadline))}</dd>
+            </>
+          )}
 
           {campaign.paymentDeadline && (
             <>
@@ -312,8 +299,8 @@ export function CreatorCampaignDetailPage() {
 
           <h3>Make a counter-offer</h3>
           <p>
-            You can propose a different price, different deliverables, or both.
-            Leave an option unchanged if you agree with the original terms.
+            You can propose a different price, different deliverables, or both. Leave an option
+            unchanged if you agree with the original terms.
           </p>
 
           <form className="fl-stack" onSubmit={submitCounterOffer}>
@@ -433,9 +420,7 @@ export function CreatorCampaignDetailPage() {
                       className="fl-btn fl-btn--ghost"
                       type="button"
                       disabled={busy}
-                      onClick={() =>
-                        setRows((current) => current.filter((_, i) => i !== index))
-                      }
+                      onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
                     >
                       Remove deliverable
                     </button>
@@ -462,11 +447,7 @@ export function CreatorCampaignDetailPage() {
               </div>
             )}
 
-            <button
-              className="fl-btn fl-btn--primary"
-              type="submit"
-              disabled={busy}
-            >
+            <button className="fl-btn fl-btn--primary" type="submit" disabled={busy}>
               {busy ? 'Submitting…' : 'Submit counter-offer'}
             </button>
           </form>

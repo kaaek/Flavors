@@ -1,4 +1,3 @@
-
 import { Link } from 'react-router-dom'
 import { listCreatorCampaigns, type CreatorCampaignSummary } from '../api/campaigns'
 import { Icon } from '../layout/Icon'
