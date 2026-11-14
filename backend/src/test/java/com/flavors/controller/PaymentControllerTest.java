@@ -30,7 +30,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
-import com.flavors.enums.PaymentTransactionStatus;
 
 /** The web side of paying (UC-F7.1): URLs, roles, the Idempotency-Key header and the callback/return answers. The rules are in PaymentServiceImplIT. */
 @WebMvcTest({BrandPaymentController.class, PaymentCallbackController.class})
@@ -48,15 +47,12 @@ class PaymentControllerTest {
 
     @Test
     void aBrandStartsThePaymentWithItsKey() throws Exception {
-        given(payments.startPayment(9L, 42L, "key-1")).willReturn(new PaymentStartResponse(
-                "https://pay.example/c/1", 65_000L, "USD", PaymentTransactionStatus.PENDING));
+        given(payments.startPayment(9L, 42L, "key-1")).willReturn(new PaymentStartResponse("https://pay.example/c/1"));
 
         mvc.perform(post("/api/brand/campaigns/42/payment").with(user(KARIM)).with(csrf())
                         .header("Idempotency-Key", "key-1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.checkoutUrl").value("https://pay.example/c/1"))
-                .andExpect(jsonPath("$.amountCents").value(65000))
-                .andExpect(jsonPath("$.currency").value("USD"));
+                .andExpect(jsonPath("$.checkoutUrl").value("https://pay.example/c/1"));
     }
 
     @Test

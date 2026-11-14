@@ -116,8 +116,7 @@ public class PaymentServiceImpl implements PaymentService {
                 "Flavors campaign " + campaignId,
                 appBaseUrl + "/api/public/payments/callback?externalId=" + attempt.reference(),
                 appBaseUrl + "/api/public/payments/return?externalId=" + attempt.reference()));
-        return new PaymentStartResponse(session.checkoutUrl(), attempt.amountCents(), CURRENCY,
-                PaymentTransactionStatus.PENDING);
+        return new PaymentStartResponse(session.checkoutUrl());
     }
 
     /** A replayed key returns the attempt of its first call, so the live campaign and attempt are checked under the lock. */
@@ -173,14 +172,6 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public Optional<PaymentResult> reconcile(String reference) {
-        return settle(reference, false);
-    }
-
-    /**
-     * @param beforeExpiry true when Timer B is about to expire the campaign: a PAID answer then was made in time and is
-     *                     held even though the clock has passed the deadline
-     */
-    private Optional<PaymentResult> settle(String reference, boolean beforeExpiry) {
         Optional<PaymentTransaction> known = transactions.findByProviderRef(reference);
         if (known.isEmpty()) {
             return Optional.empty();
@@ -192,11 +183,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Outside any transaction: the provider call must not hold a lock.
         ProviderPaymentStatus status = provider.queryStatus(reference, known.get().getAmountCents(), CURRENCY);
-        return tx.execute(s -> applyStatus(reference, status, beforeExpiry));
+        return tx.execute(s -> applyStatus(reference, status));
     }
 
     /** Runs inside a transaction, under the campaign lock. */
-    private Optional<PaymentResult> applyStatus(String reference, ProviderPaymentStatus status, boolean beforeExpiry) {
+    private Optional<PaymentResult> applyStatus(String reference, ProviderPaymentStatus status) {
         Optional<Long> campaignId = transactions.findCampaignIdByProviderRef(reference);
         if (campaignId.isEmpty()) {
             return Optional.empty();
@@ -225,8 +216,7 @@ public class PaymentServiceImpl implements PaymentService {
         EscrowPayment escrow = escrows.findById(payment.getEscrowId()).orElseThrow(PaymentNotFoundException::new);
         payment.succeed();
 
-        boolean inWindow = beforeExpiry || campaign.isPaymentWindowOpen(now);
-        if (campaign.getStatus() == CampaignStatus.AWAITING_PAYMENT && inWindow
+        if (campaign.getStatus() == CampaignStatus.AWAITING_PAYMENT && campaign.isPaymentWindowOpen(now)
                 && escrow.getStatus() == EscrowStatus.PENDING) {
             escrow.hold(now);
             campaign.activate(now);
@@ -285,7 +275,6 @@ public class PaymentServiceImpl implements PaymentService {
         int expired = 0;
         for (Long campaignId : campaigns.findOverduePaymentIds(CampaignStatus.AWAITING_PAYMENT, now)) {
             try {
-                settleOpenAttempts(campaignId);
                 if (Boolean.TRUE.equals(tx.execute(s -> expireOnePayment(campaignId, now)))) {
                     expired++;
                 }
@@ -295,16 +284,6 @@ public class PaymentServiceImpl implements PaymentService {
             }
         }
         return expired;
-    }
-
-    /** Asks the provider about the campaign's open attempts before expiring it, so a payment made in time wins. */
-    private void settleOpenAttempts(Long campaignId) {
-        escrows.findByCampaignId(campaignId).ifPresent(escrow -> {
-            for (PaymentTransaction open : transactions.findByEscrowIdAndTypeAndStatusOrderByIdDesc(
-                    escrow.getId(), PaymentTransactionType.CHARGE, PaymentTransactionStatus.PENDING)) {
-                settle(open.getProviderRef(), true);
-            }
-        });
     }
 
     private boolean expireOnePayment(Long campaignId, Instant now) {

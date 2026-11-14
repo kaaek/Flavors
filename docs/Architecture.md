@@ -633,7 +633,7 @@ provider; its setup is in [README.md](README.md#whish-money-payments-eec-44).
 
 | Method and path | What |
 |---|---|
-| `POST /api/brand/campaigns/{id}/payment` (BRAND, `Idempotency-Key` header required) | Starts the payment. Answers 200 with `checkoutUrl` (where the payer goes), `amountCents`, `currency` (`USD`), `status` (`PENDING`) |
+| `POST /api/brand/campaigns/{id}/payment` (BRAND, `Idempotency-Key` header required) | Starts the payment. Answers 200 with `checkoutUrl` (where the payer goes) |
 | `GET /api/brand/campaigns/{id}/escrow` (BRAND) | The escrow status: `PENDING`, `HELD`, `RELEASED`, `FROZEN` or `REFUNDED` (FR-F7.7) |
 | `GET /api/creator/campaigns/{id}/escrow` (CREATOR) | The same, for the creator |
 | `GET /api/public/payments/callback?externalId=…` | The provider's callback. It only asks for the status (see below) |
@@ -665,18 +665,17 @@ Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (
   (`ESCROW_HELD`). `FAILED` marks the attempt `FAILED` and leaves the campaign `AWAITING_PAYMENT` (EX-F7.1.1: the brand retries with
   a new key). A repeat or a concurrent answer finds the payment already recorded and changes nothing (TC-F7.1.4, EX-F7.1.3).
 - **Timer B** (`PaymentDeadlineExpirationJob` → `expireOverduePayments`, `flavors.payment.deadline-expiration-cron`, default every
-  minute, zone `Asia/Beirut`): for each `AWAITING_PAYMENT` campaign whose `payment_deadline` has passed, the open attempts are first
-  asked about with the provider, and a `PAID` answer is held through the same path, because the payment was made in time. Then the
-  campaign expires if its escrow is still not `HELD`: remaining open attempts are marked `FAILED`, both sides get
-  `CAMPAIGN_PAYMENT_EXPIRED`, and the audit log has `PAYMENT_WINDOW_EXPIRED`. If the provider can't be asked, the campaign is not
-  expired and the next run tries again.
-  Each campaign runs in its own transaction, under the same lock, so a payment and Timer B can't both win.
+  minute, zone `Asia/Beirut`): expires `AWAITING_PAYMENT` campaigns whose `payment_deadline` has passed and whose escrow is not `HELD`.
+  It works strictly on the deadline and never asks the provider, so it runs even when Whish is down. Open attempts are marked
+  `FAILED`, both sides get `CAMPAIGN_PAYMENT_EXPIRED`, and the audit log has `PAYMENT_WINDOW_EXPIRED`. Each campaign runs in its own
+  transaction, under the same lock, so a payment and Timer B can't both win. A payment confirmed before the deadline is held by the
+  normal reconcile path (callback, return or sweep) and Timer B then leaves the campaign alone.
 - **Reconciliation sweep** (`PaymentReconciliationJob`, every 5 minutes): asks the provider about payments still `PENDING` for
   campaigns that are still `AWAITING_PAYMENT`, once they are two minutes old. This covers a callback that never arrived.
-- **Known gap, for EEC-45:** a payment confirmed after Timer B (or on a campaign that is no longer waiting) is recorded as
+- **Known gap, for EEC-45:** a payment confirmed after the deadline (or on a campaign that is no longer waiting) is recorded as
   `SUCCEEDED` but not held. The escrow stays `PENDING`, the audit log has `PAYMENT_NOT_HELD`, and the payer is told the payment was
-  received but not held (`payment=received`). Nothing refunds it yet: the refund is EEC-45. A payment made just before the deadline
-  but not yet reported to Flavors, and confirmed after the sweep expired the campaign, is in this gap too.
+  received but not held (`payment=received`). A PAID answer after expiry is never held and never reported as held. Residual: a brand
+  that pays in the last minutes before the deadline can be charged without a campaign until EEC-45 adds refunds.
 - **Escrow is a Flavors ledger state.** Whish is collect-only: no hold, refund or payout API. `HELD` means Flavors has recorded
   money that Whish collected. Release and refund (EEC-45) need a separate answer (SPIKE-2).
 - **Schema:** none added. `escrow_payment` and `payment_transaction` (V5) hold it all: the provider reference is unique,

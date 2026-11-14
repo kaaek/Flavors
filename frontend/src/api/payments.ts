@@ -1,14 +1,9 @@
 import { apiFetch } from './client'
 import type { CampaignStatus, EscrowStatus } from './campaigns'
 
-export type PaymentState = 'PENDING' | 'SUCCEEDED' | 'FAILED'
-
 /** What the Pay button gets back: send the payer to checkoutUrl. */
 export interface PaymentStart {
   checkoutUrl: string
-  amountCents: number
-  currency: string
-  status: PaymentState
 }
 
 /**

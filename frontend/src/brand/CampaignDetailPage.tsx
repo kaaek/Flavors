@@ -196,7 +196,7 @@ export function CampaignDetailPage() {
           </div>
         </div>
       )}
-      {paymentResult === 'failed' && (
+      {paymentResult === 'failed' && campaign.status === 'AWAITING_PAYMENT' && (
         <div className="fl-alert fl-alert--danger" role="alert">
           <Icon name="alert" />
           <div>

@@ -63,9 +63,6 @@ it('shows Awaiting payment with the time left and the amount to pay (TC-F7.1.5)'
 it('starts the payment with a new Idempotency-Key and sends the payer to the checkout', async () => {
   apiFetchMock.mockResolvedValueOnce(awaiting).mockResolvedValueOnce({
     checkoutUrl: 'https://pay.example.test/checkout/abc',
-    amountCents: 65000,
-    currency: 'USD',
-    status: 'PENDING',
   })
   renderAt('/brand/campaigns/42')
 
@@ -136,4 +133,12 @@ it('hides the escrow block for an expired campaign that was never paid', async (
 
   expect(await screen.findByLabelText('Campaign details')).toBeInTheDocument()
   expect(screen.queryByText('Escrow', { selector: 'dt' })).not.toBeInTheDocument()
+})
+
+it('ignores a failed-payment return once the campaign has expired', async () => {
+  apiFetchMock.mockResolvedValue({ ...awaiting, status: 'EXPIRED', escrowStatus: 'PENDING' })
+  renderAt('/brand/campaigns/42?payment=failed')
+
+  expect(await screen.findByLabelText('Campaign details')).toBeInTheDocument()
+  expect(screen.queryByText(/The payment was not completed/)).not.toBeInTheDocument()
 })
