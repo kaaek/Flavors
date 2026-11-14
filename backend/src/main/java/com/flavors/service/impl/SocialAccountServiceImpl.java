@@ -131,7 +131,8 @@ class SocialAccountServiceImpl implements SocialAccountService {
      */
     @Override
     public void remove(long creatorId, long accountId) {
-        // Locked like disconnect, so a pull that is running finishes before the account disappears.
+        // Locked like disconnect, which serializes this against the pull's write. A pull still running is not
+        // waited for; its write then finds the account gone.
         SocialAccount account = lockOwned(creatorId, accountId);
         if (account.getStatus() != SocialAccountStatus.NEEDS_RECONNECTION) {
             throw new SocialAccountRemovalNotAllowedException("Disconnect this account before removing it.");
