@@ -491,8 +491,8 @@ returns 409 before approval.
 - **Not configured, not flagged:** where Instagram or `FLAVORS_TOKEN_ENCRYPTION_KEY` isn't set, the run is skipped entirely,
   so a missing setting can't mark every creator "Needs reconnection".
 - **No long transaction:** `refresh()` reads in a short transaction, calls Instagram with none, then writes in a short one.
-  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect and disconnect
-  do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
+  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect, disconnect and
+  remove do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
   is never undone by the stale result.
 - **Token:** a business system-user token from a Unified Login configuration with expiry "Never" (EEC-88), so nothing is renewed.
   It stops working only if the creator removes the app from her business portfolio or moves the account; the next pull then
