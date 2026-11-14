@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 import com.flavors.enums.SocialAccountStatus;
+import com.flavors.exception.SocialAccountNotFoundException;
 import com.flavors.repository.SocialAccountRepository;
 import com.flavors.service.InstagramClient;
 import com.flavors.service.SocialAccountService;
@@ -49,6 +50,16 @@ class SocialRefreshJobTest {
         given(service.refresh(2L)).willReturn(true);
 
         assertThat(job.runOnce()).isEqualTo(new SocialRefreshJob.Result(false, 1, 0, 1));
+        then(service).should().refresh(2L);
+    }
+
+    @Test
+    void anAccountRemovedDuringTheRunIsSkippedAndNotCountedAsAnError() {
+        given(accounts.findIdsByStatus(SocialAccountStatus.CONNECTED)).willReturn(List.of(1L, 2L));
+        given(service.refresh(1L)).willThrow(new SocialAccountNotFoundException());
+        given(service.refresh(2L)).willReturn(true);
+
+        assertThat(job.runOnce()).isEqualTo(new SocialRefreshJob.Result(false, 1, 0, 0));
         then(service).should().refresh(2L);
     }
 

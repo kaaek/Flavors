@@ -491,8 +491,8 @@ returns 409 before approval.
 - **Not configured, not flagged:** where Instagram or `FLAVORS_TOKEN_ENCRYPTION_KEY` isn't set, the run is skipped entirely,
   so a missing setting can't mark every creator "Needs reconnection".
 - **No long transaction:** `refresh()` reads in a short transaction, calls Instagram with none, then writes in a short one.
-  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect and disconnect
-  do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
+  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect, disconnect and
+  remove do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
   is never undone by the stale result.
 - **Token:** a business system-user token from a Unified Login configuration with expiry "Never" (EEC-88), so nothing is renewed.
   It stops working only if the creator removes the app from her business portfolio or moves the account; the next pull then
@@ -501,6 +501,20 @@ returns 409 before approval.
 - **Tests:** `SocialRefreshJobTest`, `SocialRefreshJobIT` (TC-F1.3.1, TC-F1.3.2, failure isolation, the lock),
   `SocialAccountServiceImplIT` (disconnect/reconnect during a pull), `InstagramClientImplTest` (login URL, code exchange, account
   list and pull against a local stand-in for graph.facebook.com). A real pull against Instagram can only be checked with a Meta app and a tester account.
+- **Removing an old account:** `DELETE /api/creator/social/{id}/remove` (CREATOR, 204) deletes an account that is already
+  `NEEDS_RECONNECTION`, so an old card can leave her Social accounts page. It also deletes that account's rows in
+  `social_post_metric` (the token column goes with the row) and writes `SOCIAL_ACCOUNT_REMOVED` to the audit log. It answers
+  409 (`SocialAccountRemovalNotAllowedException`) if the account is still connected, or if any of its posts has a
+  `campaign_id`, because those figures feed that campaign's results. Someone else's account is 404 (NF-1). The page
+  (`SocialAccountsPage`) shows a "Remove" button, with an "are you sure?" step, only on cards that need reconnection.
+  Connecting the same Instagram account again afterwards creates a new row. Tests: `SocialAccountServiceImplIT`,
+  `SocialAccountControllerTest`, `SocialAccountsPage.test.tsx`.
+  **Locking:** `remove()` and `disconnect()` lock the account (`lockById`) before they read its status or owner, so the
+  status they check is the committed one (a reconnect committed just before is seen, and the account is kept). A
+  daily pull that finds the account already removed skips it and does not count it as an error.
+  **Invariant for campaign links:** any future writer that sets `social_post_metric.campaign_id` (EEC-46) must take
+  `accounts.lockById` for that account first. `remove()` checks for campaign links and then deletes, in two statements,
+  and relies on that lock; without it a link committed in between would be deleted silently.
 - **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
 
 ## 14. Search (UC-F2.1, plus brand search) — built

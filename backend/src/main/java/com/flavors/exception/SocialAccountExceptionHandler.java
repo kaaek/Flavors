@@ -33,6 +33,11 @@ class SocialAccountExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, "Social account not found", e.getMessage());
     }
 
+    @ExceptionHandler(SocialAccountRemovalNotAllowedException.class)
+    ResponseEntity<ProblemDetail> removalNotAllowed(SocialAccountRemovalNotAllowedException e) {
+        return problem(HttpStatus.CONFLICT, "Account cannot be removed", e.getMessage());
+    }
+
     /** Instagram's own message is not passed on: it may name internal details. */
     @ExceptionHandler(SocialPlatformException.class)
     ResponseEntity<ProblemDetail> platform(SocialPlatformException e) {
