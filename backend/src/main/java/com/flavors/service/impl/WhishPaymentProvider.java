@@ -7,9 +7,14 @@ import com.flavors.enums.ProviderPaymentStatus;
 import com.flavors.exception.PaymentProviderException;
 import com.flavors.service.PaymentProvider;
 import java.math.BigDecimal;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -34,7 +39,12 @@ public class WhishPaymentProvider implements PaymentProvider {
     private final RestClient http;
     private final JsonMapper json;
 
-    public WhishPaymentProvider(WhishProperties properties, RestClient.Builder builder, JsonMapper json) {
+    @Autowired
+    public WhishPaymentProvider(WhishProperties properties, JsonMapper json) {
+        this(properties, RestClient.builder().requestFactory(timeouts(properties)), json);
+    }
+
+    WhishPaymentProvider(WhishProperties properties, RestClient.Builder builder, JsonMapper json) {
         requireSetting(properties.baseUrl(), "WHISH_BASE_URL");
         requireSetting(properties.channel(), "WHISH_CHANNEL");
         requireSetting(properties.secret(), "WHISH_SECRET");
@@ -117,6 +127,13 @@ public class WhishPaymentProvider implements PaymentProvider {
             return data.get(key);
         }
         return envelope.get(key);
+    }
+
+    private static ClientHttpRequestFactory timeouts(WhishProperties properties) {
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
+                HttpClient.newBuilder().connectTimeout(properties.connectTimeout()).build());
+        factory.setReadTimeout(properties.readTimeout());
+        return factory;
     }
 
     private static void requireSetting(String value, String name) {

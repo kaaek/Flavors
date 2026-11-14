@@ -1,5 +1,6 @@
 package com.flavors.config;
 
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -14,6 +15,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param websiteUrl merchant website, sent as the {@code websiteurl} header
  * @param createPath path that creates a payment (configurable: the official spec path is not public)
  * @param statusPath path that reports a payment's status
+ * @param connectTimeout how long to wait to connect to Whish before failing the call
+ * @param readTimeout how long to wait for Whish's answer before failing the call
  */
 @ConfigurationProperties(prefix = "flavors.whish")
 public record WhishProperties(
@@ -23,5 +26,7 @@ public record WhishProperties(
         @DefaultValue("") String secret,
         @DefaultValue("") String websiteUrl,
         @DefaultValue("/payment/whish") String createPath,
-        @DefaultValue("/payment/collect/status") String statusPath) {
+        @DefaultValue("/payment/collect/status") String statusPath,
+        @DefaultValue("5s") Duration connectTimeout,
+        @DefaultValue("15s") Duration readTimeout) {
 }

@@ -2,6 +2,7 @@ package com.flavors.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -13,6 +14,9 @@ import com.flavors.dto.HostedPaymentRequest;
 import com.flavors.dto.HostedPaymentSession;
 import com.flavors.enums.ProviderPaymentStatus;
 import com.flavors.exception.PaymentProviderException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -33,7 +37,7 @@ class WhishPaymentProviderTest {
     private static WhishPaymentProvider provider(RestClient.Builder builder, MockRestServiceServer ignored) {
         return new WhishPaymentProvider(
                 new WhishProperties("sandbox", BASE, "merchant-channel", "merchant-secret", "https://flavors.example.test",
-                        "/payment/whish", "/payment/collect/status"),
+                        "/payment/whish", "/payment/collect/status", Duration.ofSeconds(5), Duration.ofSeconds(15)),
                 builder, JsonMapper.builder().build());
     }
 
@@ -139,10 +143,24 @@ class WhishPaymentProviderTest {
     }
 
     @Test
+    void aProviderThatNeverAnswersIsCutOffByTheTimeout() throws Exception {
+        try (ServerSocket silent = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+            WhishProperties properties = new WhishProperties("sandbox", "http://127.0.0.1:" + silent.getLocalPort(),
+                    "merchant-channel", "merchant-secret", "https://flavors.example.test",
+                    "/payment/whish", "/payment/collect/status", Duration.ofMillis(300), Duration.ofMillis(300));
+            WhishPaymentProvider whish = new WhishPaymentProvider(properties, JsonMapper.builder().build());
+
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThatThrownBy(
+                    () -> whish.queryStatus("ref-6", 65_000L, "USD"))
+                    .isInstanceOf(PaymentProviderException.class));
+        }
+    }
+
+    @Test
     void aMissingCredentialStopsTheAdapterFromStarting() {
         assertThatThrownBy(() -> new WhishPaymentProvider(
                 new WhishProperties("sandbox", BASE, "merchant-channel", "", "https://flavors.example.test",
-                        "/payment/whish", "/payment/collect/status"),
+                        "/payment/whish", "/payment/collect/status", Duration.ofSeconds(5), Duration.ofSeconds(15)),
                 RestClient.builder(), JsonMapper.builder().build()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("WHISH_SECRET");
