@@ -68,12 +68,15 @@ export function CreatorCampaignDetailPage() {
   // The brand's payment shows up here without a reload: checked every 30 seconds while it is pending.
   const [refreshed, setRefreshed] = useState<Campaign | null>(null)
   const current = refreshed ?? (result.status === 'ready' ? result.data : null)
-  const awaitingPayment = current ? isAwaitingPayment(current.status) : false
+  const awaitingPayment = current ? isAwaitingPayment(statusOverride ?? current.status) : false
   useEffect(() => {
     if (!awaitingPayment) return
     const timer = window.setInterval(() => {
       getCreatorCampaign(campaignId)
-        .then(setRefreshed)
+        .then((fresh) => {
+          setRefreshed(fresh)
+          setStatusOverride(null)
+        })
         .catch(() => undefined)
     }, 30_000)
     return () => window.clearInterval(timer)

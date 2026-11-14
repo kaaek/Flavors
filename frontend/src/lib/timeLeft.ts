@@ -4,8 +4,9 @@
  */
 export function timeLeftText(deadlineIso: string | null, nowMs: number): string | null {
   if (!deadlineIso) return null
-  const minutes = Math.floor((Date.parse(deadlineIso) - nowMs) / 60_000)
-  if (minutes <= 0) return 'The time to pay has passed.'
+  const remainingMs = Date.parse(deadlineIso) - nowMs
+  if (remainingMs <= 0) return 'The time to pay has passed.'
+  const minutes = Math.ceil(remainingMs / 60_000)
 
   const days = Math.floor(minutes / 1440)
   const hours = Math.floor((minutes % 1440) / 60)

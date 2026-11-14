@@ -19,6 +19,10 @@ it('says the time has passed once the deadline is reached', () => {
   expect(timeLeftText('2030-01-03T09:00:00Z', now)).toBe('The time to pay has passed.')
 })
 
+it('still counts the last minute before the deadline as time left', () => {
+  expect(timeLeftText('2030-01-03T10:00:30Z', now)).toBe('1 minute left to pay')
+})
+
 it('has no text without a deadline', () => {
   expect(timeLeftText(null, now)).toBeNull()
 })
