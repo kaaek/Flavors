@@ -6,6 +6,7 @@ import com.flavors.entity.SocialPostMetric;
 import com.flavors.enums.SocialAccountStatus;
 import com.flavors.exception.CreatorProfileMissingException;
 import com.flavors.exception.SocialAccountNotFoundException;
+import com.flavors.exception.SocialAccountRemovalNotAllowedException;
 import com.flavors.exception.SocialAccountTakenException;
 import com.flavors.exception.SocialConnectionUnavailableException;
 import com.flavors.exception.SocialPlatformException;
@@ -119,6 +120,26 @@ class SocialAccountServiceImpl implements SocialAccountService {
         account.markNeedsReconnection();
         tokens.clear(account.getId());
         auditLogger.record("SOCIAL_ACCOUNT_DISCONNECTED", "social_account", account.getId());
+    }
+
+    @Override
+    public void remove(long creatorId, long accountId) {
+        SocialAccount owned = accounts.findByIdAndCreatorId(accountId, creatorId)
+                .orElseThrow(SocialAccountNotFoundException::new);
+        // Locked like disconnect, so a pull that is running finishes before the account disappears.
+        SocialAccount account = accounts.lockById(owned.getId()).orElseThrow(SocialAccountNotFoundException::new);
+        if (account.getStatus() != SocialAccountStatus.NEEDS_RECONNECTION) {
+            throw new SocialAccountRemovalNotAllowedException("Disconnect this account before removing it.");
+        }
+        if (postMetrics.existsBySocialAccountIdAndCampaignIdIsNotNull(account.getId())) {
+            throw new SocialAccountRemovalNotAllowedException(
+                    "This account has results from campaigns, so it cannot be removed.");
+        }
+        // The figures first: they point to the account. The token column goes with the row.
+        postMetrics.deleteBySocialAccountId(account.getId());
+        postMetrics.flush();
+        accounts.delete(account);
+        auditLogger.record("SOCIAL_ACCOUNT_REMOVED", "social_account", account.getId());
     }
 
     /**

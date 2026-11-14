@@ -37,7 +37,7 @@ const RESULTS: Record<string, { text: string; ok: boolean }> = {
 
 /**
  * The creator's social accounts (EEC-33, UC-F19.4): connect Instagram, see the numbers pulled from it, and
- * disconnect. Connecting leaves the app: the browser goes to Instagram and comes back to this page.
+ * disconnect, and remove an old disconnected account. Connecting leaves the app: the browser goes to Instagram and comes back to this page.
  *
  * @param goTo how the browser leaves for Instagram; tests replace it, because jsdom can't navigate
  */
@@ -52,6 +52,8 @@ export function SocialAccountsPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>()
   const [connecting, setConnecting] = useState(false)
+  // The account whose Remove she clicked and still has to confirm.
+  const [confirmingId, setConfirmingId] = useState<number>()
 
   useEffect(() => {
     apiFetch<SocialAccount[]>('/api/creator/social')
@@ -89,6 +91,17 @@ export function SocialAccountsPage({
       )
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not disconnect. Please try again.')
+    }
+  }
+
+  async function remove(account: SocialAccount) {
+    setError(undefined)
+    setConfirmingId(undefined)
+    try {
+      await apiFetch<void>(`/api/creator/social/${account.id}/remove`, { method: 'DELETE' })
+      setAccounts((current) => current.filter((a) => a.id !== account.id))
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not remove it. Please try again.')
     }
   }
 
@@ -159,6 +172,35 @@ export function SocialAccountsPage({
                 Disconnect
               </button>
             )}
+            {account.status === 'NEEDS_RECONNECTION' &&
+              (confirmingId === account.id ? (
+                <>
+                  <span>Remove this account and its saved numbers?</span>
+                  <button
+                    className="fl-btn fl-btn--danger fl-btn--sm"
+                    type="button"
+                    onClick={() => remove(account)}
+                  >
+                    Yes, remove
+                  </button>
+                  <button
+                    className="fl-btn fl-btn--ghost fl-btn--sm"
+                    type="button"
+                    onClick={() => setConfirmingId(undefined)}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="fl-btn fl-btn--outline fl-btn--sm"
+                  type="button"
+                  aria-label={`Remove ${platformName(account.platform)}`}
+                  onClick={() => setConfirmingId(account.id)}
+                >
+                  Remove
+                </button>
+              ))}
           </AccountCard>
         ))
       )}

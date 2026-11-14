@@ -19,6 +19,7 @@ import com.flavors.enums.Role;
 import com.flavors.enums.SocialAccountStatus;
 import com.flavors.exception.CreatorProfileMissingException;
 import com.flavors.exception.SocialAccountNotFoundException;
+import com.flavors.exception.SocialAccountRemovalNotAllowedException;
 import com.flavors.exception.SocialAccountTakenException;
 import com.flavors.exception.SocialConnectionUnavailableException;
 import com.flavors.exception.SocialPlatformException;
@@ -313,6 +314,84 @@ class SocialAccountServiceImplIT {
         assertThat(accounts.findById(id).orElseThrow().getStatus()).isEqualTo(SocialAccountStatus.CONNECTED);
     }
 
+    // ---- Remove (an old "Needs reconnection" card) ----
+
+    @Test
+    void removingADisconnectedAccountDeletesItWithItsFigures() {
+        long lara = newCreator();
+        instagramAccepts("code-1", "token-1", newExternalId());
+        long id = service.connectInstagram(lara, "code-1").id();
+        service.disconnect(lara, id);
+        assertThat(postMetrics.findBySocialAccountId(id)).hasSize(2);
+
+        service.remove(lara, id);
+
+        assertThat(accounts.findById(id)).isEmpty();
+        assertThat(postMetrics.findBySocialAccountId(id)).isEmpty();
+        assertThat(tokens.find(id)).isEmpty();
+        assertThat(auditCount("SOCIAL_ACCOUNT_REMOVED", id)).isEqualTo(1);
+    }
+
+    @Test
+    void aStillConnectedAccountCannotBeRemoved() {
+        long lara = newCreator();
+        instagramAccepts("code-1", "token-1", newExternalId());
+        long id = service.connectInstagram(lara, "code-1").id();
+
+        assertThatThrownBy(() -> service.remove(lara, id))
+                .isInstanceOf(SocialAccountRemovalNotAllowedException.class)
+                .hasMessage("Disconnect this account before removing it.");
+        assertThat(accounts.findById(id)).isPresent();
+        assertThat(tokens.find(id)).isPresent();
+    }
+
+    @Test
+    void anAccountWithCampaignResultsCannotBeRemoved() {
+        long lara = newCreator();
+        instagramAccepts("code-1", "token-1", newExternalId());
+        long id = service.connectInstagram(lara, "code-1").id();
+        service.disconnect(lara, id);
+        long campaign = newCampaign(lara);
+        jdbc.update("UPDATE social_post_metric SET campaign_id = ? WHERE social_account_id = ? AND external_post_id = 'post-1'",
+                campaign, id);
+
+        assertThatThrownBy(() -> service.remove(lara, id))
+                .isInstanceOf(SocialAccountRemovalNotAllowedException.class)
+                .hasMessage("This account has results from campaigns, so it cannot be removed.");
+        assertThat(accounts.findById(id)).isPresent();
+        assertThat(postMetrics.findBySocialAccountId(id)).hasSize(2);
+        assertThat(auditCount("SOCIAL_ACCOUNT_REMOVED", id)).isZero();
+    }
+
+    @Test
+    void sheCannotRemoveSomeoneElsesAccount() {
+        long lara = newCreator();
+        instagramAccepts("code-1", "token-1", newExternalId());
+        long id = service.connectInstagram(lara, "code-1").id();
+        service.disconnect(lara, id);
+        long nour = newCreator();
+
+        assertThatThrownBy(() -> service.remove(nour, id)).isInstanceOf(SocialAccountNotFoundException.class);
+        assertThat(accounts.findById(id)).isPresent();
+    }
+
+    @Test
+    void aRemovedAccountCanBeConnectedAgainAsANewOne() {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long oldId = service.connectInstagram(lara, "code-1").id();
+        service.disconnect(lara, oldId);
+        service.remove(lara, oldId);
+
+        instagramAccepts("code-2", "token-2", externalId);
+        SocialAccountResponse again = service.connectInstagram(lara, "code-2");
+
+        assertThat(again.id()).isNotEqualTo(oldId);
+        assertThat(again.status()).isEqualTo(SocialAccountStatus.CONNECTED);
+        assertThat(accounts.findByCreatorId(lara)).hasSize(1);
+    }
+
     // ---- Set-up checks ----
 
     @Test
@@ -368,6 +447,18 @@ class SocialAccountServiceImplIT {
         return new InstagramClient.Snapshot(externalId, "lara.eats", followers, List.of(
                 new InstagramClient.PostFigures("post-1", 5000, 400, 50, 30),
                 new InstagramClient.PostFigures("post-2", 3000, 200, 30, 10)));
+    }
+
+    /** A campaign of this creator with a throwaway brand, so a post can be marked as made for it. */
+    private long newCampaign(long creator) {
+        long brand = users.save(new AppUser(UUID.randomUUID() + "@test.local", "{noop}not-a-real-hash", Role.BRAND)).getId();
+        jdbc.update("INSERT INTO brand (user_id, business_name, contact_person, phone) VALUES (?, 'Burger Co', 'Karim', '70000000')", brand);
+        return jdbc.queryForObject("""
+                INSERT INTO campaign (brand_id, creator_id, name, status, price_offered_cents, agreed_price_cents,
+                                      start_date, last_posting_date)
+                VALUES (?, ?, 'Summer burgers', 'COMPLETED', 50000, 50000, current_date - 10, current_date - 3)
+                RETURNING id
+                """, Long.class, brand, creator);
     }
 
     private int auditCount(String action, long accountId) {

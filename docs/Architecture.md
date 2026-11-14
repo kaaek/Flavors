@@ -501,6 +501,14 @@ returns 409 before approval.
 - **Tests:** `SocialRefreshJobTest`, `SocialRefreshJobIT` (TC-F1.3.1, TC-F1.3.2, failure isolation, the lock),
   `SocialAccountServiceImplIT` (disconnect/reconnect during a pull), `InstagramClientImplTest` (login URL, code exchange, account
   list and pull against a local stand-in for graph.facebook.com). A real pull against Instagram can only be checked with a Meta app and a tester account.
+- **Removing an old account:** `DELETE /api/creator/social/{id}/remove` (CREATOR, 204) deletes an account that is already
+  `NEEDS_RECONNECTION`, so an old card can leave her Social accounts page. It also deletes that account's rows in
+  `social_post_metric` (the token column goes with the row) and writes `SOCIAL_ACCOUNT_REMOVED` to the audit log. It answers
+  409 (`SocialAccountRemovalNotAllowedException`) if the account is still connected, or if any of its posts has a
+  `campaign_id`, because those figures feed that campaign's results. Someone else's account is 404 (NF-1). The page
+  (`SocialAccountsPage`) shows a "Remove" button, with an "are you sure?" step, only on cards that need reconnection.
+  Connecting the same Instagram account again afterwards creates a new row. Tests: `SocialAccountServiceImplIT`,
+  `SocialAccountControllerTest`, `SocialAccountsPage.test.tsx`.
 - **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
 
 ## 14. Search (UC-F2.1, plus brand search) — built

@@ -117,6 +117,13 @@ class SocialAccountController {
         service.disconnect(user.getId(), accountId);
     }
 
+    /** Removes an account that was already disconnected, so its old card leaves the page. */
+    @DeleteMapping("/{accountId}/remove")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void remove(@AuthenticationPrincipal CurrentUser user, @PathVariable long accountId) {
+        service.remove(user.getId(), accountId);
+    }
+
     private static ResponseEntity<Void> result(String outcome) {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(RESULT_PAGE + outcome)).build();
     }
