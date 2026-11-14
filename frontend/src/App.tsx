@@ -25,6 +25,7 @@ import './layout/layout.css'
 import { LandingPage } from './pages/LandingPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PublicPlaceholder } from './pages/PublicPlaceholder'
+import { SimulatedCheckoutPage } from './payments/SimulatedCheckoutPage'
 import { RegisterChoicePage } from './pages/RegisterChoicePage'
 import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
 import { CreatorRegistrationPage } from './registration/CreatorRegistrationPage'
@@ -71,6 +72,8 @@ export function AppRoutes() {
           />
         }
       />
+
+      <Route path="/payments/simulated/:reference" element={<SimulatedCheckoutPage />} />
 
       <Route element={<RoleArea role="CREATOR" />}>
         <Route path="/creator" element={<CreatorHome />} />

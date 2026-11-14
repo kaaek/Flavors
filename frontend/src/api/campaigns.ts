@@ -58,8 +58,21 @@ export interface Campaign {
   agreedPriceCents: number | null
   paymentDeadline: string | null
   acceptedAt: string | null
+  /** The escrow status (FR-F7.7); null until the brand starts paying. */
+  escrowStatus: EscrowStatus | null
   createdAt: string
   updatedAt: string
+}
+
+export type EscrowStatus = 'PENDING' | 'HELD' | 'RELEASED' | 'FROZEN' | 'REFUNDED'
+
+/** The words for each escrow status, as the spec names them (FR-F7.7). */
+export const escrowLabel: Record<EscrowStatus, string> = {
+  PENDING: 'Pending',
+  HELD: 'Held',
+  RELEASED: 'Released',
+  FROZEN: 'Frozen',
+  REFUNDED: 'Refunded',
 }
 
 export interface CampaignSummary {
