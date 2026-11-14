@@ -575,4 +575,32 @@ brand is "not found" (404), never "forbidden".
   `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
   and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
   `CreatorSearchPage.test.tsx`.
-- **Not built yet:** the creator's answer (EEC-43), the follower offer (EEC-41), payment, and the job that expires Timer A.
+- **Not built yet:** the follower offer (EEC-41) and payment.
+
+## 16. Respond to a campaign request (UC-F4.1) — built, read side and pages still to come
+
+- **Endpoints** (`CampaignResponseController`, all `POST`, `204` on success). Creator: `/api/creator/campaigns/{id}/accept`, `/reject`, `/counter-offer`
+  (body `{priceCents?, deliverables?}`). Brand: `/api/brand/campaigns/{id}/counter-offer/approve` and `/decline`. The URL prefix decides the role
+  (SecurityConfig), and the caller is always the logged-in user.
+- **Visibility:** someone else's campaign, an unknown id, and a draft that names the creator all answer `404` (NF-1), so nobody can tell them apart.
+  A campaign that exists but can't take this answer (already answered, expired, past the deadline) answers `409`.
+- **Rules** (`CampaignResponseServiceImpl`): the creator's answers need status `AWAITING_CREATOR_RESPONSE`; approve and decline need `COUNTERED`.
+  Both need an open `response_deadline`. A counter-offer must change the price (above 0), the deliverables, or both. It holds the full proposed
+  terms. The unique `counter_offer.campaign_id` is the final guard for one counter-offer per campaign.
+- **Locking:** every answer loads the campaign row with `findByIdForUpdate` (`PESSIMISTIC_WRITE`) and checks the status and deadline only after
+  that, so two calls on the same campaign never both succeed.
+- **Outcomes:** accept → `AWAITING_PAYMENT` and Timer B starts. Reject → `REJECTED`. Approve → `AWAITING_PAYMENT` at the counter price with the new
+  deliverables (`Campaign.replaceDeliverables`). Decline → `DECLINED`, nothing is charged.
+- **Timer A covers the whole negotiation:** the creator and the brand together have 3 days from the send to agree. `CampaignResponseExpirationJob`
+  runs every minute (`flavors.campaign.response-expiration-cron`, zone `Asia/Beirut`) and expires `AWAITING_CREATOR_RESPONSE` and `COUNTERED`
+  requests past `response_deadline`, one campaign per transaction, so one bad row cannot undo the others and two overlapping runs do not
+  notify twice.
+- **Notifications** (constants in `Notification`): the brand is told of an accept, a reject, a counter-offer and an expiry; the creator is told
+  when her counter is approved or declined, and when a countered request expires.
+- **Audit:** every answer and every expiry is audited (`CAMPAIGN_ACCEPTED`, `CAMPAIGN_REJECTED`, `COUNTER_OFFER_SUBMITTED`,
+  `COUNTER_OFFER_APPROVED`, `COUNTER_OFFER_DECLINED`, `CAMPAIGN_RESPONSE_EXPIRED`).
+- **Tests:** `CampaignResponseServiceImplTest` (the rules, TC-F4.1.1 to TC-F4.1.6, the deadline boundary, the COUNTERED expiry),
+  `CampaignResponseControllerTest` (roles, CSRF, status codes and error bodies), `CampaignResponseServiceImplIT` (the same flow on the real
+  database, plus concurrent accept/reject, approve/decline, counters and expiry runs).
+- **Not built yet:** the read endpoints (the creator's list of requests, the counter-offer, agreed price and payment deadline in the campaign
+  responses) and the creator and brand pages for this flow.
