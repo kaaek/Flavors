@@ -69,6 +69,7 @@ export interface CampaignSummary {
   creatorId: number | null
   creatorName: string | null
   priceOfferedCents: number | null
+  agreedPriceCents: number | null
   updatedAt: string
 }
 export interface CreatorCampaignSummary {

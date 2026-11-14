@@ -211,6 +211,12 @@ export function CampaignDetailPage() {
           <dd>
             {campaign.priceOfferedCents === null ? '—' : formatUSD(campaign.priceOfferedCents)}
           </dd>
+          {campaign.agreedPriceCents !== null && (
+            <>
+              <dt>Agreed price</dt>
+              <dd>{formatUSD(campaign.agreedPriceCents)}</dd>
+            </>
+          )}
           <dt>Dates</dt>
           <dd>
             {campaign.startDate && dateOnly(campaign.startDate)} to{' '}
@@ -238,6 +244,18 @@ export function CampaignDetailPage() {
             <>
               <dt>Creator must answer by</dt>
               <dd>{when.format(new Date(campaign.responseDeadline))}</dd>
+            </>
+          )}
+          {campaign.paymentDeadline && (
+            <>
+              <dt>Pay by</dt>
+              <dd>{when.format(new Date(campaign.paymentDeadline))}</dd>
+            </>
+          )}
+          {campaign.acceptedAt && (
+            <>
+              <dt>Accepted</dt>
+              <dd>{when.format(new Date(campaign.acceptedAt))}</dd>
             </>
           )}
         </dl>
