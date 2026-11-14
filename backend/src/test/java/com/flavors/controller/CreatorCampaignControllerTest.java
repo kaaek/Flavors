@@ -16,6 +16,7 @@ import com.flavors.enums.CampaignStatus;
 import com.flavors.enums.Role;
 import com.flavors.exception.GlobalExceptionHandler;
 import com.flavors.service.CampaignService;
+import com.flavors.service.PaymentService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,9 @@ class CreatorCampaignControllerTest {
 
     @MockitoBean
     CampaignService campaigns;
+
+    @MockitoBean
+    PaymentService payments;
 
     @Test
     void aCreatorCanSeeTheirCampaigns() throws Exception {
@@ -83,6 +87,7 @@ void aCreatorCanViewTheirCampaignDetails() throws Exception {
                     null,
                     null,
                     60000L,
+                    null,
                     null,
                     null,
                     null,

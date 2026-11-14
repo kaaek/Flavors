@@ -190,6 +190,28 @@ public class Campaign {
         startPaymentPeriod(now);
     }
 
+    /** The provider confirmed the payment in time: the offer goes live (FR-F7.4). */
+    public void activate(Instant now) {
+        requireStatus(CampaignStatus.AWAITING_PAYMENT);
+        this.status = CampaignStatus.ACTIVE;
+        this.updatedAt = now;
+    }
+
+    /** Timer B ran out (FR-F7.6): the accepted request expires and nothing is charged. */
+    public void expirePayment(Instant now) {
+        requireStatus(CampaignStatus.AWAITING_PAYMENT);
+        if (paymentDeadline == null || paymentDeadline.isAfter(now)) {
+            throw new IllegalStateException("The payment deadline has not passed.");
+        }
+        this.status = CampaignStatus.EXPIRED;
+        this.updatedAt = now;
+    }
+
+    /** True while the brand may still pay: Timer B has not run out. */
+    public boolean isPaymentWindowOpen(Instant now) {
+        return paymentDeadline != null && paymentDeadline.isAfter(now);
+    }
+
     /** The brand declines the counter-offer: the request closes as Declined (FR-F4.4). */
     public void declineCounterOffer(Instant now) {
         requireStatus(CampaignStatus.COUNTERED);

@@ -6,6 +6,7 @@ import com.flavors.dto.CampaignSummaryResponse;
 import com.flavors.entity.Branch;
 import com.flavors.entity.Campaign;
 import com.flavors.entity.CreatorProfile;
+import com.flavors.enums.EscrowStatus;
 import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -15,7 +16,8 @@ import org.springframework.stereotype.Component;
 public class CampaignMapper {
 
     /** @param creator null while the draft has no creator */
-    public CampaignResponse toResponse(Campaign campaign, CreatorProfile creator, List<Branch> branches) {
+    public CampaignResponse toResponse(Campaign campaign, CreatorProfile creator, List<Branch> branches,
+                                       EscrowStatus escrowStatus) {
         return new CampaignResponse(
                 campaign.getId(),
                 campaign.getName(),
@@ -38,7 +40,8 @@ public class CampaignMapper {
                 campaign.getPaymentDeadline(),
                 campaign.getAcceptedAt(),
                 campaign.getCreatedAt(),
-                campaign.getUpdatedAt());
+                campaign.getUpdatedAt(),
+                escrowStatus);
     }
 
     /** @param creator null while the draft has no creator */
