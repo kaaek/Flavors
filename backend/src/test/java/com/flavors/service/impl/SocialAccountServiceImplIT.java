@@ -35,6 +35,7 @@ import com.flavors.util.TokenCipher;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -422,7 +423,7 @@ class SocialAccountServiceImplIT {
             ExecutorService removal = Executors.newSingleThreadExecutor();
             try {
                 Future<?> remove = removal.submit(() -> service.remove(lara, id));
-                awaitRemovalWaitingForAccountLock();
+                awaitWaitingForAccountLock();
                 reconnect.commit();
 
                 // The reconnect is committed, so the removal must see CONNECTED and refuse, not delete the account.
@@ -437,6 +438,46 @@ class SocialAccountServiceImplIT {
         assertThat(accounts.findById(id).orElseThrow().getStatus()).isEqualTo(SocialAccountStatus.CONNECTED);
         assertThat(postMetrics.findBySocialAccountId(id)).hasSize(2);
         assertThat(auditCount("SOCIAL_ACCOUNT_REMOVED", id)).isZero();
+    }
+
+    @Test
+    void aReconnectRacingARemovalConnectsTheAccountAsNew() throws Exception {
+        long lara = newCreator();
+        String externalId = newExternalId();
+        instagramAccepts("code-1", "token-1", externalId);
+        long oldId = service.connectInstagram(lara, "code-1").id();
+        service.disconnect(lara, oldId);
+        instagramAccepts("code-2", "token-2", externalId);
+
+        // Her removal holds the account's row lock and deletes it. The reconnect reads the old row, then waits for the lock.
+        try (Connection removal = dataSource.getConnection()) {
+            removal.setAutoCommit(false);
+            execute(removal, "SELECT id FROM social_account WHERE id = ? FOR UPDATE", oldId);
+            execute(removal, "DELETE FROM social_post_metric WHERE social_account_id = ?", oldId);
+            execute(removal, "DELETE FROM social_account WHERE id = ?", oldId);
+
+            ExecutorService reconnecting = Executors.newSingleThreadExecutor();
+            try {
+                Future<SocialAccountResponse> connect = reconnecting.submit(() -> service.connectInstagram(lara, "code-2"));
+                awaitWaitingForAccountLock();
+                removal.commit();
+
+                SocialAccountResponse again = connect.get(30, TimeUnit.SECONDS);
+
+                assertThat(again.id()).isNotEqualTo(oldId);
+                assertThat(again.status()).isEqualTo(SocialAccountStatus.CONNECTED);
+            } finally {
+                reconnecting.shutdownNow();
+            }
+        }
+
+        assertThat(accounts.findById(oldId)).isEmpty();
+        List<SocialAccount> kept = accounts.findByCreatorId(lara);
+        assertThat(kept).hasSize(1);
+        long newId = kept.get(0).getId();
+        assertThat(cipher.decrypt(tokens.find(newId).orElseThrow())).isEqualTo("token-2");
+        assertThat(postMetrics.findBySocialAccountId(newId)).hasSize(2);
+        assertThat(auditCount("SOCIAL_ACCOUNT_CONNECTED", newId)).isEqualTo(1);
     }
 
     // ---- Set-up checks ----
@@ -508,8 +549,8 @@ class SocialAccountServiceImplIT {
                 """, Long.class, brand, creator);
     }
 
-    /** Returns once some statement on social_account is blocked waiting for a lock, i.e. remove() is waiting. */
-    private void awaitRemovalWaitingForAccountLock() throws InterruptedException {
+    /** Returns once some statement on social_account is blocked waiting for a lock. */
+    private void awaitWaitingForAccountLock() throws InterruptedException {
         for (int attempt = 0; attempt < 500; attempt++) {
             Integer waiting = jdbc.queryForObject("""
                     SELECT count(*) FROM pg_stat_activity
@@ -520,7 +561,14 @@ class SocialAccountServiceImplIT {
             }
             Thread.sleep(10);
         }
-        throw new AssertionError("remove() never waited for the account lock");
+        throw new AssertionError("no statement ever waited for the account lock");
+    }
+
+    private static void execute(Connection connection, String sql, long id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, id);
+            statement.execute();
+        }
     }
 
     private int auditCount(String action, long accountId) {

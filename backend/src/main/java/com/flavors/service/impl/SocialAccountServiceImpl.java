@@ -93,14 +93,16 @@ class SocialAccountServiceImpl implements SocialAccountService {
         }
         // Flushed now: the token is written with plain SQL, so the row must already exist. A reconnect takes the
         // account lock, so a pull that started with the old token can't write its result over the new connection.
-        SocialAccount account = existing.isPresent()
-                ? accounts.lockById(existing.get().getId()).orElseThrow(SocialAccountNotFoundException::new)
-                : accounts.saveAndFlush(new SocialAccount(creatorId, InstagramClient.PLATFORM, snapshot.externalId()));
+        Optional<SocialAccount> reconnecting = existing.isPresent()
+                ? accounts.lockById(existing.get().getId())
+                : Optional.empty();
+        SocialAccount account = reconnecting.orElseGet(
+                () -> accounts.saveAndFlush(new SocialAccount(creatorId, InstagramClient.PLATFORM, snapshot.externalId())));
 
         storeFigures(account, snapshot, Instant.now());
         tokens.store(account.getId(), cipher.encrypt(token));
 
-        auditLogger.record(existing.isPresent() ? "SOCIAL_ACCOUNT_RECONNECTED" : "SOCIAL_ACCOUNT_CONNECTED",
+        auditLogger.record(reconnecting.isPresent() ? "SOCIAL_ACCOUNT_RECONNECTED" : "SOCIAL_ACCOUNT_CONNECTED",
                 "social_account", account.getId(),
                 Map.of("platform", InstagramClient.PLATFORM, "followers", snapshot.followers()));
         return mapper.toResponse(account);
