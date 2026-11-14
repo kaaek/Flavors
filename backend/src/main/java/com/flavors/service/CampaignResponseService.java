@@ -1,7 +1,7 @@
-
 package com.flavors.service;
 
 import com.flavors.dto.CounterOfferRequest;
+import com.flavors.dto.CounterOfferResponse;
 
 public interface CampaignResponseService {
 
@@ -14,8 +14,15 @@ public interface CampaignResponseService {
             Long campaignId,
             CounterOfferRequest request);
 
+    CounterOfferResponse getCounterOfferForCreator(
+            Long creatorId, Long campaignId);
+
+    CounterOfferResponse getCounterOfferForBrand(
+            Long brandId, Long campaignId);
+
     void approveCounterOffer(Long brandId, Long campaignId);
 
     void declineCounterOffer(Long brandId, Long campaignId);
+
     int expireOverdueCampaignResponses();
 }

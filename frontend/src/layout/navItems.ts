@@ -17,6 +17,7 @@ export interface NavItem {
 export const navItems: Record<Role, NavItem[]> = {
   CREATOR: [
     { label: 'Home', to: homeByRole.CREATOR, end: true },
+    { label: 'My campaigns', to: '/creator/campaigns' },
     { label: 'Find brands', to: '/creator/brands' },
     { label: 'Portfolio', to: '/creator/portfolio' },
     { label: 'Social accounts', to: '/creator/social' },

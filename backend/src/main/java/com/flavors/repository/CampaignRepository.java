@@ -16,7 +16,8 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
 
     /** E.g. the COMPLETED campaigns a creator can choose to feature. */
     List<Campaign> findByCreatorIdAndStatus(Long creatorId, CampaignStatus status);
-
+/** The creator's received campaigns, excluding private brand drafts, most recently updated first. */
+        List<Campaign> findByCreatorIdAndStatusNotOrderByUpdatedAtDescIdDesc(Long creatorId, CampaignStatus status);
     /** The brand's own campaigns, most recently changed first. */
     List<Campaign> findByBrandIdOrderByUpdatedAtDescIdDesc(Long brandId);
 

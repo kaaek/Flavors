@@ -1,6 +1,14 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
-import { getCampaign, type Campaign } from '../api/campaigns'
+import {
+  approveCounterOffer,
+  declineCounterOffer,
+  getBrandCounterOffer,
+  getCampaign,
+  type Campaign,
+  type CounterOffer,
+} from '../api/campaigns'
+import { ApiError } from '../api/client'
 import { Icon } from '../layout/Icon'
 import { useFetchWith } from '../layout/useFetch'
 import { LOCALE } from '../lib/locale'
@@ -23,7 +31,71 @@ export function CampaignDetailPage() {
   const load = useCallback(() => getCampaign(campaignId), [campaignId])
   const result = useFetchWith<Campaign>(load)
   const justSent = (location.state as { sent?: boolean } | null)?.sent === true
+const [counterOffer, setCounterOffer] = useState<CounterOffer | null>(null)
+const [counterOfferLoading, setCounterOfferLoading] = useState(false)
+const [counterOfferError, setCounterOfferError] = useState<string | null>(null)
+const [decisionError, setDecisionError] = useState<string | null>(null)
+const [isDeciding, setIsDeciding] = useState(false)
 
+const campaignStatus = result.status === 'ready' ? result.data.status : null
+
+useEffect(() => {
+  if (campaignStatus !== 'COUNTERED') {
+    setCounterOffer(null)
+    return
+  }
+
+  let cancelled = false
+  setCounterOfferLoading(true)
+  setCounterOfferError(null)
+
+  getBrandCounterOffer(campaignId)
+    .then((data) => {
+      if (!cancelled) setCounterOffer(data)
+    })
+    .catch((error: unknown) => {
+      if (!cancelled) {
+        setCounterOfferError(
+          error instanceof ApiError
+            ? error.problem.errors?.reason ?? error.message
+            : 'Could not load the creator counter-offer.',
+        )
+      }
+    })
+    .finally(() => {
+      if (!cancelled) setCounterOfferLoading(false)
+    })
+
+  return () => {
+    cancelled = true
+  }
+}, [campaignId, campaignStatus])
+const [campaignOverride, setCampaignOverride] = useState<Campaign | null>(null)
+
+async function decideCounterOffer(action: 'approve' | 'decline') {
+  setIsDeciding(true)
+  setDecisionError(null)
+
+  try {
+    if (action === 'approve') {
+      await approveCounterOffer(campaignId)
+    } else {
+      await declineCounterOffer(campaignId)
+    }
+
+    const updatedCampaign = await getCampaign(campaignId)
+    setCampaignOverride(updatedCampaign)
+    setCounterOffer(null)
+  } catch (error) {
+    setDecisionError(
+      error instanceof ApiError
+        ? error.problem.errors?.reason ?? error.message
+        : 'Could not process the counter-offer. Please try again.',
+    )
+  } finally {
+    setIsDeciding(false)
+  }
+}
   if (result.status === 'loading') {
     return (
       <div className="fl-card" aria-busy="true" aria-label="Loading campaign">
@@ -47,7 +119,7 @@ export function CampaignDetailPage() {
     )
   }
 
-  const campaign = result.data
+  const campaign = campaignOverride ?? result.data
   // A draft is edited, not read.
   if (campaign.status === 'DRAFT')
     return <Navigate to={`/brand/campaigns/${campaign.id}/edit`} replace />
@@ -71,7 +143,64 @@ export function CampaignDetailPage() {
           </p>
         </div>
       </header>
+{campaign.status === 'COUNTERED' && (
+  <section className="fl-card fl-section fl-stack">
+    <h2 className="fl-card__title">Creator counter-offer</h2>
 
+    {counterOfferLoading && <p>Loading counter-offer...</p>}
+
+    {counterOfferError && (
+      <div className="fl-alert fl-alert--danger" role="alert">
+        {counterOfferError}
+      </div>
+    )}
+
+    {decisionError && (
+      <div className="fl-alert fl-alert--danger" role="alert">
+        {decisionError}
+      </div>
+    )}
+
+    {counterOffer && (
+      <>
+        <dl className="fl-kv">
+          <dt>Proposed price</dt>
+          <dd>{formatUSD(counterOffer.priceCents)}</dd>
+
+          <dt>Proposed deliverables</dt>
+          <dd>
+            {counterOffer.deliverables
+              .map(
+                (item) =>
+                  `${item.count} × ${typeLabel(item.platform)} ${item.type.toLowerCase()}`,
+              )
+              .join(', ')}
+          </dd>
+        </dl>
+
+        <div className="fl-actions">
+          <button
+            className="fl-btn fl-btn--primary"
+            type="button"
+            disabled={isDeciding}
+            onClick={() => void decideCounterOffer('approve')}
+          >
+            {isDeciding ? 'Processing...' : 'Approve counter-offer'}
+          </button>
+
+          <button
+            className="fl-btn fl-btn--outline"
+            type="button"
+            disabled={isDeciding}
+            onClick={() => void decideCounterOffer('decline')}
+          >
+            {isDeciding ? 'Processing...' : 'Decline counter-offer'}
+          </button>
+        </div>
+      </>
+    )}
+  </section>
+)}
       <section className="fl-card fl-section" aria-label="Campaign details">
         <dl className="fl-kv">
           <dt>Creator</dt>

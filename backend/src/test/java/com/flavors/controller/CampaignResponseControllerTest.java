@@ -9,7 +9,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import com.flavors.dto.CounterOfferResponse;
+import com.flavors.enums.CounterOfferStatus;
+import java.util.List;
 import com.flavors.config.SecurityConfig;
 import com.flavors.dto.CurrentUser;
 import com.flavors.enums.Role;
@@ -135,4 +139,47 @@ class CampaignResponseControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("The response deadline for this request has passed."));
     }
+   @Test
+void aCreatorCanViewTheirCounterOffer() throws Exception {
+    org.mockito.BDDMockito.given(service.getCounterOfferForCreator(7L, 42L))
+            .willReturn(new CounterOfferResponse(
+                    1L,
+                    42L,
+                    60000L,
+                    List.of(),
+                    CounterOfferStatus.PENDING,
+                    null,
+                    null));
+
+    mvc.perform(get("/api/creator/campaigns/42/counter-offer").with(user(LARA)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1))
+            .andExpect(jsonPath("$.campaignId").value(42))
+            .andExpect(jsonPath("$.priceCents").value(60000))
+            .andExpect(jsonPath("$.status").value("PENDING"));
+
+    then(service).should().getCounterOfferForCreator(7L, 42L);
+}
+
+@Test
+void aBrandCanViewTheirCounterOffer() throws Exception {
+    org.mockito.BDDMockito.given(service.getCounterOfferForBrand(9L, 42L))
+            .willReturn(new CounterOfferResponse(
+                    1L,
+                    42L,
+                    60000L,
+                    List.of(),
+                    CounterOfferStatus.PENDING,
+                    null,
+                    null));
+
+    mvc.perform(get("/api/brand/campaigns/42/counter-offer").with(user(KARIM)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1))
+            .andExpect(jsonPath("$.campaignId").value(42))
+            .andExpect(jsonPath("$.priceCents").value(60000))
+            .andExpect(jsonPath("$.status").value("PENDING"));
+
+        then(service).should().getCounterOfferForBrand(9L, 42L);
+}
 }

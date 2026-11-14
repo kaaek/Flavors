@@ -1,5 +1,6 @@
 package com.flavors.service.impl;
 
+import com.flavors.dto.CounterOfferResponse;
 import com.flavors.dto.CounterOfferRequest;
 import com.flavors.dto.DeliverableItem;
 import com.flavors.entity.Campaign;
@@ -321,7 +322,30 @@ public class CampaignResponseServiceImpl implements CampaignResponseService {
                 .filter(campaign -> Objects.equals(campaign.getBrandId(), brandId))
                 .orElseThrow(CampaignNotFoundException::new);
     }
+        @Override
+@Transactional(readOnly = true)
+public CounterOfferResponse getCounterOfferForCreator(Long creatorId, Long campaignId) {
+    lockCampaignOfCreator(creatorId, campaignId);
+    return toCounterOfferResponse(findCounterOffer(campaignId));
+}
 
+@Override
+@Transactional(readOnly = true)
+public CounterOfferResponse getCounterOfferForBrand(Long brandId, Long campaignId) {
+    lockCampaignOfBrand(brandId, campaignId);
+    return toCounterOfferResponse(findCounterOffer(campaignId));
+}
+
+private CounterOfferResponse toCounterOfferResponse(CounterOffer counterOffer) {
+    return new CounterOfferResponse(
+            counterOffer.getId(),
+            counterOffer.getCampaignId(),
+            counterOffer.getPriceCents(),
+            counterOffer.getDeliverables(),
+            counterOffer.getStatus(),
+            counterOffer.getCreatedAt(),
+            counterOffer.getDecidedAt());
+}
     private CounterOffer findCounterOffer(Long campaignId) {
         return counterOfferRepository.findByCampaignId(campaignId)
                 .orElseThrow(() -> new CampaignResponseStateException("This campaign has no counter-offer to decide."));

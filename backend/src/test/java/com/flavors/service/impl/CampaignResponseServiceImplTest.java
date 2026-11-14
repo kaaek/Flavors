@@ -100,7 +100,55 @@ class CampaignResponseServiceImplTest {
         verify(notificationRepository, times(expected)).save(captor.capture());
         return captor.getAllValues();
     }
+@Test
+void creatorCanRetrieveTheirCounterOffer() {
+    CounterOffer counterOffer = counterOffer(60000L);
+    counteredRequest(counterOffer);
 
+    var result = service.getCounterOfferForCreator(CREATOR_ID, CAMPAIGN_ID);
+
+    assertThat(result.campaignId()).isEqualTo(CAMPAIGN_ID);
+    assertThat(result.priceCents()).isEqualTo(60000L);
+    assertThat(result.status()).isEqualTo(CounterOfferStatus.PENDING);
+    verify(campaignRepository).findByIdForUpdate(CAMPAIGN_ID);
+    verify(counterOfferRepository).findByCampaignId(CAMPAIGN_ID);
+}
+
+@Test
+void brandCanRetrieveTheirCounterOffer() {
+    CounterOffer counterOffer = counterOffer(60000L);
+    counteredRequest(counterOffer);
+
+    var result = service.getCounterOfferForBrand(BRAND_ID, CAMPAIGN_ID);
+
+    assertThat(result.campaignId()).isEqualTo(CAMPAIGN_ID);
+    assertThat(result.priceCents()).isEqualTo(60000L);
+    assertThat(result.status()).isEqualTo(CounterOfferStatus.PENDING);
+    verify(campaignRepository).findByIdForUpdate(CAMPAIGN_ID);
+    verify(counterOfferRepository).findByCampaignId(CAMPAIGN_ID);
+}
+
+@Test
+void anotherCreatorCannotRetrieveTheCounterOffer() {
+    counteredRequest(counterOffer(60000L));
+
+    assertThatThrownBy(() ->
+            service.getCounterOfferForCreator(999L, CAMPAIGN_ID))
+            .isInstanceOf(CampaignNotFoundException.class);
+
+    verify(counterOfferRepository, never()).findByCampaignId(any());
+}
+
+@Test
+void anotherBrandCannotRetrieveTheCounterOffer() {
+    counteredRequest(counterOffer(60000L));
+
+    assertThatThrownBy(() ->
+            service.getCounterOfferForBrand(999L, CAMPAIGN_ID))
+            .isInstanceOf(CampaignNotFoundException.class);
+
+    verify(counterOfferRepository, never()).findByCampaignId(any());
+}
     // TC-F4.1.1
     @Test
     void accept_movesTheCampaignToAwaitingPaymentAndTellsTheBrand() {

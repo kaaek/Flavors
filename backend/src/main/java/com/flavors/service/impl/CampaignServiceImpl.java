@@ -1,5 +1,6 @@
 package com.flavors.service.impl;
 
+import com.flavors.dto.CreatorCampaignSummaryResponse;
 import com.flavors.dto.CampaignCreatorResponse;
 import com.flavors.dto.CampaignRequest;
 import com.flavors.dto.CampaignResponse;
@@ -100,14 +101,50 @@ public class CampaignServiceImpl implements CampaignService {
                 .map(c -> mapper.toSummary(c, creatorsById.get(c.getCreatorId())))
                 .toList();
     }
+@Override
+@Transactional(readOnly = true)
+public List<CreatorCampaignSummaryResponse> listForCreator(long creatorId) {
+    List<Campaign> mine = campaigns.findByCreatorIdAndStatusNotOrderByUpdatedAtDescIdDesc(
+            creatorId, com.flavors.enums.CampaignStatus.DRAFT);
 
+    Map<Long, Brand> brandsById = brands.findAllById(
+                    mine.stream().map(Campaign::getBrandId).distinct().toList())
+            .stream()
+            .collect(Collectors.toMap(Brand::getUserId, Function.identity()));
+
+    return mine.stream()
+            .map(c -> {
+                Brand brand = brandsById.get(c.getBrandId());
+                return new CreatorCampaignSummaryResponse(
+                        c.getId(),
+                        c.getName(),
+                        c.getStatus(),
+                        c.getBrandId(),
+                        brand == null ? "A brand" : brand.getBusinessName(),
+                        c.getPriceOfferedCents(),
+                        c.getAgreedPriceCents(),
+                        c.getPaymentDeadline(),
+                        c.getAcceptedAt(),
+                        c.getUpdatedAt());
+            })
+            .toList();
+}
     @Override
     @Transactional(readOnly = true)
     public CampaignResponse get(long brandId, long campaignId) {
         Campaign campaign = campaigns.findByIdAndBrandId(campaignId, brandId).orElseThrow(CampaignNotFoundException::new);
         return toResponse(campaign);
     }
+@Override
+@Transactional(readOnly = true)
+public CampaignResponse getForCreator(long creatorId, long campaignId) {
+    Campaign campaign = campaigns.findById(campaignId)
+            .filter(c -> java.util.Objects.equals(c.getCreatorId(), creatorId))
+            .filter(c -> c.getStatus() != com.flavors.enums.CampaignStatus.DRAFT)
+            .orElseThrow(CampaignNotFoundException::new);
 
+    return toResponse(campaign);
+}
     @Override
     @Transactional(readOnly = true)
     public CampaignCreatorResponse findCreator(long creatorId) {

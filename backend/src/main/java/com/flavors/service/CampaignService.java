@@ -4,7 +4,9 @@ import com.flavors.dto.CampaignCreatorResponse;
 import com.flavors.dto.CampaignRequest;
 import com.flavors.dto.CampaignResponse;
 import com.flavors.dto.CampaignSummaryResponse;
+import com.flavors.dto.CreatorCampaignSummaryResponse;
 import java.util.List;
+
 
 /**
  * A brand creates a campaign, saves it as a draft and sends it to one creator (UC-F3.1). Every method
@@ -14,7 +16,11 @@ public interface CampaignService {
 
     /** The brand's campaigns, most recently changed first. */
     List<CampaignSummaryResponse> list(long brandId);
+        /** The creator's received campaigns; private brand drafts are excluded. */
+    List<CreatorCampaignSummaryResponse> listForCreator(long creatorId);
 
+    /** Gets one campaign received by this creator; private brand drafts are never visible. */
+    CampaignResponse getForCreator(long creatorId, long campaignId);
     /** @throws com.flavors.exception.CampaignNotFoundException if it doesn't exist or isn't this brand's */
     CampaignResponse get(long brandId, long campaignId);
 
