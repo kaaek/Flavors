@@ -35,7 +35,11 @@ import org.hibernate.annotations.CreationTimestamp;
 @Entity
 public class Campaign {
 
-    /** Timer A: how long the creator has to answer a request (FR-F4.5). */
+    /**
+     * Timer A (FR-F4.5): the whole negotiation has this long from the moment the request was sent. The creator
+     * has to answer, and if she counters, the brand has to approve or decline, before the deadline. After
+     * that the request expires and nothing is charged.
+     */
     public static final Duration RESPONSE_WINDOW = Duration.ofDays(3);
 
     /** Timer B: how long the brand has to pay once the campaign is agreed (FR-F4.6). */
@@ -178,6 +182,7 @@ public class Campaign {
     /** The brand approves the counter-offer: the agreed price is the counter price (FR-F4.6). */
     public void approveCounterOffer(Long counterPriceCents, Instant now) {
         requireStatus(CampaignStatus.COUNTERED);
+        requireBeforeDeadline(now);
         if (counterPriceCents == null || counterPriceCents < 0) {
             throw new IllegalArgumentException("Counter-offer price must be non-negative.");
         }
@@ -188,13 +193,19 @@ public class Campaign {
     /** The brand declines the counter-offer: the request closes as Declined (FR-F4.4). */
     public void declineCounterOffer(Instant now) {
         requireStatus(CampaignStatus.COUNTERED);
+        requireBeforeDeadline(now);
         this.status = CampaignStatus.DECLINED;
         this.updatedAt = now;
     }
 
-    /** Timer A ran out without an answer (FR-F4.5). */
+    /**
+     * Timer A ran out (FR-F4.5): the creator never answered, or she countered and the brand never decided.
+     * Either way the request ends here and nothing is charged.
+     */
     public void expireResponse(Instant now) {
-        requireStatus(CampaignStatus.AWAITING_CREATOR_RESPONSE);
+        if (status != CampaignStatus.AWAITING_CREATOR_RESPONSE && status != CampaignStatus.COUNTERED) {
+            throw new IllegalStateException("Campaign is not in the required status.");
+        }
         if (responseDeadline == null || responseDeadline.isAfter(now)) {
             throw new IllegalStateException("The response deadline has not passed.");
         }

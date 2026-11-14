@@ -9,25 +9,33 @@ import com.flavors.dto.DeliverableItem;
 import com.flavors.entity.AppUser;
 import com.flavors.entity.CreatorProfile;
 import com.flavors.enums.Role;
+import com.flavors.exception.CampaignNotFoundException;
+import com.flavors.exception.CampaignResponseStateException;
 import com.flavors.exception.ValidationFailedException;
 import com.flavors.repository.AppUserRepository;
 import com.flavors.repository.CreatorProfileRepository;
 import com.flavors.service.CampaignResponseService;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Responding to a campaign request (UC-F4.1), run against the real database: the answers, the counter-offer,
- * Timer A and the audit rows. The unit test next to it checks the same rules with mocks.
+ * Timer A, the audit rows, and what happens when two calls hit the same campaign at once.
  *
  * <p>The scheduled expiry job may run while these tests do, so the Timer A tests check the final state of
  * their own campaign and never how many campaigns one call expired.
@@ -81,6 +89,10 @@ class CampaignResponseServiceImplIT {
         return newRequest(brand, creator, 2 * 86_400);
     }
 
+    private void makeOverdue(long campaign) {
+        jdbc.update("UPDATE campaign SET response_deadline = now() - interval '1 minute' WHERE id = ?", campaign);
+    }
+
     private String statusOf(long campaign) {
         return jdbc.queryForObject("SELECT status FROM campaign WHERE id = ?", String.class, campaign);
     }
@@ -115,6 +127,7 @@ class CampaignResponseServiceImplIT {
         assertThat(jdbc.queryForObject("SELECT payment_deadline IS NOT NULL FROM campaign WHERE id = ?", Boolean.class, campaign))
                 .isTrue();
         assertThat(auditCount("CAMPAIGN_ACCEPTED", campaign)).isEqualTo(1);
+        assertThat(notificationCount(brand, campaign, "CAMPAIGN_ACCEPTED")).isEqualTo(1);
     }
 
     // TC-F4.1.2
@@ -129,6 +142,7 @@ class CampaignResponseServiceImplIT {
         assertThat(statusOf(campaign)).isEqualTo("REJECTED");
         assertThat(agreedPriceOf(campaign)).isNull();
         assertThat(auditCount("CAMPAIGN_REJECTED", campaign)).isEqualTo(1);
+        assertThat(notificationCount(brand, campaign, "CAMPAIGN_REJECTED")).isEqualTo(1);
     }
 
     // TC-F4.1.3
@@ -138,6 +152,7 @@ class CampaignResponseServiceImplIT {
         long lara = newCreator();
         long campaign = openRequest(brand, lara);
         service.submitCounterOffer(lara, campaign, new CounterOfferRequest(65_000L, null));
+        assertThat(notificationCount(brand, campaign, "COUNTER_OFFER_RECEIVED")).isEqualTo(1);
 
         service.declineCounterOffer(brand, campaign);
 
@@ -174,6 +189,7 @@ class CampaignResponseServiceImplIT {
         assertThat(((Number) deliverables.get(0).get("count")).intValue()).isEqualTo(2);
         assertThat(auditCount("COUNTER_OFFER_SUBMITTED", campaign)).isEqualTo(1);
         assertThat(auditCount("COUNTER_OFFER_APPROVED", campaign)).isEqualTo(1);
+        assertThat(notificationCount(lara, campaign, "COUNTER_OFFER_APPROVED")).isEqualTo(1);
     }
 
     // TC-F4.1.5
@@ -188,6 +204,24 @@ class CampaignResponseServiceImplIT {
         assertThat(statusOf(campaign)).isEqualTo("EXPIRED");
         assertThat(agreedPriceOf(campaign)).isNull();
         assertThat(notificationCount(brand, campaign, "CAMPAIGN_RESPONSE_EXPIRED")).isEqualTo(1);
+        assertThat(notificationCount(lara, campaign, "CAMPAIGN_RESPONSE_EXPIRED")).isZero();
+    }
+
+    // The 3 days cover the whole negotiation: a counter nobody decides on expires too.
+    @Test
+    void aCounteredRequestNobodyDecidesOnExpiresAndBothSidesAreTold() {
+        long brand = newBrand();
+        long lara = newCreator();
+        long campaign = openRequest(brand, lara);
+        service.submitCounterOffer(lara, campaign, new CounterOfferRequest(65_000L, null));
+        makeOverdue(campaign);
+
+        service.expireOverdueCampaignResponses();
+
+        assertThat(statusOf(campaign)).isEqualTo("EXPIRED");
+        assertThat(agreedPriceOf(campaign)).isNull();
+        assertThat(notificationCount(brand, campaign, "CAMPAIGN_RESPONSE_EXPIRED")).isEqualTo(1);
+        assertThat(notificationCount(lara, campaign, "CAMPAIGN_RESPONSE_EXPIRED")).isEqualTo(1);
     }
 
     @Test
@@ -202,7 +236,7 @@ class CampaignResponseServiceImplIT {
         assertThat(notificationCount(brand, campaign, "CAMPAIGN_RESPONSE_EXPIRED")).isZero();
     }
 
-    // TC-F4.1.6 and EX-F4.1.4
+    // TC-F4.1.6 and EX-F4.1.4: the second counter finds the request already countered.
     @Test
     void aSecondCounterOfferIsRefused() {
         long brand = newBrand();
@@ -211,7 +245,7 @@ class CampaignResponseServiceImplIT {
         service.submitCounterOffer(lara, campaign, new CounterOfferRequest(60_000L, null));
 
         assertThatThrownBy(() -> service.submitCounterOffer(lara, campaign, new CounterOfferRequest(61_000L, null)))
-                .isInstanceOf(ValidationFailedException.class);
+                .isInstanceOf(CampaignResponseStateException.class);
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM counter_offer WHERE campaign_id = ?", Long.class, campaign))
                 .isEqualTo(1);
@@ -220,12 +254,16 @@ class CampaignResponseServiceImplIT {
     }
 
     @Test
-    void aCounterOfferMustChangeSomething() {
+    void aCounterOfferMustChangeSomethingAndTheNewPriceMustBePositive() {
         long brand = newBrand();
         long lara = newCreator();
         long campaign = openRequest(brand, lara);
 
         assertThatThrownBy(() -> service.submitCounterOffer(lara, campaign, new CounterOfferRequest(null, null)))
+                .isInstanceOf(ValidationFailedException.class);
+        assertThatThrownBy(() -> service.submitCounterOffer(lara, campaign, new CounterOfferRequest(0L, null)))
+                .isInstanceOf(ValidationFailedException.class);
+        assertThatThrownBy(() -> service.submitCounterOffer(lara, campaign, new CounterOfferRequest(PRICE, null)))
                 .isInstanceOf(ValidationFailedException.class);
         assertThatThrownBy(() -> service.submitCounterOffer(lara, campaign,
                 new CounterOfferRequest(null, List.of(new DeliverableItem("Tiktok", "Dance", 1)))))
@@ -241,26 +279,164 @@ class CampaignResponseServiceImplIT {
         long campaign = newRequest(brand, lara, -60);
 
         assertThatThrownBy(() -> service.acceptCampaign(lara, campaign))
-                .isInstanceOf(ValidationFailedException.class);
+                .isInstanceOf(CampaignResponseStateException.class);
 
         assertThat(statusOf(campaign)).isNotEqualTo("AWAITING_PAYMENT");
     }
 
-    // NF-1
     @Test
-    void anotherCreatorsOrBrandsCampaignIsNotFound() {
+    void theBrandCannotDecideOnACounterOfferAfterTheDeadline() {
+        long brand = newBrand();
+        long lara = newCreator();
+        long campaign = openRequest(brand, lara);
+        service.submitCounterOffer(lara, campaign, new CounterOfferRequest(65_000L, null));
+        makeOverdue(campaign);
+
+        assertThatThrownBy(() -> service.approveCounterOffer(brand, campaign))
+                .isInstanceOf(CampaignResponseStateException.class);
+
+        assertThat(statusOf(campaign)).isNotEqualTo("AWAITING_PAYMENT");
+        assertThat(agreedPriceOf(campaign)).isNull();
+    }
+
+    // NF-1: someone else's campaign, and a draft that names her, look exactly like a campaign that does not exist.
+    @Test
+    void anotherCreatorsOrBrandsCampaignAndADraftAreNotFound() {
         long brand = newBrand();
         long lara = newCreator();
         long otherCreator = newCreator();
         long otherBrand = newBrand();
         long campaign = openRequest(brand, lara);
         service.submitCounterOffer(lara, campaign, new CounterOfferRequest(60_000L, null));
+        long draft = openRequest(brand, lara);
+        jdbc.update("UPDATE campaign SET status = 'DRAFT' WHERE id = ?", draft);
 
         assertThatThrownBy(() -> service.rejectCampaign(otherCreator, campaign))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(CampaignNotFoundException.class);
         assertThatThrownBy(() -> service.approveCounterOffer(otherBrand, campaign))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(CampaignNotFoundException.class);
+        assertThatThrownBy(() -> service.acceptCampaign(lara, draft))
+                .isInstanceOf(CampaignNotFoundException.class);
 
         assertThat(statusOf(campaign)).isEqualTo("COUNTERED");
+    }
+
+    // ---- two calls on the same campaign at once: exactly one wins, and the final state agrees with it ----
+
+    /** Runs the call when the start signal comes; true if it went through, false if the campaign refused it. */
+    private static Callable<Boolean> attempt(CountDownLatch start, Runnable call) {
+        return () -> {
+            start.await();
+            try {
+                call.run();
+                return true;
+            } catch (CampaignResponseStateException refused) {
+                return false;
+            }
+        };
+    }
+
+    @Test
+    void acceptAndRejectAtTheSameTimeHaveOneWinner() throws Exception {
+        long brand = newBrand();
+        long lara = newCreator();
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 8; round++) {
+                long campaign = openRequest(brand, lara);
+                CountDownLatch start = new CountDownLatch(1);
+                Future<Boolean> accept = pool.submit(attempt(start, () -> service.acceptCampaign(lara, campaign)));
+                Future<Boolean> reject = pool.submit(attempt(start, () -> service.rejectCampaign(lara, campaign)));
+                start.countDown();
+
+                boolean accepted = accept.get(30, TimeUnit.SECONDS);
+                boolean rejected = reject.get(30, TimeUnit.SECONDS);
+
+                assertThat(accepted ^ rejected).as("exactly one of accept and reject goes through").isTrue();
+                assertThat(statusOf(campaign)).isEqualTo(accepted ? "AWAITING_PAYMENT" : "REJECTED");
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void approveAndDeclineAtTheSameTimeHaveOneWinner() throws Exception {
+        long brand = newBrand();
+        long lara = newCreator();
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 8; round++) {
+                long campaign = openRequest(brand, lara);
+                service.submitCounterOffer(lara, campaign, new CounterOfferRequest(65_000L, null));
+                CountDownLatch start = new CountDownLatch(1);
+                Future<Boolean> approve = pool.submit(attempt(start, () -> service.approveCounterOffer(brand, campaign)));
+                Future<Boolean> decline = pool.submit(attempt(start, () -> service.declineCounterOffer(brand, campaign)));
+                start.countDown();
+
+                boolean approved = approve.get(30, TimeUnit.SECONDS);
+                boolean declined = decline.get(30, TimeUnit.SECONDS);
+
+                assertThat(approved ^ declined).as("exactly one of approve and decline goes through").isTrue();
+                assertThat(statusOf(campaign)).isEqualTo(approved ? "AWAITING_PAYMENT" : "DECLINED");
+                // The creator is told about the decision that really happened, and only that one.
+                assertThat(notificationCount(lara, campaign, "COUNTER_OFFER_DECLINED")).isEqualTo(declined ? 1 : 0);
+                assertThat(notificationCount(lara, campaign, "COUNTER_OFFER_APPROVED")).isEqualTo(approved ? 1 : 0);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void twoCountersAtTheSameTimeHaveOneWinner() throws Exception {
+        long brand = newBrand();
+        long lara = newCreator();
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            for (int round = 0; round < 8; round++) {
+                long campaign = openRequest(brand, lara);
+                CountDownLatch start = new CountDownLatch(1);
+                Future<Boolean> first = pool.submit(attempt(start,
+                        () -> service.submitCounterOffer(lara, campaign, new CounterOfferRequest(60_000L, null))));
+                Future<Boolean> second = pool.submit(attempt(start,
+                        () -> service.submitCounterOffer(lara, campaign, new CounterOfferRequest(61_000L, null))));
+                start.countDown();
+
+                assertThat(first.get(30, TimeUnit.SECONDS) ^ second.get(30, TimeUnit.SECONDS)).isTrue();
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM counter_offer WHERE campaign_id = ?", Long.class, campaign))
+                        .isEqualTo(1);
+                assertThat(statusOf(campaign)).isEqualTo("COUNTERED");
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void twoExpiryRunsAtTheSameTimeTellTheBrandOnlyOnce() throws Exception {
+        long brand = newBrand();
+        long lara = newCreator();
+        List<Long> campaigns = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            campaigns.add(newRequest(brand, lara, -60));
+        }
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            Future<Boolean> first = pool.submit(attempt(start, service::expireOverdueCampaignResponses));
+            Future<Boolean> second = pool.submit(attempt(start, service::expireOverdueCampaignResponses));
+            start.countDown();
+            first.get(60, TimeUnit.SECONDS);
+            second.get(60, TimeUnit.SECONDS);
+
+            for (long campaign : campaigns) {
+                assertThat(statusOf(campaign)).isEqualTo("EXPIRED");
+                assertThat(notificationCount(brand, campaign, "CAMPAIGN_RESPONSE_EXPIRED")).isEqualTo(1);
+                assertThat(auditCount("CAMPAIGN_RESPONSE_EXPIRED", campaign)).isEqualTo(1);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
     }
 }

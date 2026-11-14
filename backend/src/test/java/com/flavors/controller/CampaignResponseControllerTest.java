@@ -7,6 +7,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.BDDMockito.willThrow;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import com.flavors.config.SecurityConfig;
 import com.flavors.dto.CurrentUser;
@@ -19,6 +21,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.flavors.exception.CampaignNotFoundException;
+import com.flavors.exception.CampaignResponseStateException;
 
 /**
  * The web side of responding to a campaign request (UC-F4.1): URLs, who may call them and the status codes.
@@ -111,5 +115,24 @@ class CampaignResponseControllerTest {
     void anonymousIsNotLoggedIn() throws Exception {
         mvc.perform(post("/api/creator/campaigns/42/accept").with(csrf()))
                 .andExpect(status().isUnauthorized());
+    }
+    
+    @Test
+    void anUnknownCampaignIsA404WithAProblemBody() throws Exception {
+        willThrow(new CampaignNotFoundException()).given(service).acceptCampaign(7L, 42L);
+
+        mvc.perform(post("/api/creator/campaigns/42/accept").with(user(LARA)).with(csrf()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Campaign not found"));
+    }
+
+    @Test
+    void aRequestThatCannotBeAnsweredIsA409() throws Exception {
+        willThrow(new CampaignResponseStateException("The response deadline for this request has passed."))
+                .given(service).acceptCampaign(7L, 42L);
+
+        mvc.perform(post("/api/creator/campaigns/42/accept").with(user(LARA)).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("The response deadline for this request has passed."));
     }
 }
