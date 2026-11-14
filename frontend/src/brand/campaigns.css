@@ -1,0 +1,99 @@
+/* The campaign form and detail (EEC-40). Built from design tokens and fl- components; these are only the
+   arrangements the shared layout helpers do not cover. */
+.fl-required {
+  color: var(--color-danger);
+}
+
+.fl-section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.fl-section h2 {
+  font-size: var(--font-size-xl);
+  margin: 0;
+}
+
+.fl-section .fl-field {
+  margin-bottom: 0;
+}
+
+.fl-creator {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.fl-creator__meta {
+  display: grid;
+}
+
+.fl-creator__meta span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.fl-picker {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fl-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.fl-picker__list li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.fl-deliverable {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(5rem, 0.6fr) auto;
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.fl-deliverable .fl-field {
+  margin-bottom: 0;
+}
+
+/* Lines the remove button up with the inputs, not with their labels. */
+.fl-deliverable__remove {
+  margin-top: calc(var(--font-size-sm) * var(--line-height-normal) + var(--space-1));
+}
+
+@media (max-width: 36rem) {
+  .fl-deliverable {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.fl-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fl-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

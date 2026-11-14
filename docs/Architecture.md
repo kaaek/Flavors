@@ -54,12 +54,12 @@ Code is grouped by **layer**, not by feature: every story puts its classes in th
 ```
 com.flavors
 ├── FlavorsApplication
-├── controller/     REST endpoints (@RestController): MeController, PortfolioController
-├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService, PortfolioService
-│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl, PortfolioServiceImpl
-├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository, CreatorProfileRepository, SocialAccountRepository, CampaignRepository, PortfolioFeatureRepository
-├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, PortfolioFeature
-├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus
+├── controller/     REST endpoints (@RestController): MeController, PortfolioController, BrandCampaignController
+├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService, PortfolioService, CampaignService
+│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl, PortfolioServiceImpl, CampaignServiceImpl
+├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository, CreatorProfileRepository, SocialAccountRepository, CampaignRepository, NotificationRepository, PortfolioFeatureRepository
+├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, CampaignDeliverable, Notification, PortfolioFeature
+├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus, DeliverablePlatform, DeliverableType
 ├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser, PortfolioResponse, UpdatePortfolioRequest
 ├── mapper/         entity/principal <-> DTO converters: MeMapper, PortfolioMapper
 ├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder, SchedulingConfig
@@ -274,7 +274,8 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 | `notification` | UC-F18.1 |
 
 Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and a
-read-only `campaign` (EEC-36). Later stories add columns and methods to these classes instead of writing second copies.
+read-only `campaign` (EEC-36); `campaign` (now with its price, dates, branches and deliverables), `campaign_deliverable` and
+`notification` (write only) in EEC-40. Later stories add columns and methods to these classes instead of writing second copies.
 
 ## 5. Security — built
 
@@ -402,7 +403,7 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
   | Role | Pages (top bar) | Also reachable |
   |---|---|---|
   | Creator | Home `/creator`, Portfolio `/creator/portfolio`, Social accounts `/creator/social`, Profile status `/creator/status` | Connect Instagram returns to `/creator/social?instagram=<result>` |
-  | Brand | Home `/brand`, Account `/brand/account` | |
+  | Brand | Home `/brand`, Find creators `/brand/creators`, Campaigns `/brand/campaigns`, Account `/brand/account` | New campaign `/brand/campaigns/new` (optionally `?creator=<id>`), a draft `/brand/campaigns/:id/edit`, a sent campaign `/brand/campaigns/:id` |
   | Admin | Home `/admin`, Approvals `/admin/creators` (with the pending count) | |
   | Public | `/`, `/login`, `/forgot-password`, `/reset-password`, `/register`, `/register/brand`, `/register/creator` | `/s/:slug` (storefront) and `/claim/:token` (diner QR page) are placeholders |
 
@@ -525,13 +526,88 @@ Brands search creators (EEC-39); creators search brands (added at the team's req
 - **Tests:** `SearchTextTest`, `CreatorSearchControllerTest`, `BrandSearchControllerTest`, `BrandProfileControllerTest`,
   `CreatorSearchServiceImplIT`, `BrandSearchServiceImplIT`, `BrandProfileServiceImplIT`, `SearchSchemaIT`; frontend
   `CreatorSearchPage.test.tsx`, `BrandSearchPage.test.tsx`.
-- **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); the "Create campaign" button on a result is
-  disabled until the campaign story; results link to `/s/:slug`, still a placeholder.
+- **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); results link to `/s/:slug`, still a
+  placeholder. The "Start a campaign" button on a result opens the campaign form (§15).
 
-## 16. Accepting a campaign needs a connected account (FT-68) — built
+## 15. Create a campaign and send it (UC-F3.1) — built
 
-A creator who has no social account in status `CONNECTED` cannot accept a campaign request: `CampaignResponseServiceImpl.acceptCampaign` answers
-**409** "Account disconnected" (`SocialAccountDisconnectedException`) until she reconnects her Instagram account. The check runs after the
-status and deadline checks. Rejecting is not blocked, and neither is the counter-offer, since FT-68 only mentions accepting. Timer A
-keeps running, so she can reconnect and still answer within her 3 days.
-**Tests:** `CampaignResponseServiceImplTest`.
+A brand writes a campaign for **one** creator, saves it as a draft as often as it likes, and sends it (EEC-40). All endpoints are
+under `/api/brand/campaigns`, so the existing BRAND guard applies; the brand is always the logged-in user, and a campaign of another
+brand is "not found" (404), never "forbidden".
+
+| Method and path | What |
+|---|---|
+| `GET /api/brand/campaigns` | The brand's campaigns, most recently changed first (name, creator, status, price offered, agreed price) |
+| `GET /api/brand/campaigns/{id}` | One campaign in full, including the agreed price, payment deadline and accepted-at once the creator has agreed (EEC-43) |
+| `GET /api/brand/campaigns/creators/{creatorId}` | The approved, active creator a form opens with (404 otherwise) |
+| `POST /api/brand/campaigns` | Saves a new **draft** (201) |
+| `PUT /api/brand/campaigns/{id}` | Replaces the details of a draft |
+| `POST /api/brand/campaigns/send` | Creates the campaign and sends it in one step (201): the form was never saved |
+| `POST /api/brand/campaigns/{id}/send` | Saves the given details into a draft and sends it |
+
+- **One body for all of them** (`CampaignRequest`): name, `creatorId`, `branchIds`, `priceOfferedCents` (the budget, integer USD cents),
+  `startDate`, `lastPostingDate`, `deliverables` (`platform`, `type`, `count`) and `contentRequirements`. Every field may be missing; the
+  service decides what is required. The follower offer (UC-F10.1) is not part of it: EEC-41 adds that.
+- **Draft vs send.** A draft needs only a **name**; whatever else it contains must still be sensible (a price above 0, a last posting date
+  not before the start, own branches only, an approved creator, deliverables with a known type and a count of 1 or more). **Send** also
+  needs a creator, at least one branch, a price, both dates (start today or later, **"today" in `flavors.campaign.zone`, default
+  `Asia/Beirut`**) and at least one deliverable. Content requirements are always optional. Name: up to 150 characters.
+- **Deliverables:** platform `INSTAGRAM` only; types `REEL`, `POST`, `STORY`, `CAROUSEL` (`DeliverablePlatform`, `DeliverableType`).
+  The database leaves both open (V3), so another platform is a new enum value.
+- **Field errors:** a wrong or missing field returns **400** `ProblemDetail` titled "Invalid campaign" with `errors`, a map from the field
+  name to its message, for example `{"startDate": "Pick a start date.", "deliverables[0].count": "Enter 1 or more."}`. All wrong fields come
+  back together, and the form highlights each one.
+- **Send** runs in **one transaction**: the draft is updated, the status becomes `AWAITING_CREATOR_RESPONSE`, `sent_at` is set,
+  `response_deadline` = `sent_at` + 3 days (Timer A; section 16 expires it), a `CAMPAIGN_REQUEST` row is written to `notification` for the
+  creator (in-app only, no email) and a `CAMPAIGN_SENT` audit entry is recorded. A refused send saves nothing, not even the new details
+  of an existing draft. The row is locked while it is sent, so two parallel sends notify once and the second gets 409.
+- **A draft is private.** Only the brand's endpoints can read it, no notification exists until Send, and the creator-side listing of
+  campaigns (EEC-43, section 16) shows `status <> 'DRAFT'` only. Drafts and sends are audited (`CAMPAIGN_DRAFT_SAVED`, `CAMPAIGN_DRAFT_UPDATED`,
+  `CAMPAIGN_SENT`).
+- **Other refusals:** **409** "No branch" when the brand has none (EX-F3.1.3; checked on every write); **409** "Campaign already sent" when
+  a sent campaign is changed or sent again.
+- **Pages:** the list `/brand/campaigns` (name, creator, price offered, agreed price, status; Edit on drafts; New campaign), the form
+  `/brand/campaigns/new[?creator=<id>]` and `/brand/campaigns/:id/edit` (sections Basics, Offer and dates, Deliverables, Content requirements;
+  invalid fields get a message under them and a banner on top; Save draft and Send to creator), and the read-only `/brand/campaigns/:id`
+  with the creator's deadline and, once agreed, the agreed price, "Pay by" and "Accepted" (EEC-43). "Start a campaign" on a creator search result opens the form with that creator chosen; without one, the form
+  has a small creator search. Enter in a field never sends. The price is typed in dollars and sent as cents (`lib/moneyInput.ts`).
+- **Tests:** `CampaignServiceImplIT` (TC-F3.1.1 to TC-F3.1.4, EX-F3.1.1 to EX-F3.1.3, every field rule, other brands, parallel sends),
+  `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
+  and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
+  `CreatorSearchPage.test.tsx`.
+- **Not built yet:** the follower offer (EEC-41) and payment.
+
+## 16. Respond to a campaign request (UC-F4.1) — built
+
+- **Endpoints** (`CampaignResponseController`, `CreatorCampaignController`). Answers are `POST` and return `204`. Creator:
+  `/api/creator/campaigns/{id}/accept`, `/reject`, `/counter-offer` (body `{priceCents?, deliverables?}`). Brand:
+  `/api/brand/campaigns/{id}/counter-offer/approve` and `/decline`. Reads are `GET`: `/api/creator/campaigns` (the creator's requests, never
+  drafts), `/api/creator/campaigns/{id}`, and `/api/creator/campaigns/{id}/counter-offer` and `/api/brand/campaigns/{id}/counter-offer`
+  (the counter-offer on a campaign). The URL prefix decides the role (SecurityConfig), and the caller is always the logged-in user.
+  The campaign responses carry `agreedPriceCents`, `paymentDeadline` and `acceptedAt`.
+- **Visibility:** someone else's campaign, an unknown id, and a draft that names the creator all answer `404` (NF-1), so nobody can tell them apart.
+  A campaign that exists but can't take this answer (already answered, expired, past the deadline) answers `409`.
+- **Rules** (`CampaignResponseServiceImpl`): the creator's answers need status `AWAITING_CREATOR_RESPONSE`; approve and decline need `COUNTERED`.
+  Both need an open `response_deadline`. A counter-offer must change the price (above 0), the deliverables, or both. It holds the full proposed
+  terms. The unique `counter_offer.campaign_id` is the final guard for one counter-offer per campaign.
+- **Locking:** every answer loads the campaign row with `findByIdForUpdate` (`PESSIMISTIC_WRITE`) and checks the status and deadline only after
+  that, so two calls on the same campaign never both succeed. The two counter-offer reads run in read-only transactions, where PostgreSQL
+  refuses `FOR UPDATE`, so they use a plain `findById` with the same visibility filter and no lock.
+- **Outcomes:** accept → `AWAITING_PAYMENT` and Timer B starts. Reject → `REJECTED`. Approve → `AWAITING_PAYMENT` at the counter price with the new
+  deliverables (`Campaign.replaceDeliverables`). Decline → `DECLINED`, nothing is charged.
+- **Connected account (FT-68):** a creator with no social account in status `CONNECTED` can't accept a campaign request. `CampaignResponseServiceImpl.acceptCampaign` answers **409** "Account disconnected" (`SocialAccountDisconnectedException`) until she reconnects, after the status and deadline checks. Reject and counter-offer are not blocked, and the campaign stays `AWAITING_CREATOR_RESPONSE` on a refused accept. Tests: `CampaignResponseServiceImplTest` and `CampaignResponseServiceImplIT`.
+- **Timer A covers the whole negotiation:** the creator and the brand together have 3 days from the send to agree. `CampaignResponseExpirationJob`
+  runs every minute (`flavors.campaign.response-expiration-cron`, zone `Asia/Beirut`) and expires `AWAITING_CREATOR_RESPONSE` and `COUNTERED`
+  requests past `response_deadline`, one campaign per transaction, so one bad row cannot undo the others and two overlapping runs do not
+  notify twice.
+- **Notifications** (constants in `Notification`): the brand is told of an accept, a reject, a counter-offer and an expiry; the creator is told
+  when her counter is approved or declined, and when a countered request expires.
+- **Audit:** every answer and every expiry is audited (`CAMPAIGN_ACCEPTED`, `CAMPAIGN_REJECTED`, `COUNTER_OFFER_SUBMITTED`,
+  `COUNTER_OFFER_APPROVED`, `COUNTER_OFFER_DECLINED`, `CAMPAIGN_RESPONSE_EXPIRED`).
+- **Pages:** creator `/creator/campaigns` (list of requests) and `/creator/campaigns/:id` (terms, Accept, Reject, counter-offer form, agreed
+  price and payment deadline once agreed). Brand: the existing `/brand/campaigns/:id` shows the counter-offer with Approve and Decline while the
+  campaign is `COUNTERED`, and the agreed price, "Pay by" and "Accepted" once agreed; the list `/brand/campaigns` has an "Agreed price" column.
+- **Tests:** `CampaignResponseServiceImplTest` (the rules, TC-F4.1.1 to TC-F4.1.6, the deadline boundary, the COUNTERED expiry),
+  `CampaignResponseControllerTest` (roles, CSRF, status codes and error bodies), `CreatorCampaignControllerTest` (the creator's list and
+  detail reads), `CampaignResponseServiceImplIT` (the same flow on the real database, the counter-offer reads, plus concurrent accept/reject,
+  approve/decline, counters and expiry runs); frontend `CampaignDetailPage.test.tsx` and `CampaignListPage.test.tsx`.

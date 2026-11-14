@@ -1,0 +1,16 @@
+# no-mistakes repo config: tells the review pipeline how to test and how to run the app.
+
+commands:
+  # One command covers both halves: backend integration tests (Testcontainers needs a
+  # container runtime) and the frontend install, tests, lint and type-checked build.
+  test: 'cd backend && ./mvnw verify && cd ../frontend && npm ci && npm test && npm run lint && npm run build'
+
+test:
+  # The schema has no start-command key, so live-validation steps go in free-text instructions.
+  instructions: |
+    Backend tests use Testcontainers. If Docker is stopped, start the user Podman socket (`systemctl --user start podman.socket`) and export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock, TESTCONTAINERS_RYUK_DISABLED=true before `./mvnw verify`.
+    For live checks of UI or REST changes, start the app and drive it for real (do not stop at unit tests):
+    1. Database: `docker compose up -d db` (or the equivalent `podman compose`) gives Postgres on localhost:5432.
+    2. Backend: `cd backend && SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run` serves the API on http://localhost:8080.
+    3. Frontend: `cd frontend && npm run dev` serves the app on http://localhost:5173 (base URL for browser checks).
+    See docs/README.md "Running locally" for details. Stop the processes and the database container when done.

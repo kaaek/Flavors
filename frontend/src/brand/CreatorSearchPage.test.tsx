@@ -74,7 +74,11 @@ it('lists creators, shows a dash for figures she has no data for, and links the 
   expect(screen.getByText('Omar Bites')).toBeInTheDocument()
   // Omar: platform, followers, engagement, price, plus ROI and redemptions for both creators.
   expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(8)
-  expect(screen.getAllByRole('button', { name: 'Create campaign' })[0]).toBeDisabled()
+  // "Start a campaign" opens the campaign form with this creator chosen (EEC-40).
+  expect(screen.getByRole('link', { name: 'Start a campaign with Layla Eats' })).toHaveAttribute(
+    'href',
+    '/brand/campaigns/new?creator=1',
+  )
   expect(screen.getAllByRole('button', { name: 'Save' })).toHaveLength(2)
 })
 

@@ -1,6 +1,8 @@
 
 package com.flavors.controller;
 
+import com.flavors.dto.CounterOfferResponse;
+import org.springframework.web.bind.annotation.GetMapping;
 import com.flavors.dto.CounterOfferRequest;
 import com.flavors.dto.CurrentUser;
 import com.flavors.service.CampaignResponseService;
@@ -23,7 +25,21 @@ public class CampaignResponseController {
             CampaignResponseService campaignResponseService) {
         this.campaignResponseService = campaignResponseService;
     }
+        @GetMapping("/api/creator/campaigns/{campaignId}/counter-offer")
+    public CounterOfferResponse getCounterOfferForCreator(
+            @AuthenticationPrincipal CurrentUser user,
+            @PathVariable Long campaignId) {
+        return campaignResponseService.getCounterOfferForCreator(
+                user.getId(), campaignId);
+    }
 
+    @GetMapping("/api/brand/campaigns/{campaignId}/counter-offer")
+    public CounterOfferResponse getCounterOfferForBrand(
+            @AuthenticationPrincipal CurrentUser user,
+            @PathVariable Long campaignId) {
+        return campaignResponseService.getCounterOfferForBrand(
+                user.getId(), campaignId);
+    }
     @PostMapping("/api/creator/campaigns/{campaignId}/accept")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void acceptCampaign(
