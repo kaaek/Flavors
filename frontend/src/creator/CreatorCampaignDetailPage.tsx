@@ -1,9 +1,10 @@
-import { useCallback, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   acceptCreatorCampaign,
   rejectCreatorCampaign,
   submitCreatorCounterOffer,
+  escrowLabel,
   getCreatorCampaign,
   PLATFORMS,
   DELIVERABLE_TYPES,
@@ -17,6 +18,8 @@ import { useFetchWith } from '../layout/useFetch'
 import { LOCALE } from '../lib/locale'
 import { formatUSD } from '../lib/money'
 import { parseUSDToCents } from '../lib/moneyInput'
+import { timeLeftText } from '../lib/timeLeft'
+import { isAwaitingPayment, showsEscrow } from '../api/payments'
 import { CampaignStatusChip } from '../brand/CampaignStatusChip'
 import '../brand/campaigns.css'
 
@@ -62,6 +65,23 @@ export function CreatorCampaignDetailPage() {
   const [changeDeliverables, setChangeDeliverables] = useState(false)
   const [rows, setRows] = useState<DeliverableRow[]>([])
 
+  // The brand's payment shows up here without a reload: checked every 30 seconds while it is pending.
+  const [refreshed, setRefreshed] = useState<Campaign | null>(null)
+  const current = refreshed ?? (result.status === 'ready' ? result.data : null)
+  const awaitingPayment = current ? isAwaitingPayment(statusOverride ?? current.status) : false
+  useEffect(() => {
+    if (!awaitingPayment) return
+    const timer = window.setInterval(() => {
+      getCreatorCampaign(campaignId)
+        .then((fresh) => {
+          setRefreshed(fresh)
+          setStatusOverride(null)
+        })
+        .catch(() => undefined)
+    }, 30_000)
+    return () => window.clearInterval(timer)
+  }, [awaitingPayment, campaignId])
+
   async function respond(action: 'accept' | 'reject') {
     setBusy(true)
     setError(null)
@@ -72,6 +92,12 @@ export function CreatorCampaignDetailPage() {
         await acceptCreatorCampaign(campaignId)
         setStatusOverride('AWAITING_PAYMENT')
         setMessage('Campaign accepted successfully.')
+        void getCreatorCampaign(campaignId)
+          .then((fresh) => {
+            setRefreshed(fresh)
+            setStatusOverride(null)
+          })
+          .catch(() => undefined)
       } else {
         await rejectCreatorCampaign(campaignId)
         setStatusOverride('REJECTED')
@@ -169,9 +195,10 @@ export function CreatorCampaignDetailPage() {
     )
   }
 
+  const latest = refreshed ?? result.data
   const campaign = {
-    ...result.data,
-    status: statusOverride ?? result.data.status,
+    ...latest,
+    status: statusOverride ?? latest.status,
   }
 
   const canRespond = campaign.status === 'AWAITING_CREATOR_RESPONSE'
@@ -267,8 +294,24 @@ export function CreatorCampaignDetailPage() {
               <dd>{when.format(new Date(campaign.acceptedAt))}</dd>
             </>
           )}
+
+          {campaign.escrowStatus && showsEscrow(campaign.status, campaign.escrowStatus) && (
+            <>
+              <dt>Escrow</dt>
+              <dd>{escrowLabel[campaign.escrowStatus]}</dd>
+            </>
+          )}
         </dl>
       </section>
+
+      {campaign.status === 'AWAITING_PAYMENT' && (
+        <section className="fl-card fl-section">
+          <p>
+            You accepted this campaign. Waiting for the brand to pay. This page updates by itself.
+          </p>
+          <p>{timeLeftText(campaign.paymentDeadline, Date.now())}</p>
+        </section>
+      )}
 
       {canRespond && (
         <section className="fl-card fl-section fl-stack">

@@ -106,6 +106,26 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.CONFLICT, "Request can't be answered", e.getMessage());
     }
 
+    @ExceptionHandler(PaymentNotFoundException.class)
+    ResponseEntity<ProblemDetail> paymentNotFound(PaymentNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Payment not found", e.getMessage());
+    }
+
+    /** Payments switched off answers 503; a provider that failed or is unreachable answers 502 and nothing changed. */
+    @ExceptionHandler(PaymentProviderException.class)
+    ResponseEntity<ProblemDetail> paymentProvider(PaymentProviderException e) {
+        if (e.isDisabled()) {
+            return problem(HttpStatus.SERVICE_UNAVAILABLE, "Payments unavailable", e.getMessage());
+        }
+        return problem(HttpStatus.BAD_GATEWAY, "Payment provider unavailable",
+                "The payment provider did not answer, so no new payment was opened. Please try again in a moment.");
+    }
+
+    @ExceptionHandler(PaymentAlreadyPaidException.class)
+    ResponseEntity<ProblemDetail> paymentAlreadyPaid(PaymentAlreadyPaidException e) {
+        return problem(HttpStatus.CONFLICT, "Already paid", e.getMessage());
+    }
+
     @ExceptionHandler(SocialAccountDisconnectedException.class)
     ResponseEntity<ProblemDetail> socialAccountDisconnected(SocialAccountDisconnectedException e) {
         return problem(HttpStatus.CONFLICT, "Account disconnected", e.getMessage());

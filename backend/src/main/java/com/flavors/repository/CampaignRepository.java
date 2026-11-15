@@ -41,6 +41,11 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
     @Query("select c from Campaign c where c.id = :id")
     Optional<Campaign> findByIdForUpdate(@Param("id") Long id);
 
+    /** Timer B: the ids of campaigns waiting for payment whose payment deadline has passed, oldest first. */
+    @Query("select c.id from Campaign c where c.status = :status and c.paymentDeadline <= :now "
+            + "order by c.paymentDeadline")
+    List<Long> findOverduePaymentIds(@Param("status") CampaignStatus status, @Param("now") Instant now);
+
     /** Timer A: the ids of requests in these statuses whose response deadline has passed, oldest first. */
     @Query("select c.id from Campaign c where c.status in :statuses and c.responseDeadline <= :now "
             + "order by c.responseDeadline")

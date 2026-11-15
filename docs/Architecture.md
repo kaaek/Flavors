@@ -357,9 +357,8 @@ do database work (an external call inside it cannot be rolled back). Mapping `Id
 HTTP 409 comes with the global exception handler. **Tests:** `IdempotencyServiceImplIT` (repeat, conflict, other scope,
 retry after failure, 8 concurrent retries).
 
-Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provider webhooks
-(scope `webhook:<provider>`, key = event id, EX-F7.1.3), and release, refund and dispute decisions
-(UC-F7.2, F8.1). QR double scans are handled by the `redemption.claim_id` unique constraint instead.
+Used by the Pay button (`Idempotency-Key` header, UC-F7.1, §17). Still planned: release, refund and dispute
+decisions (UC-F7.2, F8.1). QR double scans are handled by the `redemption.claim_id` unique constraint instead.
 
 ## 8. Admin account seeding — built
 
@@ -479,7 +478,8 @@ returns 409 before approval.
 
 ## 13. Scheduled jobs and the daily social refresh (UC-F1.3) — built
 
-`SchedulingConfig` turns on `@Scheduled`. The only job so far is `SocialRefreshJob` (`service/impl/`, EEC-37):
+`SchedulingConfig` turns on `@Scheduled`. The other jobs are described with their features: campaign response expiry (§16),
+payment deadline and reconciliation (§17). This section covers `SocialRefreshJob` (`service/impl/`, EEC-37):
 
 - **When:** `flavors.social.refresh-cron` (default `0 0 3 * * *`) in `flavors.social.refresh-zone` (default `Asia/Beirut`);
   `flavors.social.refresh-enabled=false` switches it off. The variables are in [README.md](README.md#daily-social-refresh-eec-37).
@@ -589,7 +589,7 @@ brand is "not found" (404), never "forbidden".
   `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
   and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
   `CreatorSearchPage.test.tsx`.
-- **Not built yet:** the follower offer (EEC-41) and payment.
+- **Not built yet:** the follower offer (EEC-41). Payment is in section 17.
 
 ## 16. Respond to a campaign request (UC-F4.1) — built
 
@@ -625,3 +625,79 @@ brand is "not found" (404), never "forbidden".
   `CampaignResponseControllerTest` (roles, CSRF, status codes and error bodies), `CreatorCampaignControllerTest` (the creator's list and
   detail reads), `CampaignResponseServiceImplIT` (the same flow on the real database, the counter-offer reads, plus concurrent accept/reject,
   approve/decline, counters and expiry runs); frontend `CampaignDetailPage.test.tsx` and `CampaignListPage.test.tsx`.
+
+## 17. Pay and hold the campaign payment (UC-F7.1) — built
+
+The brand pays for a campaign that the creator accepted (`AWAITING_PAYMENT`). The money is held in escrow (`HELD`), and
+the campaign goes `ACTIVE`. Timer B (3 days from acceptance) expires the request if nobody paid. EEC-44. Whish Money is the
+provider; its setup is in [README.md](README.md#whish-money-payments-eec-44).
+
+| Method and path | What |
+|---|---|
+| `POST /api/brand/campaigns/{id}/payment` (BRAND, `Idempotency-Key` header required) | Starts the payment. Answers 200 with `checkoutUrl` (where the payer goes) |
+| `GET /api/brand/campaigns/{id}/escrow` (BRAND) | The escrow status: `PENDING`, `HELD`, `RELEASED`, `FROZEN` or `REFUNDED` (FR-F7.7) |
+| `GET /api/creator/campaigns/{id}/escrow` (CREATOR) | The same, for the creator |
+| `GET /api/public/payments/callback?externalId=…` | The provider's callback. It only asks for the status (see below) |
+| `GET /api/public/payments/return?externalId=…` | The payer's return. Checks the status, then `302` to `/brand/campaigns/{id}?payment=held\|received\|failed\|pending` (`received` is a payment confirmed after the window: not held) |
+
+Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (not `AWAITING_PAYMENT`, window passed) answers
+409. The provider being unreachable answers 502, and nothing has changed. Payments switched off answer 503.
+
+- **Provider port** (`PaymentProvider`, `service/`): `name()` (stored in `escrow_payment.provider`, `WHISH`),
+  `startHostedPayment(...)` (returns the hosted checkout URL) and `queryStatus(...)` (`PAID`, `PENDING` or `FAILED`).
+  Card data is entered on the provider's page, never in Flavors (FR-F7.2). Three adapters, chosen by `flavors.whish.mode`:
+  `SimulatedPaymentProvider` (`mock`, the default for dev and tests: no network and no money; its checkout is the return URL, and
+  tests set outcomes in code, so no HTTP path can mark a payment paid),
+  `WhishPaymentProvider` (`sandbox` or `live`: calls Whish with the credentials from the environment, `RestClient`), and
+  `UnavailablePaymentProvider` (`disabled`, the production default). In the prod profile the mock is not created, so
+  `mock` there fails at startup instead of taking fake money.
+- **Starting a payment** (`PaymentServiceImpl.startPayment`): the call is idempotent per key (scope
+  `brand-payment:{brandId}`, fingerprint = campaign id; the same key for another campaign is refused). Inside the idempotency
+  transaction the campaign row is locked, the status and window are checked, the escrow row is created (`PENDING`, the agreed
+  price in cents) or reused, and an open `CHARGE` attempt is reused or created. The attempt's `provider_ref` is a random UUID,
+  which is the Whish `externalId`. The provider call comes after that transaction, because an external call can't be rolled back.
+  Calling it again for the same attempt is safe. An open attempt is reused, so a second Pay click never opens a second charge.
+  **Before a reused attempt (or the attempt of a replayed key) is opened again, the provider is asked for its status** through
+  the same `reconcile` path as the callback, because the payer may have paid and closed the tab before the return or the
+  callback was processed: `PAID` in the window is held and the click answers 409 "Already paid" (no new checkout); `PENDING`
+  reopens the same checkout; `FAILED` opens a fresh attempt; a provider error answers 502 and opens nothing, so a second charge
+  can't follow. An attempt created by this very call is not asked about. A replayed key is also re-checked under the lock
+  (campaign still `AWAITING_PAYMENT`, window open, attempt still `PENDING`) before the provider is called, so a replay after
+  expiry is refused (409). Timer B is unchanged: it never calls the provider.
+- **Confirming a payment** (`reconcile`): the callback, the return and the sweep only ask Flavors to check the status. The
+  provider's answer is what counts. A payment that is already `SUCCEEDED` needs no provider call. Otherwise the status is queried
+  outside any transaction, then applied under the campaign row lock (the same lock as EEC-43, `findByIdForUpdate`). `PAID` in the
+  window marks the attempt `SUCCEEDED`, the escrow `HELD` (`held_at`) and the campaign `ACTIVE`, and notifies both sides
+  (`ESCROW_HELD`). `FAILED` marks the attempt `FAILED` and leaves the campaign `AWAITING_PAYMENT` (EX-F7.1.1: the brand retries with
+  a new key). A repeat or a concurrent answer finds the payment already recorded and changes nothing (TC-F7.1.4, EX-F7.1.3).
+- **Timer B** (`PaymentDeadlineExpirationJob` → `expireOverduePayments`, `flavors.payment.deadline-expiration-cron`, default every
+  minute, zone `Asia/Beirut`): expires `AWAITING_PAYMENT` campaigns whose `payment_deadline` has passed and whose escrow is not `HELD`.
+  It works strictly on the deadline and never asks the provider, so it runs even when Whish is down. Open attempts are marked
+  `FAILED`, both sides get `CAMPAIGN_PAYMENT_EXPIRED`, and the audit log has `PAYMENT_WINDOW_EXPIRED`. Each campaign runs in its own
+  transaction, under the same lock, so a payment and Timer B can't both win. A payment confirmed before the deadline is held by the
+  normal reconcile path (callback, return or sweep) and Timer B then leaves the campaign alone.
+- **Reconciliation sweep** (`PaymentReconciliationJob`, every 5 minutes): asks the provider about payments still `PENDING` for
+  campaigns that are still `AWAITING_PAYMENT`, once they are two minutes old. This covers a callback that never arrived.
+- **Known gap, for EEC-45:** a payment confirmed after the deadline (or on a campaign that is no longer waiting) is recorded as
+  `SUCCEEDED` but not held. The escrow stays `PENDING`, the audit log has `PAYMENT_NOT_HELD`, and the payer is told the payment was
+  received but not held (`payment=received`). A PAID answer after expiry is never held and never reported as held. Residual: a brand
+  that pays in the last minutes before the deadline can be charged without a campaign until EEC-45 adds refunds.
+- **Escrow is a Flavors ledger state.** Whish is collect-only: no hold, refund or payout API. `HELD` means Flavors has recorded
+  money that Whish collected. Release and refund (EEC-45) need a separate answer (SPIKE-2).
+- **Schema:** none added. `escrow_payment` and `payment_transaction` (V5) hold it all: the provider reference is unique,
+  so one confirmation matches one payment.
+- **Pages:** brand `/brand/campaigns/:id` shows **Awaiting payment** with the time left (TC-F7.1.5), the Pay button (a new
+  `Idempotency-Key` per click, then a redirect to the checkout), the escrow status, and the return notices. Creator
+  `/creator/campaigns/:id` shows the escrow status and that she is waiting for the brand. Both pages check again every 30 seconds
+  while the campaign is `AWAITING_PAYMENT`, so the status shows well inside the 1-minute target (NF-3). The escrow block is hidden
+  for an expired campaign that was never paid (`PENDING` is not shown then); no escrow status was added for it.
+- **Audit:** `PAYMENT_STARTED`, `PAYMENT_FAILED`, `ESCROW_HELD`, `CAMPAIGN_ACTIVATED`, `PAYMENT_WINDOW_EXPIRED`, `PAYMENT_NOT_HELD`.
+- **Tests:** `PaymentServiceImplIT` (TC-F7.1.1 to TC-F7.1.5, EX-F7.1.1 to EX-F7.1.3, idempotent start, concurrent confirmations,
+  payment vs Timer B race, sweep, visibility), `WhishPaymentProviderTest` (the adapter against a mocked HTTP server: headers,
+  paid only on exact `success`, pending on `status: false`, provider errors), `PaymentControllerTest` (roles, the key header,
+  callback and return, already-paid and provider-error answers), `PaymentRestartIT` and `PaymentStartActionTest` (a Pay click on an
+  attempt that may already be paid: paid at the provider with the tab closed, still waiting, ended, provider error, paid after the
+  window), frontend `CampaignPayment.test.tsx` and `timeLeft.test.ts`.
+- **Not built here:** the real Whish merchant integration. The paths and answer fields come from unofficial notes and are
+  configurable (`flavors.whish.create-path`, `status-path`). See the README for what the merchant account must provide.
+  Amount and currency must be verified once the official Whish spec is available: the status check does not compare them today.

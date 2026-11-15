@@ -27,6 +27,7 @@ const campaign: Campaign = {
   agreedPriceCents: 65000,
   paymentDeadline: '2030-01-05T10:00:00Z',
   acceptedAt: '2030-01-02T10:00:00Z',
+  escrowStatus: null,
   createdAt: '2030-01-01T09:00:00Z',
   updatedAt: '2030-01-02T10:00:00Z',
 }

@@ -23,6 +23,10 @@ public class Notification {
     public static final String COUNTER_OFFER_APPROVED = "COUNTER_OFFER_APPROVED";
     public static final String COUNTER_OFFER_DECLINED = "COUNTER_OFFER_DECLINED";
     public static final String CAMPAIGN_RESPONSE_EXPIRED = "CAMPAIGN_RESPONSE_EXPIRED";
+    /** The brand's payment is held in escrow and the campaign is active (both sides, FR-F7.3, FR-F7.4). */
+    public static final String ESCROW_HELD = "ESCROW_HELD";
+    /** Timer B ran out: nothing was charged (both sides, FR-F7.6). */
+    public static final String CAMPAIGN_PAYMENT_EXPIRED = "CAMPAIGN_PAYMENT_EXPIRED";
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

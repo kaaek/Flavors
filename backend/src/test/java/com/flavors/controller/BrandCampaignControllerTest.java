@@ -182,7 +182,8 @@ class BrandCampaignControllerTest {
                 sent ? Instant.parse("2030-01-04T10:00:00Z") : null,
                 null, null, null,
                 Instant.parse("2030-01-01T09:00:00Z"),
-                Instant.parse("2030-01-01T10:00:00Z"));
+                Instant.parse("2030-01-01T10:00:00Z"),
+                null);
     }
 
     private static CurrentUser brand() {

@@ -1,4 +1,9 @@
 # Production-only settings. Everything else comes from application.yml and environment variables.
+flavors:
+  whish:
+    # Production runs with payments off until WHISH_MODE is set to sandbox or live. The mock never runs here.
+    mode: ${WHISH_MODE:disabled}
+
 springdoc:
   # The API docs list every endpoint, which helps an attacker map the API. They stay on in
   # dev (and in staging, which doesn't use this profile) but never in production.

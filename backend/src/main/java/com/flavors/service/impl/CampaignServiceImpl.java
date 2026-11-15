@@ -10,6 +10,9 @@ import com.flavors.entity.Brand;
 import com.flavors.entity.Campaign;
 import com.flavors.entity.CampaignDeliverable;
 import com.flavors.entity.CreatorProfile;
+import com.flavors.entity.EscrowPayment;
+import com.flavors.enums.EscrowStatus;
+import com.flavors.repository.EscrowPaymentRepository;
 import com.flavors.entity.Notification;
 import com.flavors.enums.DeliverablePlatform;
 import com.flavors.enums.DeliverableType;
@@ -57,6 +60,7 @@ public class CampaignServiceImpl implements CampaignService {
     private final NotificationRepository notifications;
     private final CampaignMapper mapper;
     private final AuditLogger auditLogger;
+    private final EscrowPaymentRepository escrows;
     private final Clock clock;
     private final ZoneId zone;
 
@@ -68,15 +72,16 @@ public class CampaignServiceImpl implements CampaignService {
     public CampaignServiceImpl(CampaignRepository campaigns, BranchRepository branches, BrandRepository brands,
                                CreatorProfileRepository creators, AppUserRepository users,
                                NotificationRepository notifications, CampaignMapper mapper, AuditLogger auditLogger,
+                               EscrowPaymentRepository escrows,
                                @Value("${flavors.campaign.zone:Asia/Beirut}") String zone) {
-        this(campaigns, branches, brands, creators, users, notifications, mapper, auditLogger, Clock.systemUTC(),
-                ZoneId.of(zone));
+        this(campaigns, branches, brands, creators, users, notifications, mapper, auditLogger, escrows,
+                Clock.systemUTC(), ZoneId.of(zone));
     }
 
     CampaignServiceImpl(CampaignRepository campaigns, BranchRepository branches, BrandRepository brands,
                         CreatorProfileRepository creators, AppUserRepository users,
                         NotificationRepository notifications, CampaignMapper mapper, AuditLogger auditLogger,
-                        Clock clock, ZoneId zone) {
+                        EscrowPaymentRepository escrows, Clock clock, ZoneId zone) {
         this.campaigns = campaigns;
         this.branches = branches;
         this.brands = brands;
@@ -85,6 +90,7 @@ public class CampaignServiceImpl implements CampaignService {
         this.notifications = notifications;
         this.mapper = mapper;
         this.auditLogger = auditLogger;
+        this.escrows = escrows;
         this.clock = clock;
         this.zone = zone;
     }
@@ -228,7 +234,9 @@ public CampaignResponse getForCreator(long creatorId, long campaignId) {
     private CampaignResponse toResponse(Campaign campaign) {
         CreatorProfile creator = campaign.getCreatorId() == null ? null
                 : creators.findById(campaign.getCreatorId()).orElse(null);
-        return mapper.toResponse(campaign, creator, branches.findAllById(campaign.getBranchIds()));
+        EscrowStatus escrowStatus = escrows.findByCampaignId(campaign.getId())
+                .map(EscrowPayment::getStatus).orElse(null);
+        return mapper.toResponse(campaign, creator, branches.findAllById(campaign.getBranchIds()), escrowStatus);
     }
 
     private void fill(Campaign campaign, Checked c) {

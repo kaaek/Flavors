@@ -2,6 +2,7 @@
 package com.flavors.dto;
 
 import com.flavors.enums.CampaignStatus;
+import com.flavors.enums.EscrowStatus;
 import com.flavors.enums.DeliverablePlatform;
 import com.flavors.enums.DeliverableType;
 import java.time.Instant;
@@ -27,7 +28,9 @@ public record CampaignResponse(
         Instant paymentDeadline,
         Instant acceptedAt,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        /** The escrow status (FR-F7.7); null until the brand starts paying. */
+        EscrowStatus escrowStatus) {
 
     public record CreatorView(Long id, String displayName) {
     }

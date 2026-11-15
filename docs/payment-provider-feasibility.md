@@ -4,6 +4,10 @@
 **Task:** SPIKE-2 — Payment Provider Research  
 **Decision:** CONDITIONAL GO — MontyPay
 
+> **Superseded (EEC-44):** the captain chose Whish Money instead of MontyPay, because the team has Whish accounts and it is
+> easier to test. The provider is now behind the `PaymentProvider` port. See [Architecture.md §17](Architecture.md#17-pay-and-hold-the-campaign-payment-uc-f71--built)
+> and [README.md](README.md#whish-money-payments-eec-44). The findings below are the research record, not the current choice.
+
 ## 1. Objective
 
 Investigate payment providers capable of supporting USD card payments, payment holding, refunds, and creator payouts in Lebanon within two business days. The research supports the payment workflows defined in UC-F7.1, UC-F7.2, and UC-F8.1.
