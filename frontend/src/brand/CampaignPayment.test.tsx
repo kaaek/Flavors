@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { Campaign } from '../api/campaigns'
-import { apiFetch } from '../api/client'
+import { ApiError, apiFetch } from '../api/client'
 import { redirectTo } from '../lib/redirect'
 import { CampaignDetailPage } from './CampaignDetailPage'
 
@@ -145,4 +145,24 @@ it('ignores a failed-payment return once the campaign has expired', async () => 
 
   expect(await screen.findByLabelText('Campaign details')).toBeInTheDocument()
   expect(screen.queryByText(/The payment was not completed/)).not.toBeInTheDocument()
+})
+
+it('shows the campaign as active and held when Pay finds the earlier attempt already paid', async () => {
+  apiFetchMock
+    .mockResolvedValueOnce(awaiting)
+    .mockRejectedValueOnce(
+      new ApiError(409, {
+        title: 'Already paid',
+        detail: 'This campaign is already paid. The payment is held in escrow.',
+      }),
+    )
+    .mockResolvedValueOnce({ ...awaiting, status: 'ACTIVE', escrowStatus: 'HELD' })
+  renderAt('/brand/campaigns/42')
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Pay $650.00' }))
+
+  expect(await screen.findByText('Held')).toBeInTheDocument()
+  expect(screen.getByText(/already paid/i)).toBeInTheDocument()
+  expect(redirectMock).not.toHaveBeenCalled()
+  expect(screen.queryByRole('button', { name: /^Pay / })).not.toBeInTheDocument()
 })

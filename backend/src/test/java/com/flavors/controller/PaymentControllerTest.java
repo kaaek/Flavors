@@ -19,7 +19,9 @@ import com.flavors.enums.EscrowStatus;
 import com.flavors.enums.PaymentTransactionStatus;
 import com.flavors.enums.Role;
 import com.flavors.exception.GlobalExceptionHandler;
+import com.flavors.exception.PaymentAlreadyPaidException;
 import com.flavors.exception.PaymentNotFoundException;
+import com.flavors.exception.PaymentProviderException;
 import com.flavors.service.PaymentService;
 import java.time.Instant;
 import java.util.Optional;
@@ -52,6 +54,25 @@ class PaymentControllerTest {
                         .header("Idempotency-Key", "key-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.checkoutUrl").value("https://pay.example/c/1"));
+    }
+
+    @Test
+    void payingAnAlreadyPaidCampaignAnswersConflict() throws Exception {
+        given(payments.startPayment(9L, 42L, "key-2")).willThrow(new PaymentAlreadyPaidException());
+
+        mvc.perform(post("/api/brand/campaigns/42/payment").with(user(KARIM)).with(csrf())
+                        .header("Idempotency-Key", "key-2"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("Already paid"));
+    }
+
+    @Test
+    void aProviderThatDoesNotAnswerIsARetryableBadGateway() throws Exception {
+        given(payments.startPayment(9L, 42L, "key-3")).willThrow(new PaymentProviderException("down"));
+
+        mvc.perform(post("/api/brand/campaigns/42/payment").with(user(KARIM)).with(csrf())
+                        .header("Idempotency-Key", "key-3"))
+                .andExpect(status().isBadGateway());
     }
 
     @Test

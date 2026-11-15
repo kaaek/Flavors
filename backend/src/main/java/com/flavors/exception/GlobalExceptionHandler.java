@@ -118,7 +118,12 @@ public class GlobalExceptionHandler {
             return problem(HttpStatus.SERVICE_UNAVAILABLE, "Payments unavailable", e.getMessage());
         }
         return problem(HttpStatus.BAD_GATEWAY, "Payment provider unavailable",
-                "The payment provider did not answer. Nothing was charged. Please try again in a moment.");
+                "The payment provider did not answer, so no new payment was opened. Please try again in a moment.");
+    }
+
+    @ExceptionHandler(PaymentAlreadyPaidException.class)
+    ResponseEntity<ProblemDetail> paymentAlreadyPaid(PaymentAlreadyPaidException e) {
+        return problem(HttpStatus.CONFLICT, "Already paid", e.getMessage());
     }
 
     @ExceptionHandler(SocialAccountDisconnectedException.class)

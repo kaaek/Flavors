@@ -17,6 +17,7 @@ import com.flavors.enums.PaymentTransactionType;
 import com.flavors.enums.ProviderPaymentStatus;
 import com.flavors.exception.CampaignNotFoundException;
 import com.flavors.exception.CampaignResponseStateException;
+import com.flavors.exception.PaymentAlreadyPaidException;
 import com.flavors.exception.PaymentNotFoundException;
 import com.flavors.exception.ValidationFailedException;
 import com.flavors.repository.CampaignRepository;
@@ -34,6 +35,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -104,9 +106,20 @@ public class PaymentServiceImpl implements PaymentService {
         // The row changes happen in the idempotency transaction; the provider call comes after it, because an
         // external call can't be rolled back (docs/Architecture.md §7). Calling the provider again for the same
         // attempt is safe: its reference is fixed.
+        AtomicBoolean ran = new AtomicBoolean();
+        AtomicBoolean created = new AtomicBoolean();
         PaymentAttempt attempt = idempotency.execute("brand-payment:" + brandId, idempotencyKey,
                 "campaign:" + campaignId,
-                () -> openAttempt(brandId, campaignId, idempotencyKey), PaymentAttempt.class);
+                () -> {
+                    ran.set(true);
+                    return openAttempt(brandId, campaignId, idempotencyKey, created);
+                }, PaymentAttempt.class);
+        // An attempt this very call created cannot have been paid yet. Any other one (an open attempt a second click
+        // reuses, or the attempt of a replayed key) may have been paid at the provider while the return or callback was
+        // not processed yet, so the provider is asked first, under the same rules as the callback.
+        if (!(ran.get() && created.get())) {
+            attempt = settleBeforeReopening(brandId, campaignId, idempotencyKey, attempt);
+        }
         assertStillPayable(campaignId, attempt.transactionId());
 
         HostedPaymentSession session = provider.startHostedPayment(new HostedPaymentRequest(
@@ -117,6 +130,42 @@ public class PaymentServiceImpl implements PaymentService {
                 appBaseUrl + "/api/public/payments/callback?externalId=" + attempt.reference(),
                 appBaseUrl + "/api/public/payments/return?externalId=" + attempt.reference()));
         return new PaymentStartResponse(session.checkoutUrl());
+    }
+
+    /** What a Pay click does with an attempt that may already have been paid, from the provider's answer. */
+    enum StartAction {
+        /** Paid in time and held through the normal path: no new checkout. */
+        ALREADY_PAID,
+        /** Paid, but after the window: recorded, not held, no new checkout. */
+        RECEIVED_NOT_HELD,
+        /** Still waiting for the payer: reopen the same checkout. */
+        REOPEN,
+        /** The provider ended that attempt without payment: open a fresh one. */
+        NEW_ATTEMPT
+    }
+
+    static StartAction actionFor(PaymentResult result) {
+        return switch (result.status()) {
+            case SUCCEEDED -> result.held() ? StartAction.ALREADY_PAID : StartAction.RECEIVED_NOT_HELD;
+            case FAILED -> StartAction.NEW_ATTEMPT;
+            case PENDING -> StartAction.REOPEN;
+        };
+    }
+
+    /**
+     * Asks the provider about a reused attempt before its checkout is opened again. A provider error is not an answer:
+     * it propagates (a retryable 502), so the click opens nothing and no second charge can follow.
+     */
+    private PaymentAttempt settleBeforeReopening(long brandId, long campaignId, String idempotencyKey,
+                                                 PaymentAttempt attempt) {
+        PaymentResult result = reconcile(attempt.reference()).orElseThrow(PaymentNotFoundException::new);
+        return switch (actionFor(result)) {
+            case ALREADY_PAID -> throw new PaymentAlreadyPaidException();
+            case RECEIVED_NOT_HELD -> throw new CampaignResponseStateException(
+                    "Your payment arrived after the time to pay ended, so it was not held.");
+            case REOPEN -> attempt;
+            case NEW_ATTEMPT -> tx.execute(s -> openAttempt(brandId, campaignId, idempotencyKey, new AtomicBoolean()));
+        };
     }
 
     /** A replayed key returns the attempt of its first call, so the live campaign and attempt are checked under the lock. */
@@ -136,7 +185,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     /** Runs inside the idempotency transaction: database work only. */
-    private PaymentAttempt openAttempt(long brandId, long campaignId, String idempotencyKey) {
+    private PaymentAttempt openAttempt(long brandId, long campaignId, String idempotencyKey, AtomicBoolean created) {
         Instant now = clock.instant();
         Campaign campaign = campaigns.findByIdForUpdate(campaignId)
                 .filter(c -> Objects.equals(c.getBrandId(), brandId))
@@ -165,6 +214,7 @@ public class PaymentServiceImpl implements PaymentService {
             open = transactions.save(new PaymentTransaction(escrow.getId(), PaymentTransactionType.CHARGE,
                     escrow.getAmountCents(), reference, idempotencyKey));
             escrow.attachProviderPayment(reference, now);
+            created.set(true);
             auditLogger.record("PAYMENT_STARTED", "campaign", campaignId, Map.of("transactionId", open.getId()));
         }
         return new PaymentAttempt(open.getId(), open.getProviderRef(), escrow.getAmountCents(), open.getStatus());

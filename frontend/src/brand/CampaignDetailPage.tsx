@@ -107,6 +107,12 @@ export function CampaignDetailPage() {
           : 'Could not start the payment. Please try again.',
       )
       setPaying(false)
+      // 409: the server found the earlier attempt already paid (or the window closed). Show the campaign as it is now.
+      if (error instanceof ApiError && error.status === 409) {
+        getCampaign(campaignId)
+          .then(setCampaignOverride)
+          .catch(() => undefined)
+      }
     }
   }
 
@@ -210,16 +216,16 @@ export function CampaignDetailPage() {
           <div>We have not received the payment confirmation yet. This page updates by itself.</div>
         </div>
       )}
+      {payError && (
+        <div className="fl-alert fl-alert--danger" role="alert">
+          <Icon name="alert" />
+          <div>{payError}</div>
+        </div>
+      )}
       {campaign.status === 'AWAITING_PAYMENT' && (
         <section className="fl-card fl-section fl-stack" aria-label="Payment">
           <h2 className="fl-card__title">Awaiting payment</h2>
           <p>{timeLeftText(campaign.paymentDeadline, Date.now())}</p>
-          {payError && (
-            <div className="fl-alert fl-alert--danger" role="alert">
-              <Icon name="alert" />
-              <div>{payError}</div>
-            </div>
-          )}
           <div className="fl-actions">
             <button
               className="fl-btn fl-btn--primary"
