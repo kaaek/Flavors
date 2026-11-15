@@ -196,6 +196,32 @@ class PaymentServiceImplIT {
                 """, Long.class, campaign)).isEqualTo(1);
     }
 
+    // A replayed key whose attempt failed must not reopen a different open attempt that was already paid at the provider.
+    @Test
+    void aReplayedKeyDoesNotReopenAnotherAttemptThatWasPaidAtTheProvider() {
+        long brand = newBrand();
+        long creator = newCreator();
+        long campaign = newAcceptedCampaign(brand, creator);
+        String firstKey = UUID.randomUUID().toString();
+
+        payments.startPayment(brand, campaign, firstKey);
+        String failedReference = latestReference(campaign);
+        simulated.setOutcome(failedReference, ProviderPaymentStatus.FAILED);
+        payments.reconcile(failedReference);
+
+        payments.startPayment(brand, campaign, UUID.randomUUID().toString());
+        String paidReference = latestReference(campaign);
+        simulated.setOutcome(paidReference, ProviderPaymentStatus.PAID);
+
+        assertThatThrownBy(() -> payments.startPayment(brand, campaign, firstKey))
+                .isInstanceOf(com.flavors.exception.PaymentAlreadyPaidException.class);
+        assertThat(countTransactions(campaign, "SUCCEEDED")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM payment_transaction t JOIN escrow_payment e ON t.escrow_id = e.id
+                WHERE e.campaign_id = ?
+                """, Long.class, campaign)).isEqualTo(2);
+    }
+
     @Test
     void theSameKeyForAnotherCampaignIsRefused() {
         long brand = newBrand();

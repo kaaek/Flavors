@@ -59,6 +59,7 @@ public class PaymentServiceImpl implements PaymentService {
     static final String CURRENCY = "USD";
 
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 200;
+    private static final int MAX_SETTLE_ROUNDS = 3;
 
     private final CampaignRepository campaigns;
     private final EscrowPaymentRepository escrows;
@@ -158,14 +159,26 @@ public class PaymentServiceImpl implements PaymentService {
      */
     private PaymentAttempt settleBeforeReopening(long brandId, long campaignId, String idempotencyKey,
                                                  PaymentAttempt attempt) {
-        PaymentResult result = reconcile(attempt.reference()).orElseThrow(PaymentNotFoundException::new);
-        return switch (actionFor(result)) {
-            case ALREADY_PAID -> throw new PaymentAlreadyPaidException();
-            case RECEIVED_NOT_HELD -> throw new CampaignResponseStateException(
-                    "Your payment arrived after the time to pay ended, so it was not held.");
-            case REOPEN -> attempt;
-            case NEW_ATTEMPT -> tx.execute(s -> openAttempt(brandId, campaignId, idempotencyKey, new AtomicBoolean()));
-        };
+        PaymentAttempt current = attempt;
+        for (int round = 0; round < MAX_SETTLE_ROUNDS; round++) {
+            PaymentResult result = reconcile(current.reference()).orElseThrow(PaymentNotFoundException::new);
+            switch (actionFor(result)) {
+                case ALREADY_PAID -> throw new PaymentAlreadyPaidException();
+                case RECEIVED_NOT_HELD -> throw new CampaignResponseStateException(
+                        "Your payment arrived after the time to pay ended, so it was not held.");
+                case REOPEN -> {
+                    return current;
+                }
+                case NEW_ATTEMPT -> {
+                    AtomicBoolean created = new AtomicBoolean();
+                    current = tx.execute(s -> openAttempt(brandId, campaignId, idempotencyKey, created));
+                    if (created.get()) {
+                        return current;
+                    }
+                }
+            }
+        }
+        throw new CampaignResponseStateException("Another payment is being processed. Try again in a moment.");
     }
 
     /** A replayed key returns the attempt of its first call, so the live campaign and attempt are checked under the lock. */
