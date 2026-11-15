@@ -72,7 +72,6 @@ export function AppRoutes() {
         }
       />
 
-
       <Route element={<RoleArea role="CREATOR" />}>
         <Route path="/creator" element={<CreatorHome />} />
         <Route path="/creator/brands" element={<BrandSearchPage />} />

@@ -10,7 +10,6 @@ import com.flavors.dto.PaymentStartResponse;
 import com.flavors.entity.AppUser;
 import com.flavors.entity.CreatorProfile;
 import com.flavors.enums.EscrowStatus;
-import com.flavors.enums.PaymentTransactionStatus;
 import com.flavors.enums.ProviderPaymentStatus;
 import com.flavors.enums.Role;
 import com.flavors.exception.CampaignNotFoundException;

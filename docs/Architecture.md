@@ -478,7 +478,8 @@ returns 409 before approval.
 
 ## 13. Scheduled jobs and the daily social refresh (UC-F1.3) — built
 
-`SchedulingConfig` turns on `@Scheduled`. The only job so far is `SocialRefreshJob` (`service/impl/`, EEC-37):
+`SchedulingConfig` turns on `@Scheduled`. The other jobs are described with their features: campaign response expiry (§16),
+payment deadline and reconciliation (§17). This section covers `SocialRefreshJob` (`service/impl/`, EEC-37):
 
 - **When:** `flavors.social.refresh-cron` (default `0 0 3 * * *`) in `flavors.social.refresh-zone` (default `Asia/Beirut`);
   `flavors.social.refresh-enabled=false` switches it off. The variables are in [README.md](README.md#daily-social-refresh-eec-37).
@@ -588,7 +589,7 @@ brand is "not found" (404), never "forbidden".
   `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
   and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
   `CreatorSearchPage.test.tsx`.
-- **Not built yet:** the follower offer (EEC-41) and payment.
+- **Not built yet:** the follower offer (EEC-41). Payment is in section 17.
 
 ## 16. Respond to a campaign request (UC-F4.1) — built
 

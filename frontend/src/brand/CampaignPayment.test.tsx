@@ -68,7 +68,9 @@ it('starts the payment with a new Idempotency-Key and sends the payer to the che
 
   fireEvent.click(await screen.findByRole('button', { name: 'Pay $650.00' }))
 
-  await waitFor(() => expect(redirectMock).toHaveBeenCalledWith('https://pay.example.test/checkout/abc'))
+  await waitFor(() =>
+    expect(redirectMock).toHaveBeenCalledWith('https://pay.example.test/checkout/abc'),
+  )
   const [path, options] = apiFetchMock.mock.calls[1]
   expect(path).toBe('/api/brand/campaigns/42/payment')
   expect(options).toMatchObject({
@@ -123,7 +125,9 @@ it('says a payment received after the window is received but not held', async ()
   apiFetchMock.mockResolvedValue({ ...awaiting, status: 'EXPIRED', escrowStatus: 'PENDING' })
   renderAt('/brand/campaigns/42?payment=received')
 
-  expect(await screen.findByText(/received a payment after the payment window closed/)).toBeInTheDocument()
+  expect(
+    await screen.findByText(/received a payment after the payment window closed/),
+  ).toBeInTheDocument()
   expect(screen.queryByText(/held in escrow and the campaign is active/)).not.toBeInTheDocument()
 })
 

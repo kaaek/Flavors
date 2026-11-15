@@ -29,7 +29,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.http.MediaType;
 
 /** The web side of paying (UC-F7.1): URLs, roles, the Idempotency-Key header and the callback/return answers. The rules are in PaymentServiceImplIT. */
 @WebMvcTest({BrandPaymentController.class, PaymentCallbackController.class})

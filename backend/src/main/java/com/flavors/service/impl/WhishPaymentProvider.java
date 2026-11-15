@@ -8,7 +8,6 @@ import com.flavors.exception.PaymentProviderException;
 import com.flavors.service.PaymentProvider;
 import java.math.BigDecimal;
 import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
