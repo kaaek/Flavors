@@ -92,6 +92,12 @@ export function CreatorCampaignDetailPage() {
         await acceptCreatorCampaign(campaignId)
         setStatusOverride('AWAITING_PAYMENT')
         setMessage('Campaign accepted successfully.')
+        void getCreatorCampaign(campaignId)
+          .then((fresh) => {
+            setRefreshed(fresh)
+            setStatusOverride(null)
+          })
+          .catch(() => undefined)
       } else {
         await rejectCreatorCampaign(campaignId)
         setStatusOverride('REJECTED')

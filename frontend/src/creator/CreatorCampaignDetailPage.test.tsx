@@ -48,10 +48,38 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+const awaitingPayment: Campaign = {
+  ...waiting,
+  status: 'AWAITING_PAYMENT',
+  agreedPriceCents: 65000,
+  paymentDeadline: '2099-01-05T10:00:00Z',
+  acceptedAt: '2099-01-02T10:00:00Z',
+}
+
+it('shows the payment deadline right after the creator accepts in the same session', async () => {
+  apiFetchMock
+    .mockResolvedValueOnce(waiting)
+    .mockResolvedValueOnce(undefined)
+    .mockResolvedValue(awaitingPayment)
+
+  render(
+    <MemoryRouter initialEntries={['/creator/campaigns/42']}>
+      <Routes>
+        <Route path="/creator/campaigns/:id" element={<CreatorCampaignDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Accept campaign' }))
+
+  expect(await screen.findByText(/left to pay/)).toBeInTheDocument()
+})
+
 it('keeps checking the brand payment after the creator accepts in the same session', async () => {
   apiFetchMock
     .mockResolvedValueOnce(waiting)
     .mockResolvedValueOnce(undefined)
+    .mockResolvedValueOnce(awaitingPayment)
     .mockResolvedValue({ ...waiting, status: 'ACTIVE', escrowStatus: 'HELD' })
 
   render(
