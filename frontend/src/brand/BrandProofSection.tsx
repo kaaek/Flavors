@@ -9,9 +9,17 @@ import { ProofRounds } from '../proof/ProofRounds'
 import { formatDay } from '../proof/dates'
 import { ProofReviewPanel } from './ProofReviewPanel'
 
-/** The creator can still send a version, so the brand's view keeps checking for one. */
+/** The creator can still send a version. */
 const awaitingVersion = (status: CampaignStatus) =>
   status === 'ACTIVE' || status === 'CORRECTIONS_REQUESTED'
+
+/**
+ * The proof or its review can still change from outside this page: the creator sends a version, or a decision is
+ * made in another tab or session (which can ask for corrections and so lead to a new version). Until then, the
+ * brand's view keeps checking.
+ */
+const mayChange = (status: CampaignStatus) =>
+  awaitingVersion(status) || status === 'PROOF_SUBMITTED'
 
 interface Props {
   campaignId: number
@@ -43,6 +51,7 @@ function CampaignProof({ campaignId, creatorName, lastPostingDate, onChanged }: 
   const data = refreshed ?? (result.status === 'ready' ? result.data : null)
   const status = data ? data[0].campaignStatus : null
   const waiting = status !== null && awaitingVersion(status)
+  const checking = status !== null && mayChange(status)
   const who = creatorName ?? 'The creator'
   const whoInSentence = creatorName ?? 'the creator'
 
@@ -70,9 +79,9 @@ function CampaignProof({ campaignId, creatorName, lastPostingDate, onChanged }: 
     changed.current = onChanged
   }, [onChanged])
 
-  // FR-F5.5: a version the creator sends shows up here within a minute, without a reload.
+  // FR-F5.5: a version the creator sends, or a decision made elsewhere, shows up here within a minute, without a reload.
   useEffect(() => {
-    if (!waiting) return
+    if (!checking) return
     const timer = window.setInterval(() => {
       reload()
         .then((fresh) => {
@@ -81,7 +90,7 @@ function CampaignProof({ campaignId, creatorName, lastPostingDate, onChanged }: 
         .catch(() => undefined)
     }, PROOF_REFRESH_MS)
     return () => window.clearInterval(timer)
-  }, [waiting, status, reload])
+  }, [checking, status, reload])
 
   if (data === null) {
     if (result.status === 'error') {

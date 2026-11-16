@@ -129,34 +129,41 @@ function later<T>() {
   return { promise, resolve }
 }
 
-// The proof checks are run by hand; every other timer (Testing Library's own) runs as usual.
-let refreshes: Array<() => void> = []
+// The proof checks are run by hand; every other timer (Testing Library's own) runs as usual. Like the browser, a
+// cleared check is gone, so only the section's current check can run.
+const refreshes = new Map<number, () => void>()
+let nextRefreshId = 1_000_000
 const realSetInterval = window.setInterval.bind(window)
+const realClearInterval = window.clearInterval.bind(window)
 
 beforeEach(() => {
   apiFetchMock.mockReset()
-  refreshes = []
+  refreshes.clear()
   vi.spyOn(window, 'setInterval').mockImplementation(((
     handler: () => void,
     delay?: number,
     ...rest: unknown[]
   ) => {
     if (delay === PROOF_REFRESH_MS) {
-      refreshes.push(handler)
-      return 0
+      refreshes.set(nextRefreshId, handler)
+      return nextRefreshId++
     }
     return realSetInterval(handler, delay, ...rest)
   }) as typeof window.setInterval)
+  vi.spyOn(window, 'clearInterval').mockImplementation(((id?: number) => {
+    if (id !== undefined && refreshes.delete(id)) return
+    realClearInterval(id)
+  }) as typeof window.clearInterval)
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** Runs the section's next check. Its timer starts in an effect, which can run just after the text shows. */
+/** Runs the section's current check. Its timer starts in an effect, which can run just after the text shows. */
 async function checkForNewProof() {
-  await waitFor(() => expect(refreshes.length).toBeGreaterThan(0))
-  await act(async () => refreshes[refreshes.length - 1]())
+  await waitFor(() => expect(refreshes.size).toBe(1))
+  await act(async () => [...refreshes.values()][0]())
 }
 
 /** What the brand's view gets before the creator sends anything. */
@@ -410,7 +417,7 @@ it('shows a version the creator sends within a minute, without a reload', async 
   expect(await screen.findByText(/hasn't sent the proof yet/)).toBeInTheDocument()
   expect(screen.getByText(/updates by itself/)).toBeInTheDocument()
   expect(PROOF_REFRESH_MS).toBeLessThanOrEqual(60_000)
-  await waitFor(() => expect(refreshes).toHaveLength(1))
+  await waitFor(() => expect(refreshes.size).toBe(1))
 
   sent = true
   await checkForNewProof()
@@ -421,13 +428,71 @@ it('shows a version the creator sends within a minute, without a reload', async 
   expect(onChanged).toHaveBeenCalledOnce()
 })
 
-it('stops checking once a version waits for review', async () => {
-  serve({ [`GET ${PROOF}`]: proof({ submissions: [version(1)] }), [`GET ${REVIEWS}`]: reviews() })
+it('stops checking once nothing can change any more', async () => {
+  serve({
+    [`GET ${PROOF}`]: proof({
+      campaignStatus: 'COMPLETED',
+      reviewDeadline: null,
+      submissions: [version(1)],
+    }),
+    [`GET ${REVIEWS}`]: reviews({
+      campaignStatus: 'COMPLETED',
+      reviewDeadline: null,
+      availableDecisions: [],
+      reviews: [review()],
+    }),
+  })
   renderSection()
 
   expect(await screen.findByText('Round 1')).toBeInTheDocument()
-  expect(refreshes).toHaveLength(0)
+  expect(refreshes.size).toBe(0)
   expect(screen.queryByText(/updates by itself/)).not.toBeInTheDocument()
+})
+
+// FR-F5.5: a brand page left open stays current when the review continues in another session.
+it('keeps an open page current when another session asks for corrections and the creator resends', async () => {
+  let stage: 'review' | 'corrections' | 'resent' = 'review'
+  serve({
+    [`GET ${PROOF}`]: () =>
+      stage === 'review'
+        ? proof({ submissions: [version(1)] })
+        : stage === 'corrections'
+          ? proof({
+              campaignStatus: 'CORRECTIONS_REQUESTED',
+              reviewDeadline: null,
+              submissions: [version(1)],
+            })
+          : proof({ submissions: [version(1), version(2)] }),
+    [`GET ${REVIEWS}`]: () =>
+      stage === 'review'
+        ? reviews()
+        : stage === 'corrections'
+          ? reviews({
+              campaignStatus: 'CORRECTIONS_REQUESTED',
+              correctionRoundsUsed: 1,
+              reviewDeadline: null,
+              availableDecisions: [],
+              reviews: [corrections],
+            })
+          : reviews({ correctionRoundsUsed: 1, latestSubmissionId: 2, reviews: [corrections] }),
+  })
+  const onChanged = renderSection()
+  expect(await screen.findByRole('button', { name: 'Approve proof' })).toBeInTheDocument()
+
+  // Another tab or session asks for corrections: this page never sent a request.
+  stage = 'corrections'
+  await checkForNewProof()
+  expect(await screen.findByText('Waiting for a new version from Nour Haddad.')).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Review proof' })).not.toBeInTheDocument()
+  expect(onChanged).toHaveBeenCalledTimes(1)
+
+  // The creator sends the corrected version from her own session.
+  stage = 'resent'
+  await checkForNewProof()
+  expect(await screen.findByText('Round 2')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Approve proof' })).toBeEnabled()
+  expect(onChanged).toHaveBeenCalledTimes(2)
+  expect(requestsTo('POST', `${PROOF}/1/review`)).toHaveLength(0)
 })
 
 it('keeps checking while corrections are requested, without reloading the page for nothing', async () => {
