@@ -12,6 +12,7 @@ import com.flavors.enums.Role;
 import com.flavors.exception.DeliveryProofConflictException;
 import com.flavors.exception.DeliveryProofNotFoundException;
 import com.flavors.exception.InvalidDeliveryProofException;
+import com.flavors.mapper.DeliveryProofMapper;
 import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.ProofFileRepository;
 import com.flavors.repository.ProofLinkRepository;
@@ -54,24 +55,27 @@ public class DeliveryProofServiceImpl implements DeliveryProofService {
     private final ProofLinkRepository links;
     private final ProofFileRepository files;
     private final ProofFileStorage storage;
+    private final DeliveryProofMapper mapper;
     private final AuditLogger auditLogger;
     private final Clock clock;
 
     @Autowired
     public DeliveryProofServiceImpl(CampaignRepository campaigns, ProofSubmissionRepository submissions,
                                     ProofLinkRepository links, ProofFileRepository files,
-                                    ProofFileStorage storage, AuditLogger auditLogger) {
-        this(campaigns, submissions, links, files, storage, auditLogger, Clock.systemUTC());
+                                    ProofFileStorage storage, DeliveryProofMapper mapper, AuditLogger auditLogger) {
+        this(campaigns, submissions, links, files, storage, mapper, auditLogger, Clock.systemUTC());
     }
 
     DeliveryProofServiceImpl(CampaignRepository campaigns, ProofSubmissionRepository submissions,
                              ProofLinkRepository links, ProofFileRepository files,
-                             ProofFileStorage storage, AuditLogger auditLogger, Clock clock) {
+                             ProofFileStorage storage, DeliveryProofMapper mapper, AuditLogger auditLogger,
+                             Clock clock) {
         this.campaigns = campaigns;
         this.submissions = submissions;
         this.links = links;
         this.files = files;
         this.storage = storage;
+        this.mapper = mapper;
         this.auditLogger = auditLogger;
         this.clock = clock;
     }
@@ -107,8 +111,13 @@ public class DeliveryProofServiceImpl implements DeliveryProofService {
 
         List<ProofLink> finalLinks = links.findBySubmissionIdOrderById(draft.getId());
         validateFinalLinks(finalLinks);
-        // Screenshots are optional: the agreement decides whether they are required. When present, updateDraft
-        // already checked their count, size, MIME declaration and actual file signature.
+        // The agreement decides whether screenshots are required (FR-F5.1). When present, updateDraft already
+        // checked their count, size, declared type, signature and that they decode as complete images.
+        int finalFiles = files.findBySubmissionIdOrderById(draft.getId()).size();
+        if (campaign.isScreenshotsRequired() && finalFiles == 0) {
+            throw new InvalidDeliveryProofException(
+                    "This campaign asks for at least one screenshot. Add one before sending the proof.");
+        }
         Instant submittedAt = clock.instant();
         draft.submit(submittedAt);
         campaign.markProofSubmitted(submittedAt, submittedAt.plus(REVIEW_PERIOD));
@@ -117,7 +126,7 @@ public class DeliveryProofServiceImpl implements DeliveryProofService {
                 "campaignId", campaign.getId(),
                 "round", draft.getRound(),
                 "links", finalLinks.size(),
-                "files", files.findBySubmissionIdOrderById(draft.getId()).size()));
+                "files", finalFiles));
         return response(campaign, true);
     }
 
@@ -278,22 +287,11 @@ public class DeliveryProofServiceImpl implements DeliveryProofService {
         List<DeliveryProofResponse.Submission> visible = submissions.findByCampaignIdOrderByRoundAsc(campaign.getId())
                 .stream()
                 .filter(submission -> includeDraft || submission.getStatus() == ProofSubmissionStatus.SUBMITTED)
-                .map(this::submissionResponse)
+                .map(submission -> mapper.toSubmission(submission,
+                        links.findBySubmissionIdOrderById(submission.getId()),
+                        files.findBySubmissionIdOrderById(submission.getId())))
                 .toList();
-        return new DeliveryProofResponse(campaign.getId(), campaign.getName(), campaign.getStatus(),
-                campaign.getProofReviewDeadline(), visible);
-    }
-
-    private DeliveryProofResponse.Submission submissionResponse(ProofSubmission submission) {
-        List<String> proofLinks = links.findBySubmissionIdOrderById(submission.getId()).stream()
-                .map(ProofLink::getUrl)
-                .toList();
-        List<DeliveryProofResponse.File> proofFiles = files.findBySubmissionIdOrderById(submission.getId()).stream()
-                .map(file -> new DeliveryProofResponse.File(file.getId(), file.getContentType(), file.getSizeBytes(),
-                        "/api/proof-files/" + file.getId()))
-                .toList();
-        return new DeliveryProofResponse.Submission(submission.getId(), submission.getRound(), submission.getStatus(),
-                submission.getCreatedAt(), submission.getSubmittedAt(), proofLinks, proofFiles);
+        return mapper.toResponse(campaign, visible);
     }
 
     private StorageChanges registerStorageChanges() {

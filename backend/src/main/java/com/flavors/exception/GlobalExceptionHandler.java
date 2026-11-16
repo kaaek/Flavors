@@ -175,7 +175,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ProblemDetail> uploadTooLarge(MaxUploadSizeExceededException e) {
-        return problem(HttpStatus.PAYLOAD_TOO_LARGE, "Screenshot too large",
+        return problem(HttpStatus.CONTENT_TOO_LARGE, "Screenshot too large",
                 "Each screenshot must be no larger than 5 MB, with at most 5 screenshots per proof.");
     }
 

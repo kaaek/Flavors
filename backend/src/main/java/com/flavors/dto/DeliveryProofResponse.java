@@ -11,6 +11,8 @@ public record DeliveryProofResponse(
         String campaignName,
         CampaignStatus campaignStatus,
         Instant reviewDeadline,
+        /** Part of the agreement: a final submission needs at least one screenshot (FR-F5.1). */
+        boolean screenshotsRequired,
         List<Submission> submissions) {
 
     public record Submission(

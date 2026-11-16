@@ -22,6 +22,7 @@ import com.flavors.enums.Role;
 import com.flavors.exception.DeliveryProofConflictException;
 import com.flavors.exception.DeliveryProofNotFoundException;
 import com.flavors.exception.InvalidDeliveryProofException;
+import com.flavors.mapper.DeliveryProofMapper;
 import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.ProofFileRepository;
 import com.flavors.repository.ProofLinkRepository;
@@ -55,7 +56,7 @@ class DeliveryProofServiceImplTest {
     private final ProofFileStorage storage = mock(ProofFileStorage.class);
     private final AuditLogger audit = mock(AuditLogger.class);
     private final DeliveryProofServiceImpl service = new DeliveryProofServiceImpl(campaigns, submissions, links,
-            files, storage, audit, Clock.fixed(NOW, ZoneOffset.UTC));
+            files, storage, new DeliveryProofMapper(), audit, Clock.fixed(NOW, ZoneOffset.UTC));
     private Campaign campaign;
     private ProofSubmission draft;
 
@@ -90,6 +91,37 @@ class DeliveryProofServiceImplTest {
 
         assertThat(draft.getStatus()).isEqualTo(ProofSubmissionStatus.SUBMITTED);
         assertThat(draft.getSubmittedAt()).isEqualTo(NOW);
+        verify(campaign).markProofSubmitted(NOW, NOW.plus(Duration.ofDays(5)));
+    }
+
+    @Test
+    void screenshotsAreOptionalWhenTheAgreementDoesNotRequireThem() {
+        when(links.findBySubmissionIdOrderById(5L)).thenReturn(List.of(new ProofLink(5, "https://example.com/post")));
+
+        assertThat(service.submit(7, 42, null, List.of()).screenshotsRequired()).isFalse();
+        assertThat(draft.getStatus()).isEqualTo(ProofSubmissionStatus.SUBMITTED);
+    }
+
+    @Test
+    void aCampaignThatRequiresScreenshotsRefusesAProofWithoutOne() {
+        when(campaign.isScreenshotsRequired()).thenReturn(true);
+        when(links.findBySubmissionIdOrderById(5L)).thenReturn(List.of(new ProofLink(5, "https://example.com/post")));
+
+        assertThatThrownBy(() -> service.submit(7, 42, null, List.of()))
+                .isInstanceOf(InvalidDeliveryProofException.class)
+                .hasMessageContaining("at least one screenshot");
+        assertThat(draft.getStatus()).isEqualTo(ProofSubmissionStatus.DRAFT);
+        verify(campaign, never()).markProofSubmitted(any(), any());
+    }
+
+    @Test
+    void aCampaignThatRequiresScreenshotsAcceptsAProofWithOne() {
+        when(campaign.isScreenshotsRequired()).thenReturn(true);
+        when(links.findBySubmissionIdOrderById(5L)).thenReturn(List.of(new ProofLink(5, "https://example.com/post")));
+        when(files.findBySubmissionIdOrderById(5L)).thenReturn(List.of(existingFile()));
+
+        assertThat(service.submit(7, 42, null, List.of()).screenshotsRequired()).isTrue();
+        assertThat(draft.getStatus()).isEqualTo(ProofSubmissionStatus.SUBMITTED);
         verify(campaign).markProofSubmitted(NOW, NOW.plus(Duration.ofDays(5)));
     }
 
@@ -163,7 +195,7 @@ class DeliveryProofServiceImplTest {
 
     private String replaceDraftImage() {
         when(files.findBySubmissionIdOrderById(5L)).thenReturn(List.of(existingFile()));
-        byte[] png = {(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
+        byte[] png = TestImages.png(2, 2);
         service.saveDraft(7, 42, new ProofDraftRequest(null, List.of()),
                 List.of(new ProofUpload("new.png", "image/png", png)));
         ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);

@@ -84,6 +84,7 @@ void aCreatorCanViewTheirCampaignDetails() throws Exception {
                     null,
                     List.of(),
                     "Instagram post",
+                    false,
                     null,
                     null,
                     60000L,

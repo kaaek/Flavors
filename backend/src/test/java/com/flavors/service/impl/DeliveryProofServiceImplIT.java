@@ -45,9 +45,7 @@ class DeliveryProofServiceImplIT {
         properties.add("flavors.proof-storage.filesystem-root", () -> proofDirectory.toString());
     }
 
-    private static final byte[] PNG = {
-            (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01
-    };
+    private static final byte[] PNG = TestImages.png(2, 2);
 
     @Autowired
     DeliveryProofService proofs;
@@ -121,6 +119,38 @@ class DeliveryProofServiceImplIT {
                 .isInstanceOf(InvalidDeliveryProofException.class)
                 .hasMessageContaining("valid http or https URL");
         assertCampaignStillActiveWithoutProof(invalid.campaignId());
+
+        // EX-F5.1.2: a blank row next to a valid link is refused, not silently dropped.
+        Fixture blank = newFixture();
+        assertThatThrownBy(() -> proofs.submit(blank.creatorId(), blank.campaignId(),
+                new ProofDraftRequest(List.of("https://example.com/post", "  "), null), List.of()))
+                .isInstanceOf(InvalidDeliveryProofException.class)
+                .hasMessageContaining("Every proof link is required");
+        assertCampaignStillActiveWithoutProof(blank.campaignId());
+    }
+
+    @Test // FR-F5.1
+    void screenshotsAreOptionalUnlessTheAgreementRequiresThem() {
+        Fixture optional = newFixture();
+        DeliveryProofResponse withoutScreenshots = proofs.submit(optional.creatorId(), optional.campaignId(),
+                new ProofDraftRequest(List.of("https://example.com/post"), null), List.of());
+        assertThat(withoutScreenshots.screenshotsRequired()).isFalse();
+        assertThat(withoutScreenshots.campaignStatus()).isEqualTo(CampaignStatus.PROOF_SUBMITTED);
+
+        Fixture required = newFixture();
+        jdbc.update("UPDATE campaign SET screenshots_required = true WHERE id = ?", required.campaignId());
+        assertThat(proofs.getForCreator(required.creatorId(), required.campaignId()).screenshotsRequired()).isTrue();
+        assertThatThrownBy(() -> proofs.submit(required.creatorId(), required.campaignId(),
+                new ProofDraftRequest(List.of("https://example.com/post"), null), List.of()))
+                .isInstanceOf(InvalidDeliveryProofException.class)
+                .hasMessageContaining("at least one screenshot");
+        assertCampaignStillActiveWithoutProof(required.campaignId());
+
+        DeliveryProofResponse withScreenshot = proofs.submit(required.creatorId(), required.campaignId(),
+                new ProofDraftRequest(List.of("https://example.com/post"), null), List.of(png("proof.png")));
+        assertThat(withScreenshot.campaignStatus()).isEqualTo(CampaignStatus.PROOF_SUBMITTED);
+        assertThat(withScreenshot.submissions()).singleElement()
+                .satisfies(version -> assertThat(version.files()).hasSize(1));
     }
 
     @Test // TC-F5.1.4
@@ -230,6 +260,19 @@ class DeliveryProofServiceImplIT {
                 new ProofDraftRequest(null, null), List.of(fake)))
                 .isInstanceOf(InvalidDeliveryProofException.class)
                 .hasMessageContaining("PNG, JPEG, GIF or WebP");
+
+        // A real PNG signature on a cut-off file: refused, and nothing is kept.
+        Fixture cutOff = newFixture();
+        ProofUpload truncated = new ProofUpload("cut.png", "image/png",
+                java.util.Arrays.copyOf(TestImages.png(16, 16), 200));
+        assertThatThrownBy(() -> proofs.saveDraft(cutOff.creatorId(), cutOff.campaignId(),
+                new ProofDraftRequest(null, null), List.of(truncated)))
+                .isInstanceOf(InvalidDeliveryProofException.class)
+                .hasMessageContaining("damaged or incomplete");
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM proof_file f JOIN proof_submission s ON s.id = f.submission_id
+                WHERE s.campaign_id = ?
+                """, Integer.class, cutOff.campaignId())).isZero();
     }
 
     private Object submitAfter(CountDownLatch start, Fixture fixture) {

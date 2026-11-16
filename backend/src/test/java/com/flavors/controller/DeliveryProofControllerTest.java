@@ -49,7 +49,7 @@ class DeliveryProofControllerTest {
             new CurrentUser(11, "admin@example.com", Role.ADMIN, "{noop}x", true);
 
     private static final DeliveryProofResponse RESPONSE = new DeliveryProofResponse(
-            42, "Summer burgers", CampaignStatus.ACTIVE, null,
+            42, "Summer burgers", CampaignStatus.ACTIVE, null, false,
             List.of(new DeliveryProofResponse.Submission(5, 1, ProofSubmissionStatus.DRAFT,
                     Instant.parse("2026-11-07T08:00:00Z"), null,
                     List.of("https://instagram.com/p/abc"),
@@ -93,7 +93,7 @@ class DeliveryProofControllerTest {
 
         ArgumentCaptor<com.flavors.dto.ProofDraftRequest> request =
                 ArgumentCaptor.forClass(com.flavors.dto.ProofDraftRequest.class);
-        ArgumentCaptor<List<com.flavors.service.ProofUpload>> uploads = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<com.flavors.service.ProofUpload>> uploads = ArgumentCaptor.captor();
         then(service).should().saveDraft(eq(7L), eq(42L), request.capture(), uploads.capture());
         assertThat(request.getValue().links()).containsExactly("https://instagram.com/p/abc");
         assertThat(request.getValue().retainedFileIds()).containsExactly(3L);

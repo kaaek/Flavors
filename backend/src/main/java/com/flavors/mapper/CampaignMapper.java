@@ -34,6 +34,7 @@ public class CampaignMapper {
                         .map(d -> new CampaignResponse.DeliverableView(d.getPlatform(), d.getType(), d.getCount()))
                         .toList(),
                 campaign.getContentRequirements(),
+                campaign.isScreenshotsRequired(),
                 campaign.getSentAt(),
                 campaign.getResponseDeadline(),
                 campaign.getAgreedPriceCents(),

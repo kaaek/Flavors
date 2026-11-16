@@ -241,7 +241,7 @@ public CampaignResponse getForCreator(long creatorId, long campaignId) {
 
     private void fill(Campaign campaign, Checked c) {
         campaign.saveDraft(c.name(), c.creatorId(), c.priceOfferedCents(), c.startDate(), c.lastPostingDate(),
-                c.contentRequirements(), c.branchIds(), c.deliverables(), clock.instant());
+                c.contentRequirements(), c.screenshotsRequired(), c.branchIds(), c.deliverables(), clock.instant());
     }
 
     /** The creator, if she can receive requests: approved by an admin and not suspended. */
@@ -253,8 +253,8 @@ public CampaignResponse getForCreator(long creatorId, long campaignId) {
 
     /** The request after trimming and parsing; only produced when every rule passed. */
     private record Checked(String name, Long creatorId, Long priceOfferedCents, LocalDate startDate,
-                           LocalDate lastPostingDate, String contentRequirements, Set<Long> branchIds,
-                           List<CampaignDeliverable> deliverables) {
+                           LocalDate lastPostingDate, String contentRequirements, boolean screenshotsRequired,
+                           Set<Long> branchIds, List<CampaignDeliverable> deliverables) {
     }
 
     /**
@@ -338,7 +338,8 @@ public CampaignResponse getForCreator(long creatorId, long campaignId) {
         if (!errors.isEmpty()) {
             throw new CampaignValidationException(errors);
         }
-        return new Checked(name, creatorId, price, start, last, content, branchIds, deliverables);
+        boolean screenshots = Boolean.TRUE.equals(r.screenshotsRequired());
+        return new Checked(name, creatorId, price, start, last, content, screenshots, branchIds, deliverables);
     }
 
     private static <E extends Enum<E>> E parse(Class<E> type, String text) {

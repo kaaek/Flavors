@@ -5,7 +5,10 @@ import com.flavors.service.ProofUpload;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-/** Strict, dependency-free validation for the raster screenshot formats the browser can safely display. */
+/**
+ * Strict, dependency-free validation for the raster screenshot formats the browser can safely display: size, the
+ * actual file signature against the declared type, then {@link ProofImageIntegrity} (complete, undamaged, sane size).
+ */
 final class ProofImageValidator {
 
     static final int MAX_BYTES = 5 * 1024 * 1024;
@@ -34,6 +37,7 @@ final class ProofImageValidator {
         if (declared != null && !declared.isBlank() && !actual.matches(declared)) {
             throw invalid("does not match its declared image type");
         }
+        ProofImageIntegrity.check(actual, bytes);
         return new ValidatedImage(bytes, actual.contentType, actual.extension);
     }
 
@@ -65,7 +69,7 @@ final class ProofImageValidator {
         return bytes.length >= prefix.length && Arrays.equals(Arrays.copyOf(bytes, prefix.length), prefix);
     }
 
-    private enum Type {
+    enum Type {
         PNG("image/png", "png"),
         JPEG("image/jpeg", "jpg"),
         GIF("image/gif", "gif"),

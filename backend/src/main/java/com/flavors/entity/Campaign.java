@@ -81,6 +81,10 @@ public class Campaign {
 
     private String contentRequirements;
 
+    /** Part of the terms: a final proof needs at least one screenshot (FR-F5.1). */
+    @Column(nullable = false)
+    private boolean screenshotsRequired;
+
     /** When the brand sent the request; empty for a draft. */
     private Instant sentAt;
 
@@ -134,8 +138,8 @@ public class Campaign {
      * the values; a draft may leave all but the name empty.
      */
     public void saveDraft(String name, Long creatorId, Long priceOfferedCents, LocalDate startDate,
-                          LocalDate lastPostingDate, String contentRequirements, Collection<Long> branchIds,
-                          Collection<CampaignDeliverable> deliverables, Instant now) {
+                          LocalDate lastPostingDate, String contentRequirements, boolean screenshotsRequired,
+                          Collection<Long> branchIds, Collection<CampaignDeliverable> deliverables, Instant now) {
         requireDraft();
         this.name = name;
         this.creatorId = creatorId;
@@ -143,6 +147,7 @@ public class Campaign {
         this.startDate = startDate;
         this.lastPostingDate = lastPostingDate;
         this.contentRequirements = contentRequirements;
+        this.screenshotsRequired = screenshotsRequired;
         this.branchIds.retainAll(branchIds);
         this.branchIds.addAll(branchIds);
         this.deliverables.clear();
@@ -316,6 +321,10 @@ public class Campaign {
 
     public String getContentRequirements() {
         return contentRequirements;
+    }
+
+    public boolean isScreenshotsRequired() {
+        return screenshotsRequired;
     }
 
     public Instant getSentAt() {
