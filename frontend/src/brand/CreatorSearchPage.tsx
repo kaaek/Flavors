@@ -313,13 +313,9 @@ export function CreatorSearchPage() {
                 {results.data.items.map((item) => (
                   <tr key={item.creatorId}>
                     <td>
-                      {item.storefrontSlug ? (
-                        <Link className="fl-link" to={`/s/${item.storefrontSlug}`}>
-                          {item.displayName}
-                        </Link>
-                      ) : (
-                        item.displayName
-                      )}
+                      <Link className="fl-link" to={`/brand/creators/${item.creatorId}/portfolio`}>
+                        {item.displayName}
+                      </Link>
                     </td>
                     <td>{item.foodCategory ?? dash}</td>
                     <td>{item.location ?? dash}</td>
@@ -331,6 +327,12 @@ export function CreatorSearchPage() {
                     <td>{count(item.redemptions)}</td>
                     <td>
                       <div className="fl-row">
+                        <Link
+                          className="fl-btn fl-btn--outline fl-btn--sm"
+                          to={`/brand/creators/${item.creatorId}/portfolio`}
+                        >
+                          View portfolio
+                        </Link>
                         <SaveCreatorButton creatorId={item.creatorId} initiallySaved={item.saved} />
                         <Link
                           className="fl-btn fl-btn--primary fl-btn--sm"
