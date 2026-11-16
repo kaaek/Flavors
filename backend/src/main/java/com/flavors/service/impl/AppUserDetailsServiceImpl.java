@@ -23,7 +23,10 @@ public class AppUserDetailsServiceImpl implements UserDetailsService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(
+    readOnly = true,
+    noRollbackFor = UsernameNotFoundException.class
+    )
     public CurrentUser loadUserByUsername(String email) {
         AppUser user = users.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("No account with this email"));
