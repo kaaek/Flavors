@@ -9,6 +9,8 @@ import com.flavors.dto.ProofDraftRequest;
 import com.flavors.dto.ProofReviewRequest;
 import com.flavors.dto.ProofReviewResponse;
 import com.flavors.enums.CampaignStatus;
+import com.flavors.enums.DeliverablePlatform;
+import com.flavors.enums.DeliverableType;
 import com.flavors.enums.ProofReviewDecision;
 import com.flavors.enums.ProofReviewFollowUp;
 import com.flavors.enums.Role;
@@ -61,6 +63,27 @@ class ProofReviewServiceImplIT {
         assertThat(jdbc.queryForObject("SELECT status FROM escrow_payment WHERE campaign_id = ?",
                 String.class, fixture.campaignId())).isEqualTo("HELD");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'PROOF_APPROVED' AND entity_id = ?",
+                Integer.class, result.id())).isEqualTo(1);
+    }
+
+    @Test // FR-F6.6: a rejection is recorded within five seconds too; the dispute itself belongs to UC-F8.1.
+    void rejectionIsPersistedWithinFiveSecondsWithoutClaimingADisputeWasOpened() {
+        Fixture fixture = newFixture();
+
+        var result = assertTimeout(Duration.ofSeconds(5),
+                () -> review(fixture, ProofReviewDecision.REJECTED, "The reel was never posted"));
+
+        assertThat(result.requiredFollowUp()).isEqualTo(ProofReviewFollowUp.FREEZE_PAYMENT_AND_OPEN_DISPUTE);
+        assertThat(reviewRows.findBySubmissionId(fixture.submissionId())).hasValueSatisfying(saved -> {
+            assertThat(saved.getDecision()).isEqualTo(ProofReviewDecision.REJECTED);
+            assertThat(saved.getReason()).isEqualTo("The reel was never posted");
+        });
+        assertThat(reviews.history(fixture.brandId(), Role.BRAND, fixture.campaignId()).availableDecisions()).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT status FROM escrow_payment WHERE campaign_id = ?",
+                String.class, fixture.campaignId())).isEqualTo("HELD");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM dispute WHERE campaign_id = ?",
+                Integer.class, fixture.campaignId())).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'PROOF_REJECTED' AND entity_id = ?",
                 Integer.class, result.id())).isEqualTo(1);
     }
 
@@ -177,10 +200,12 @@ class ProofReviewServiceImplIT {
     @Test
     void agreedTermsAreReadFromTheCampaignWithoutChangingThem() {
         Fixture fixture = newFixture();
-        jdbc.update("UPDATE campaign SET content_requirements = 'Mention Hamra' WHERE id = ?", fixture.campaignId());
+        jdbc.update("""
+                UPDATE campaign SET content_requirements = 'Mention Hamra', screenshots_required = true WHERE id = ?
+                """, fixture.campaignId());
         jdbc.update("""
                 INSERT INTO campaign_deliverable (campaign_id, platform, type, count)
-                VALUES (?, 'instagram', 'reel', 2)
+                VALUES (?, 'INSTAGRAM', 'REEL', 2)
                 """, fixture.campaignId());
 
         var agreement = reviews.history(fixture.brandId(), Role.BRAND, fixture.campaignId()).agreement();
@@ -188,9 +213,10 @@ class ProofReviewServiceImplIT {
         assertThat(agreement.startDate()).isNotNull();
         assertThat(agreement.lastPostingDate()).isNotNull();
         assertThat(agreement.contentRequirements()).isEqualTo("Mention Hamra");
+        assertThat(agreement.screenshotsRequired()).isTrue();
         assertThat(agreement.deliverables()).singleElement().satisfies(deliverable -> {
-            assertThat(deliverable.platform()).isEqualTo("instagram");
-            assertThat(deliverable.type()).isEqualTo("reel");
+            assertThat(deliverable.platform()).isEqualTo(DeliverablePlatform.INSTAGRAM);
+            assertThat(deliverable.type()).isEqualTo(DeliverableType.REEL);
             assertThat(deliverable.count()).isEqualTo(2);
         });
     }

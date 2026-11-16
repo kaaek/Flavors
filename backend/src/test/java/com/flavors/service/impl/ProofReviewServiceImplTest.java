@@ -13,6 +13,9 @@ import static org.mockito.Mockito.when;
 
 import com.flavors.dto.ProofReviewRequest;
 import com.flavors.dto.ProofReviewAgreementResponse;
+import com.flavors.entity.CampaignDeliverable;
+import com.flavors.enums.DeliverablePlatform;
+import com.flavors.enums.DeliverableType;
 import com.flavors.entity.Campaign;
 import com.flavors.entity.ProofReview;
 import com.flavors.entity.ProofSubmission;
@@ -26,7 +29,6 @@ import com.flavors.exception.ValidationFailedException;
 import com.flavors.mapper.ProofReviewMapper;
 import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.ProofReviewRepository;
-import com.flavors.repository.ProofReviewAgreementRepository;
 import com.flavors.repository.ProofSubmissionRepository;
 import com.flavors.service.AuditLogger;
 import java.time.Clock;
@@ -53,10 +55,9 @@ class ProofReviewServiceImplTest {
     private final ProofSubmissionRepository submissions = mock(ProofSubmissionRepository.class);
     private final ProofReviewRepository reviews = mock(ProofReviewRepository.class);
     private final AuditLogger audit = mock(AuditLogger.class);
-    private final ProofReviewAgreementRepository agreements = mock(ProofReviewAgreementRepository.class);
     private final List<ProofReview> saved = new ArrayList<>();
     private final ProofReviewServiceImpl service = new ProofReviewServiceImpl(campaigns, submissions, reviews,
-            new ProofReviewMapper(), agreements, audit, Clock.fixed(NOW, ZoneOffset.UTC));
+            new ProofReviewMapper(), audit, Clock.fixed(NOW, ZoneOffset.UTC));
     private Campaign campaign;
     private ProofSubmission submission;
 
@@ -200,14 +201,14 @@ class ProofReviewServiceImplTest {
                 .isInstanceOf(DeliveryProofNotFoundException.class);
         verify(campaigns).findByIdAndBrandIdForUpdate(42L, 10L);
         verify(campaigns, never()).findByIdForUpdate(anyLong());
-        verifyNoInteractions(reviews, audit, submissions, agreements);
+        verifyNoInteractions(reviews, audit, submissions);
     }
 
     @Test
     void decisionAndCampaignUpdateUsePostgresMicrosecondPrecision() {
         Clock preciseClock = Clock.fixed(Instant.parse("2026-11-07T08:00:00.123456789Z"), ZoneOffset.UTC);
         var preciseService = new ProofReviewServiceImpl(campaigns, submissions, reviews,
-                new ProofReviewMapper(), agreements, audit, preciseClock);
+                new ProofReviewMapper(), audit, preciseClock);
 
         var result = preciseService.review(9, 42, 5, request(ProofReviewDecision.APPROVED, null));
 
@@ -232,12 +233,17 @@ class ProofReviewServiceImplTest {
 
     @Test
     void manualReviewIncludesTheAgreedPlatformDeliverablesAndDates() {
-        var agreement = new ProofReviewAgreementResponse(java.time.LocalDate.of(2026, 11, 1),
-                java.time.LocalDate.of(2026, 11, 8), "Mention the branch",
-                List.of(new ProofReviewAgreementResponse.Deliverable("instagram", "reel", 2)));
-        when(agreements.find(42)).thenReturn(agreement);
+        field(campaign, "startDate", java.time.LocalDate.of(2026, 11, 1));
+        field(campaign, "lastPostingDate", java.time.LocalDate.of(2026, 11, 8));
+        field(campaign, "contentRequirements", "Mention the branch");
+        field(campaign, "screenshotsRequired", true);
+        field(campaign, "deliverables", new ArrayList<>(List.of(
+                new CampaignDeliverable(DeliverablePlatform.INSTAGRAM, DeliverableType.REEL, 2))));
 
-        assertThat(service.history(9, Role.BRAND, 42).agreement()).isEqualTo(agreement);
+        assertThat(service.history(9, Role.BRAND, 42).agreement()).isEqualTo(new ProofReviewAgreementResponse(
+                java.time.LocalDate.of(2026, 11, 1), java.time.LocalDate.of(2026, 11, 8), "Mention the branch", true,
+                List.of(new ProofReviewAgreementResponse.Deliverable(DeliverablePlatform.INSTAGRAM,
+                        DeliverableType.REEL, 2))));
     }
 
     @Test

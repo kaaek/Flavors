@@ -16,7 +16,6 @@ import com.flavors.exception.ValidationFailedException;
 import com.flavors.mapper.ProofReviewMapper;
 import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.ProofReviewRepository;
-import com.flavors.repository.ProofReviewAgreementRepository;
 import com.flavors.repository.ProofSubmissionRepository;
 import com.flavors.service.AuditLogger;
 import com.flavors.service.ProofReviewService;
@@ -38,25 +37,22 @@ public class ProofReviewServiceImpl implements ProofReviewService {
     private final ProofSubmissionRepository submissions;
     private final ProofReviewRepository reviews;
     private final ProofReviewMapper mapper;
-    private final ProofReviewAgreementRepository agreements;
     private final AuditLogger audit;
     private final Clock clock;
 
     @Autowired
     public ProofReviewServiceImpl(CampaignRepository campaigns, ProofSubmissionRepository submissions,
-                                  ProofReviewRepository reviews, ProofReviewMapper mapper,
-                                  ProofReviewAgreementRepository agreements, AuditLogger audit) {
-        this(campaigns, submissions, reviews, mapper, agreements, audit, Clock.systemUTC());
+                                  ProofReviewRepository reviews, ProofReviewMapper mapper, AuditLogger audit) {
+        this(campaigns, submissions, reviews, mapper, audit, Clock.systemUTC());
     }
 
     ProofReviewServiceImpl(CampaignRepository campaigns, ProofSubmissionRepository submissions,
-                           ProofReviewRepository reviews, ProofReviewMapper mapper,
-                           ProofReviewAgreementRepository agreements, AuditLogger audit, Clock clock) {
+                           ProofReviewRepository reviews, ProofReviewMapper mapper, AuditLogger audit,
+                           Clock clock) {
         this.campaigns = campaigns;
         this.submissions = submissions;
         this.reviews = reviews;
         this.mapper = mapper;
-        this.agreements = agreements;
         this.audit = audit;
         this.clock = clock;
     }
@@ -136,8 +132,8 @@ public class ProofReviewServiceImpl implements ProofReviewService {
                             ProofReviewDecision.REJECTED);
         }
         return new CampaignProofReviewsResponse(campaignId, campaign.getStatus(), campaign.getCorrectionRoundsUsed(),
-                campaign.getProofReviewDeadline(), latest == null ? null : latest.getId(), agreements.find(campaignId),
-                available, history.stream().map(mapper::toResponse).toList());
+                campaign.getProofReviewDeadline(), latest == null ? null : latest.getId(),
+                mapper.toAgreement(campaign), available, history.stream().map(mapper::toResponse).toList());
     }
 
     @Override
