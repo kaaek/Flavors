@@ -809,13 +809,14 @@ payment/dispute stories. V5 already owns `proof_review`, so no new migration is 
 | Method and path | Who | What |
 |---|---|---|
 | `POST /api/brand/campaigns/{campaignId}/proof/{submissionId}/review` | owning BRAND | JSON `{decision, reason}`; decision is `APPROVED`, `CORRECTIONS_REQUESTED` or `REJECTED`; returns 200 including on an identical retry |
-| `GET /api/brand/campaigns/{campaignId}/proof/reviews` | owning BRAND | Agreement (dates, content requirements, platform/type/count), decision history and available decisions for the latest final submission |
+| `GET /api/brand/campaigns/{campaignId}/proof/reviews` | owning BRAND | Agreement (dates, content requirements, screenshots required, platform/type/count), decision history and available decisions for the latest final submission |
 | `GET /api/creator/campaigns/{campaignId}/proof/reviews` | assigned CREATOR | Read-only agreement/history, including correction/rejection reasons |
 | `GET /api/admin/campaigns/{campaignId}/proof/reviews` | ADMIN | Read-only agreement/history |
 
 - Proof links/images remain at the EEC-46 endpoints. The brand checks them manually against the agreement; this API
-  does not claim to verify posts on an external platform. Agreement reads use a read-only JDBC projection of existing V3
-  tables; this story does not edit campaign terms or introduce a competing campaign entity.
+  does not claim to verify posts on an external platform. The agreement is read from the `Campaign` entity (dates,
+  content requirements, the screenshot setting, deliverables) and converted by `ProofReviewMapper.toAgreement`, like
+  every other response (the mapper rule in §3); this story does not edit campaign terms.
 - The decision loads the campaign with `CampaignRepository.findByIdAndBrandIdForUpdate`, which filters by the owning brand,
   so another brand cannot lock the campaign. It is the same row lock as EEC-46 and the request answers, and a new decision
   is accepted only on the latest submitted version while its campaign is `PROOF_SUBMITTED` and the current time is
@@ -840,6 +841,11 @@ payment/dispute stories. V5 already owns `proof_review`, so no new migration is 
   reason. Because the campaign stays `PROOF_SUBMITTED` after approve/reject, `ProofOutcome` says what happened and that
   release or a dispute is not available yet, instead of relying on the status chip. If the creator's reviews can't be
   loaded, the proof form still works without them.
+- **Per version, per campaign:** `BrandProofSection` keys `ProofReviewPanel` by the version under review, so its
+  state (the choice, the reason, "decided") belongs to that version: when the creator sends a corrected version, the
+  controls come back for it. The section itself is keyed by the campaign (§18). Its reloads (the 30-second check from
+  §18, and the one after a decision) are numbered and only the newest answer is shown, so an older answer that arrives
+  late can't replace a newer one. A decision that finishes after the brand has left is not reported to the page.
 
 **Deferred integration, not a completed financial workflow:** approval/rejection clears Timer C but leaves the campaign
 `PROOF_SUBMITTED` while the required follow-up is pending. `ProofReviewResponse.requiredFollowUp` is `RELEASE_PAYMENT`,
@@ -856,8 +862,10 @@ No scheduled auto-release is enabled yet. TC-F6.1.5 and the financial/dispute po
 Tests: `ProofReviewServiceImplTest` and `ProofReviewControllerTest` cover the decision rules, retry behavior, privacy,
 role/CSRF guards, validation and deadline boundaries without Docker. `ProofReviewQueryTest` validates Hibernate query
 translation without a database. `ProofReviewServiceImplIT` covers PostgreSQL mappings,
-persisted decisions/audit, the complete correction/resubmission cycle, concurrent decisions, agreement reads, overdue
-filtering, and five-second decision recording. CI must run the integration suite; unit timings alone do not establish NF-4
-in production. Frontend: `BrandProofSection.test.tsx` (agreement, each decision and its confirmation, reason rules, the
-last round, an expired review time) and `CreatorProofSection.test.tsx` (correction reason and rounds left, approval and
-rejection notes, missing reviews).
+persisted decisions/audit, the complete correction/resubmission cycle, concurrent decisions, agreement reads (including
+the screenshot setting), overdue filtering, and approval and rejection each recorded within five seconds (FR-F6.6).
+`ProofReviewApiIT` times both decisions through the whole HTTP stack (security, JSON, controller, PostgreSQL). CI must
+run the integration suite; test timings alone do not establish NF-4 in production. Frontend: `BrandProofSection.test.tsx`
+(agreement, each decision and its confirmation, reason rules, the last round, an expired review time, fresh controls
+for a corrected version, a decision that finishes after navigating) and `CreatorProofSection.test.tsx` (correction
+reason and rounds left, approval and rejection notes, missing reviews).
