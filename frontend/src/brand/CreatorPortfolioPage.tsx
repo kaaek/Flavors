@@ -120,27 +120,40 @@ function PortfolioDetails({ portfolio: p }: { portfolio: CreatorPortfolio }) {
 /** EEC-35: read-only, brand-only view of an approved creator's verified portfolio. */
 export function CreatorPortfolioPage() {
   const { creatorId } = useParams()
+
+  return <CreatorPortfolioContent key={creatorId} creatorId={creatorId} />
+}
+
+function CreatorPortfolioContent({ creatorId }: { creatorId: string | undefined }) {
   const valid = creatorId !== undefined && /^[1-9]\d*$/.test(creatorId)
+
   const result = useFetch<CreatorPortfolio>(
     valid ? `/api/brand/creators/${creatorId}/portfolio` : '/api/brand/creators/invalid/portfolio',
   )
-  if (!valid)
+
+  if (!valid) {
     return (
       <div className="fl-card" role="alert">
         Invalid creator ID.
       </div>
     )
-  if (result.status === 'loading')
+  }
+
+  if (result.status === 'loading') {
     return (
       <div className="fl-card" role="status">
         Loading creator portfolio…
       </div>
     )
-  if (result.status === 'error')
+  }
+
+  if (result.status === 'error') {
     return (
       <div className="fl-card" role="alert">
         Portfolio unavailable. This creator may not be approved, or the request failed.
       </div>
     )
+  }
+
   return <PortfolioDetails portfolio={result.data} />
 }
