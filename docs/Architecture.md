@@ -196,6 +196,10 @@ unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is 
   `creator_profile`), created_at. The rules that span tables (the campaign must be COMPLETED and must belong to the
   creator) are enforced by `PortfolioServiceImpl`, not by the database.
 
+**V9 — screenshots required** (built: `V9__campaign_screenshots_required.sql`, EEC-46)
+- `campaign.screenshots_required`: boolean, default false. Part of the terms the brand sets on the campaign form; when
+  true, a final delivery proof needs at least one screenshot (FR-F5.1, §18).
+
 ### 4.3 ER diagram
 
 Tables and their foreign keys (columns are listed in §4.2 and in the migrations). `||--o{` reads
@@ -708,9 +712,11 @@ Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (
 
 The creator can prepare one draft for the campaign's current round, replace its links/screenshots, and submit it once.
 The campaign must be `ACTIVE`, or `CORRECTIONS_REQUESTED` for a later round. Submitting changes it to `PROOF_SUBMITTED`
-and sets Timer C to five days from the submission. A proof holds at most 10 links. Screenshots are optional (the campaign
-has no setting that requires them yet); when present there may be at most five, each at most 5 MiB, and its declared
-content type must match a PNG, JPEG, GIF or WebP signature. SVG is deliberately refused.
+and sets Timer C to five days from the submission. A proof holds at most 10 links. Screenshots are optional unless the
+brand ticked **Ask for screenshots with the proof** on the campaign form (`campaign.screenshots_required`, V9, frozen with
+the other terms when the campaign is sent); then a final submission needs at least one (FR-F5.1). There may be at most
+five, each at most 5 MiB; the declared content type must match a PNG, JPEG, GIF or WebP signature, and the file must be
+a complete, undamaged image of at most 25 megapixels (see image checks below). SVG is deliberately refused.
 
 | Method and path | Who | What |
 |---|---|---|
@@ -724,8 +730,19 @@ content type must match a PNG, JPEG, GIF or WebP signature. SVG is deliberately 
 - Draft saves and final submission take the campaign row lock (`CampaignRepository.findByIdForUpdate`), the same lock the
   request answers and payments use, so they run one after the other. Database partial unique indexes still enforce one
   draft and one submitted version per round if two app instances receive the same operation.
-- A final submission requires at least one non-blank absolute HTTP(S) link. Drafts may be incomplete. Every submitted row is
-  immutable through this API and later correction rounds create new rows, so earlier versions are retained.
+- A final submission requires at least one absolute HTTP(S) link, and every row must be one: a blank row next to a valid
+  link is refused, not dropped (EX-F5.1.2). Drafts may be incomplete. Every submitted row is immutable through this API
+  and later correction rounds create new rows, so earlier versions are retained.
+- **Image checks** (`ProofImageIntegrity`, after the signature check). A valid signature says nothing about the rest of
+  the file, so: PNG chunks are walked to `IEND` with every CRC checked, then the image is decoded; JPEG is decoded and
+  any decoder warning (a missing end marker, a short data segment) counts as damage; GIF blocks are walked to the trailer
+  and the first frame is decoded; WebP has no JDK decoder, so its RIFF size, every chunk length and the VP8/VP8L/VP8X
+  header are checked. Damage that still decodes cleanly cannot be seen (JPEG has no checksums, and WebP data is not
+  decoded). Resource limits: the size is read from the header and refused above 25 megapixels before any decoding;
+  decoding subsamples to at most 1024 pixels per side, skips metadata (compressed text chunks are never inflated),
+  reads from memory (no temporary files), and at most two uploads are decoded at a time.
+- `DeliveryProofMapper` converts the proof rows into `DeliveryProofResponse` (the mapper rule in §3); the service only
+  decides which versions each role may see.
 - `PROOF_DRAFT_SAVED` and `PROOF_SUBMITTED` are written through the append-only audit log in the same transaction.
 - Screenshot metadata is transactional PostgreSQL data. Bytes use `ProofFileStorage`: filesystem under the `dev` and test
   profiles, and a private S3-compatible Railway Bucket elsewhere. New objects are removed after a database rollback; replaced
@@ -737,14 +754,26 @@ content type must match a PNG, JPEG, GIF or WebP signature. SVG is deliberately 
   so the pages only gain one block each. The creator's `CreatorProofSection` edits the round's draft: up to 10 link rows
   and a dropzone for screenshots, checked in the browser first (type, 5 MB, at most 5). A screenshot is saved as soon as
   it is uploaded, as the design's dropzone says; every save also sends the links on screen, so nothing typed is lost.
-  **Send proof** asks for a confirmation inline, like the admin's reject form, then shows Timer C. A correction round
-  starts from the last version's links (screenshots are uploaded again). The brand's `BrandProofSection` is read-only.
+  **Send proof** asks for a confirmation inline, like the admin's reject form, then shows Timer C. Before that it
+  refuses an empty or invalid row and marks it, and asks for a screenshot when the campaign requires one. A correction
+  round starts from the last version's links (screenshots are uploaded again). The brand's `BrandProofSection` is
+  read-only and checks for a new version every 30 seconds while one can arrive (`ACTIVE`, `CORRECTIONS_REQUESTED`), so
+  a sent version shows within a minute without a reload (FR-F5.5); when the status changes the page reloads its header.
   Both list the sent rounds newest first with `ProofRounds`; only the newest starts open. `apiFetch` sends a `FormData`
   body unchanged so the browser sets the multipart boundary.
-- Tests: `DeliveryProofControllerTest`, `DeliveryProofServiceImplTest`, `ProofImageValidatorTest`,
-  `FileSystemProofFileStorageTest`, `S3ProofFileStorageTest`, and
-  `DeliveryProofServiceImplIT` (draft privacy, final submission/Timer C, invalid links, version retention, ownership,
-  transactional object cleanup, concurrent submission, limits and content validation); frontend
-  `CreatorProofSection.test.tsx`, `BrandProofSection.test.tsx`, `client.test.ts` (FormData) and `timeLeft.test.ts`.
+- **One campaign at a time:** both sections are keyed by the campaign id, so opening another campaign (same route,
+  new id) starts them from scratch, and an answer that arrives after leaving (a save, a send, a check) is ignored
+  instead of being shown on, or reported to, the next campaign. The brand page also drops a `campaignOverride` that
+  belongs to another campaign.
+- Tests: `DeliveryProofControllerTest`, `DeliveryProofServiceImplTest` (including required and optional screenshots),
+  `ProofImageValidatorTest` (real images of each type; cut off anywhere, damaged chunks, damaged data with valid
+  checksums, broken WebP headers, too many pixels, the 25-megapixel edge), `FileSystemProofFileStorageTest`,
+  `S3ProofFileStorageTest`, and `DeliveryProofServiceImplIT` (draft privacy, final submission/Timer C, invalid and blank
+  links, required screenshots, version retention, ownership, transactional object cleanup, concurrent submission,
+  limits and content validation, a cut-off screenshot leaves nothing stored); `BrandCampaignControllerTest` and
+  `CampaignServiceImplIT` for the campaign setting. Frontend `CreatorProofSection.test.tsx` (blank rows, required
+  screenshots, a clean form and ignored late answers after switching campaigns), `BrandProofSection.test.tsx` (the
+  30-second check, navigating between campaigns, a late check), `CampaignFormPage.test.tsx` (the checkbox),
+  `client.test.ts` (FormData) and `timeLeft.test.ts`.
   `CampaignPayment.test.tsx` and `CreatorCampaignDetailPage.test.tsx` stub the proof section, since they test payment
   and the request answer only.
