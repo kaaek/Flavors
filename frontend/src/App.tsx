@@ -13,6 +13,7 @@ import { CampaignDetailPage } from './brand/CampaignDetailPage'
 import { CampaignFormPage } from './brand/CampaignFormPage'
 import { CampaignListPage } from './brand/CampaignListPage'
 import { CreatorSearchPage } from './brand/CreatorSearchPage'
+import { OfferPage } from './brand/OfferPage'
 import { BrandSearchPage } from './creator/BrandSearchPage'
 import { CreatorHome } from './creator/CreatorHome'
 import { CreatorCampaignListPage } from './creator/CreatorCampaignListPage'
@@ -90,6 +91,7 @@ export function AppRoutes() {
         <Route path="/brand/campaigns/new" element={<CampaignFormPage />} />
         <Route path="/brand/campaigns/:id" element={<CampaignDetailPage />} />
         <Route path="/brand/campaigns/:id/edit" element={<CampaignFormPage />} />
+        <Route path="/brand/campaigns/:id/offer" element={<OfferPage />} />
         <Route path="/brand/account" element={<BrandAccountPage />} />
         <Route path="/brand/*" element={<NotFoundPage />} />
       </Route>

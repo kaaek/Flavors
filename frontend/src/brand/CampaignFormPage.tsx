@@ -571,6 +571,21 @@ function CampaignForm({
         </Field>
       </section>
 
+      {campaignId !== null && (
+        <section className="fl-card fl-section" aria-labelledby="follower-offer-title">
+          <h2 id="follower-offer-title">Follower offer</h2>
+          <p className="fl-hint">
+            The discount the creator&apos;s followers get at your restaurant. Save the draft first:
+            changes not saved here are lost when you open the offer.
+          </p>
+          <div>
+            <Link className="fl-btn fl-btn--outline" to={`/brand/campaigns/${campaignId}/offer`}>
+              Set up the follower offer
+            </Link>
+          </div>
+        </section>
+      )}
+
       <div className="fl-actions">
         <Link className="fl-btn fl-btn--ghost" to="/brand/campaigns">
           Cancel
