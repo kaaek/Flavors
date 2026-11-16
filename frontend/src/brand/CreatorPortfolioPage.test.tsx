@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiFetch } from '../api/client'
 import { CreatorPortfolioPage } from './CreatorPortfolioPage'
@@ -43,7 +43,9 @@ function open(data: CreatorPortfolio) {
     </MemoryRouter>,
   )
 }
-beforeEach(() => fetchMock.mockReset())
+beforeEach(() => {
+  fetchMock.mockReset()
+})
 describe('EEC-35 creator portfolio', () => {
   it('TC-F1.1.1 shows profile, social metrics, verified campaign ROI and reviews', async () => {
     open(base)
@@ -70,5 +72,38 @@ describe('EEC-35 creator portfolio', () => {
     expect(await screen.findByText('No completed featured campaigns yet.')).toBeInTheDocument()
     expect(screen.getByText('No reviews yet.')).toBeInTheDocument()
     expect(screen.getByText('Beirut')).toBeInTheDocument()
+  })
+  it('does not show the previous creator when switching profiles', async () => {
+    const sara = {
+      ...base,
+      creatorId: 8,
+      displayName: 'Sara Foodie',
+    }
+
+    fetchMock.mockResolvedValueOnce(base).mockResolvedValueOnce(sara)
+
+    render(
+      <MemoryRouter initialEntries={['/brand/creators/7/portfolio']}>
+        <Link to="/brand/creators/8/portfolio">View Sara</Link>
+        <Routes>
+          <Route path="/brand/creators/:creatorId/portfolio" element={<CreatorPortfolioPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    // First creator loads successfully.
+    expect(await screen.findByRole('heading', { name: 'Layla Eats' })).toBeInTheDocument()
+
+    // Navigate without refreshing the page.
+    fireEvent.click(screen.getByRole('link', { name: 'View Sara' }))
+
+    // Old creator's information must disappear immediately.
+    expect(screen.getByRole('status')).toHaveTextContent('Loading creator portfolio')
+    expect(screen.queryByText('Layla Eats')).not.toBeInTheDocument()
+
+    // New creator loads successfully.
+    expect(await screen.findByRole('heading', { name: 'Sara Foodie' })).toBeInTheDocument()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/brand/creators/8/portfolio')
   })
 })
