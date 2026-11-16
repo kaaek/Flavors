@@ -327,7 +327,10 @@ export function CreatorSearchPage() {
                     <td>{count(item.redemptions)}</td>
                     <td>
                       <div className="fl-row">
-                        <Link className="fl-btn fl-btn--outline fl-btn--sm" to={`/brand/creators/${item.creatorId}/portfolio`}>
+                        <Link
+                          className="fl-btn fl-btn--outline fl-btn--sm"
+                          to={`/brand/creators/${item.creatorId}/portfolio`}
+                        >
                           View portfolio
                         </Link>
                         <SaveCreatorButton creatorId={item.creatorId} initiallySaved={item.saved} />
