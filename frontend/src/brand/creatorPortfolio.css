@@ -1,0 +1,23 @@
+.creator-portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+.creator-portfolio-grid > p {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.creator-portfolio-item {
+  border: 1px solid var(--fl-border, #dce4e2);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  min-width: 0;
+}
+.creator-portfolio-item h3 {
+  text-transform: capitalize;
+  margin-top: 0;
+}
+.creator-portfolio-item p {
+  overflow-wrap: anywhere;
+}
