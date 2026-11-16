@@ -39,6 +39,8 @@ export interface CampaignInput {
   lastPostingDate: string | null
   deliverables: { platform: string; type: string; count: number | null }[]
   contentRequirements: string | null
+  /** The creator's final proof must include at least one screenshot (FR-F5.1). */
+  screenshotsRequired: boolean
 }
 
 export interface Campaign {
@@ -52,6 +54,8 @@ export interface Campaign {
   lastPostingDate: string | null
   deliverables: Deliverable[]
   contentRequirements: string | null
+  /** The creator's final proof must include at least one screenshot (FR-F5.1). */
+  screenshotsRequired: boolean
   sentAt: string | null
   /** Timer A: when the creator's 3 days to answer run out. */
   responseDeadline: string | null

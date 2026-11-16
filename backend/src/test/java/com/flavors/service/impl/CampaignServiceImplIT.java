@@ -155,6 +155,25 @@ class CampaignServiceImplIT {
         CampaignResponse sent = service.send(brand.id, ok);
 
         assertThat(sent.contentRequirements()).isNull();
+        assertThat(sent.screenshotsRequired()).isFalse();
+    }
+
+    @Test
+    void theBrandCanRequireScreenshotsWithTheProofAndTheSettingIsKept() {
+        Brand brand = brand("Hamra");
+        CampaignRequest ok = complete(brand, creator("APPROVED", "ACTIVE"));
+        CampaignRequest withScreenshots = new CampaignRequest(ok.name(), ok.creatorId(), ok.branchIds(),
+                ok.priceOfferedCents(), ok.startDate(), ok.lastPostingDate(), ok.deliverables(),
+                ok.contentRequirements(), true);
+
+        CampaignResponse draft = service.saveDraft(brand.id, withScreenshots);
+        CampaignResponse sent = service.send(brand.id, draft.id(), withScreenshots);
+
+        assertThat(draft.screenshotsRequired()).isTrue();
+        assertThat(sent.screenshotsRequired()).isTrue();
+        assertThat(service.get(brand.id, sent.id()).screenshotsRequired()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT screenshots_required FROM campaign WHERE id = ?", Boolean.class,
+                sent.id())).isTrue();
     }
 
     @Test

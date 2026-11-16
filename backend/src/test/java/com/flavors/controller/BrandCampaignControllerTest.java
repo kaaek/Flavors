@@ -79,6 +79,20 @@ class BrandCampaignControllerTest {
     }
 
     @Test
+    void theBrandCanAskForScreenshotsWithTheProof() throws Exception {
+        when(campaigns.saveDraft(eq(7L), any())).thenReturn(response(CampaignStatus.DRAFT));
+
+        mvc.perform(json(post("/api/brand/campaigns"), BODY.replace("}\n", ",\"screenshotsRequired\":true}\n"))
+                        .with(user(brand())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.screenshotsRequired").value(true));
+
+        verify(campaigns).saveDraft(7L, new CampaignRequest("Summer", 3L, List.of(11L), 25000L,
+                LocalDate.parse("2030-01-10"), LocalDate.parse("2030-01-20"),
+                List.of(new CampaignRequest.DeliverableRequest("INSTAGRAM", "REEL", 2)), "Be kind", true));
+    }
+
+    @Test
     void theBrandIsTheLoggedInUserNotAnIdFromTheRequest() throws Exception {
         when(campaigns.send(eq(7L), any())).thenReturn(response(CampaignStatus.AWAITING_CREATOR_RESPONSE));
 
@@ -178,7 +192,7 @@ class BrandCampaignControllerTest {
                 List.of(new BranchResponse(11L, "Hamra", "Beirut")), 25000L, LocalDate.parse("2030-01-10"),
                 LocalDate.parse("2030-01-20"),
                 List.of(new CampaignResponse.DeliverableView(DeliverablePlatform.INSTAGRAM, DeliverableType.REEL, 2)),
-                "Be kind", sent ? Instant.parse("2030-01-01T10:00:00Z") : null,
+                "Be kind", true, sent ? Instant.parse("2030-01-01T10:00:00Z") : null,
                 sent ? Instant.parse("2030-01-04T10:00:00Z") : null,
                 null, null, null,
                 Instant.parse("2030-01-01T09:00:00Z"),
