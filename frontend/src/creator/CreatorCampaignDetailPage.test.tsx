@@ -10,6 +10,10 @@ vi.mock('../api/client', async (importOriginal) => ({
   apiFetch: vi.fn(),
 }))
 
+// A paid campaign also shows the delivery proof form (EEC-46), which CreatorProofSection.test.tsx covers; these tests
+// are about answering the request and waiting for payment, so the proof section and its extra request are left out.
+vi.mock('./CreatorProofSection', () => ({ CreatorProofSection: () => null }))
+
 const apiFetchMock = vi.mocked(apiFetch)
 
 const waiting: Campaign = {

@@ -11,12 +11,14 @@ import {
 } from '../api/campaigns'
 import { ApiError } from '../api/client'
 import { isAwaitingPayment, showsEscrow, startCampaignPayment } from '../api/payments'
+import { showsProof } from '../api/proof'
 import { Icon } from '../layout/Icon'
 import { useFetchWith } from '../layout/useFetch'
 import { LOCALE } from '../lib/locale'
 import { formatUSD } from '../lib/money'
 import { redirectTo } from '../lib/redirect'
 import { timeLeftText } from '../lib/timeLeft'
+import { BrandProofSection } from './BrandProofSection'
 import { CampaignStatusChip } from './CampaignStatusChip'
 import './campaigns.css'
 
@@ -295,6 +297,13 @@ export function CampaignDetailPage() {
             </>
           )}
         </section>
+      )}
+      {showsProof(campaign.status) && (
+        <BrandProofSection
+          campaignId={campaign.id}
+          creatorName={campaign.creator?.displayName ?? null}
+          lastPostingDate={campaign.lastPostingDate}
+        />
       )}
       <section className="fl-card fl-section" aria-label="Campaign details">
         <dl className="fl-kv">

@@ -43,6 +43,19 @@ describe('apiFetch', () => {
     expect(init.body).toBe('{"name":"x"}')
   })
 
+  it('sends a FormData body as is, with the CSRF header and no JSON Content-Type', async () => {
+    respond(200, {})
+    const form = new FormData()
+    form.append('files', new Blob(['x'], { type: 'image/png' }), 'shot.png')
+
+    await apiFetch('/api/creator/campaigns/1/proof/draft', { method: 'PUT', body: form })
+
+    const init = fetchMock.mock.calls[0][1]
+    expect(init.body).toBe(form)
+    expect(init.headers['Content-Type']).toBeUndefined()
+    expect(init.headers['X-XSRF-TOKEN']).toBe('abc=123')
+  })
+
   it('turns a ProblemDetail response into an ApiError', async () => {
     respond(403, {
       title: 'Forbidden',

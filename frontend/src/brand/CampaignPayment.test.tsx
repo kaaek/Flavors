@@ -11,6 +11,9 @@ vi.mock('../api/client', async (importOriginal) => ({
   apiFetch: vi.fn(),
 }))
 vi.mock('../lib/redirect', () => ({ redirectTo: vi.fn() }))
+// A paid campaign also shows its delivery proof (EEC-46), which BrandProofSection.test.tsx covers; these tests are
+// about the payment only, so the proof section and its extra request are left out.
+vi.mock('./BrandProofSection', () => ({ BrandProofSection: () => null }))
 
 const apiFetchMock = vi.mocked(apiFetch)
 const redirectMock = vi.mocked(redirectTo)

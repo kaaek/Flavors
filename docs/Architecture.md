@@ -704,7 +704,7 @@ Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (
   configurable (`flavors.whish.create-path`, `status-path`). See the README for what the merchant account must provide.
   Amount and currency must be verified once the official Whish spec is available: the status check does not compare them today.
 
-## 18. Campaign delivery proof (UC-F5.1, EEC-46) - backend built
+## 18. Campaign delivery proof (UC-F5.1, EEC-46) - built
 
 The creator can prepare one draft for the campaign's current round, replace its links/screenshots, and submit it once.
 The campaign must be `ACTIVE`, or `CORRECTIONS_REQUESTED` for a later round. Submitting changes it to `PROOF_SUBMITTED`
@@ -733,8 +733,18 @@ content type must match a PNG, JPEG, GIF or WebP signature. SVG is deliberately 
   Submitted objects have no delete endpoint.
 - API responses expose an authenticated download URL, never the storage key. Downloads use `Cache-Control: no-store`,
   `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`.
-- No frontend yet: the campaign pages now exist (§15, §16), but the proof form and history are not built on them.
+- **Pages:** both campaign pages show the proof from `ACTIVE` on (`showsProof` in `api/proof.ts`), as their own components
+  so the pages only gain one block each. The creator's `CreatorProofSection` edits the round's draft: up to 10 link rows
+  and a dropzone for screenshots, checked in the browser first (type, 5 MB, at most 5). A screenshot is saved as soon as
+  it is uploaded, as the design's dropzone says; every save also sends the links on screen, so nothing typed is lost.
+  **Send proof** asks for a confirmation inline, like the admin's reject form, then shows Timer C. A correction round
+  starts from the last version's links (screenshots are uploaded again). The brand's `BrandProofSection` is read-only.
+  Both list the sent rounds newest first with `ProofRounds`; only the newest starts open. `apiFetch` sends a `FormData`
+  body unchanged so the browser sets the multipart boundary.
 - Tests: `DeliveryProofControllerTest`, `DeliveryProofServiceImplTest`, `ProofImageValidatorTest`,
   `FileSystemProofFileStorageTest`, `S3ProofFileStorageTest`, and
   `DeliveryProofServiceImplIT` (draft privacy, final submission/Timer C, invalid links, version retention, ownership,
-  transactional object cleanup, concurrent submission, limits and content validation).
+  transactional object cleanup, concurrent submission, limits and content validation); frontend
+  `CreatorProofSection.test.tsx`, `BrandProofSection.test.tsx`, `client.test.ts` (FormData) and `timeLeft.test.ts`.
+  `CampaignPayment.test.tsx` and `CreatorCampaignDetailPage.test.tsx` stub the proof section, since they test payment
+  and the request answer only.
