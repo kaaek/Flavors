@@ -2,7 +2,6 @@ package com.flavors.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -15,6 +14,7 @@ import com.flavors.dto.ProofDraftRequest;
 import com.flavors.enums.ProofReviewDecision;
 import com.flavors.enums.Role;
 import com.flavors.service.DeliveryProofService;
+import jakarta.servlet.http.Cookie;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -56,8 +56,11 @@ class ProofReviewApiIT {
 
         String review = "/api/brand/campaigns/" + fixture.campaignId() + "/proof/" + fixture.submissionId() + "/review";
 
+        // The CSRF cookie and header the SPA sends. Not csrf(): it swaps the shared context's cookie token repository
+        // for a session one, and SecurityIT, which runs in the same context, then finds no XSRF-TOKEN cookie.
         assertTimeout(Duration.ofSeconds(5), () -> mvc.perform(post(review)
-                        .with(user(fixture.brand())).with(csrf())
+                        .with(user(fixture.brand()))
+                        .cookie(new Cookie("XSRF-TOKEN", "token")).header("X-XSRF-TOKEN", "token")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.decision").value(decision.name())));
