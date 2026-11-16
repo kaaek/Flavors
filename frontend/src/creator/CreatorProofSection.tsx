@@ -1,4 +1,4 @@
-import { useCallback, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { ApiError } from '../api/client'
 import {
   PROOF_LIMITS,
@@ -37,7 +37,42 @@ function isWebLink(value: string): boolean {
   }
 }
 
+/** For a draft, which may be incomplete: empty rows are simply not saved. */
 const cleanLinks = (rows: string[]) => rows.map((row) => row.trim()).filter((row) => row !== '')
+
+const rowNames = (rows: number[]) =>
+  rows.length === 1
+    ? `Link ${rows[0]}`
+    : `Links ${rows.slice(0, -1).join(', ')} and ${rows[rows.length - 1]}`
+
+/**
+ * Why the rows can't be sent, with the rows to fix (numbered from 1). An empty row is refused, not dropped
+ * (EX-F5.1.2): the creator may have meant to paste a link there.
+ */
+function linkProblem(rows: string[]): { message: string; rows: number[] } | null {
+  const trimmed = rows.map((row) => row.trim())
+  const numbersWhere = (test: (row: string) => boolean) =>
+    trimmed.flatMap((row, index) => (test(row) ? [index + 1] : []))
+  const empty = numbersWhere((row) => row === '')
+  if (empty.length === rows.length) {
+    return { message: 'Add at least one link to your posts before sending.', rows: empty }
+  }
+  if (empty.length > 0) {
+    const one = empty.length === 1
+    return {
+      message: `${rowNames(empty)} ${one ? 'is' : 'are'} empty. Fill ${one ? 'it' : 'them'} in or remove ${one ? 'it' : 'them'}.`,
+      rows: empty,
+    }
+  }
+  const invalid = numbersWhere((row) => !isWebLink(row))
+  if (invalid.length > 0) {
+    return {
+      message: `${rowNames(invalid)} ${invalid.length === 1 ? "isn't a" : "aren't"} full web address${invalid.length === 1 ? '' : 'es'}. Every link must start with https://`,
+      rows: invalid,
+    }
+  }
+  return null
+}
 
 /** Checked in the browser first; the backend checks the real file signature again. */
 function problemWith(files: File[], alreadyThere: number): string | null {
@@ -72,19 +107,25 @@ function startingLinks(proof: DeliveryProof): string[] {
   return links.length > 0 ? links : ['']
 }
 
-/**
- * UC-F5.1 for the creator: prepare one draft per round (links, optional screenshots), send it once, and see every
- * sent version. Shown on the campaign page from the moment the campaign is ACTIVE.
- */
-export function CreatorProofSection({
-  campaignId,
-  lastPostingDate,
-  onSubmitted,
-}: {
+interface Props {
   campaignId: number
   lastPostingDate: string | null
   onSubmitted: () => void
-}) {
+}
+
+/**
+ * UC-F5.1 for the creator: prepare one draft per round (links, and screenshots when the campaign asks for them or
+ * the creator wants to add them), send it once, and see every sent version. Shown on the campaign page from the
+ * moment the campaign is ACTIVE.
+ *
+ * Keyed by the campaign, so opening another campaign starts from a clean form: nothing typed, saved or being
+ * confirmed for one campaign can show on another.
+ */
+export function CreatorProofSection(props: Props) {
+  return <CampaignProofForm key={props.campaignId} {...props} />
+}
+
+function CampaignProofForm({ campaignId, lastPostingDate, onSubmitted }: Props) {
   const load = useCallback(() => getCreatorProof(campaignId), [campaignId])
   const result = useFetchWith<DeliveryProof>(load)
 
@@ -95,7 +136,17 @@ export function CreatorProofSection({
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The link rows the last Send refused (numbered from 1), marked until they are edited.
+  const [badRows, setBadRows] = useState<number[]>([])
   const [confirming, setConfirming] = useState(false)
+  // A save or send still running when the creator leaves (or opens another campaign) must not touch the page.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   if (result.status === 'loading') {
     return (
@@ -126,6 +177,7 @@ export function CreatorProofSection({
   function editLinks(next: string[]) {
     setEditedLinks(next)
     setDirty(true)
+    setBadRows([])
   }
 
   async function save(change: ProofDraftChange, newFiles: File[] = []) {
@@ -133,14 +185,16 @@ export function CreatorProofSection({
     setBusy(true)
     setError(null)
     try {
-      setUpdated(await saveProofDraft(campaignId, change, newFiles))
+      const saved = await saveProofDraft(campaignId, change, newFiles)
+      if (!mounted.current) return
+      setUpdated(saved)
       setEditedLinks(shown)
       setDirty(false)
       setSavedAt(new Date())
     } catch (e) {
-      setError(messageOf(e))
+      if (mounted.current) setError(messageOf(e))
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
@@ -162,13 +216,14 @@ export function CreatorProofSection({
   }
 
   function startSending() {
-    const final = cleanLinks(links)
-    if (final.length === 0) {
-      setError('Add at least one link to your posts before sending.')
+    const problem = linkProblem(links)
+    if (problem) {
+      setError(problem.message)
+      setBadRows(problem.rows)
       return
     }
-    if (!final.every(isWebLink)) {
-      setError('Every link must be a full web address, starting with https://')
+    if (proof.screenshotsRequired && files.length === 0) {
+      setError('This campaign asks for at least one screenshot. Add one before sending.')
       return
     }
     setError(null)
@@ -179,16 +234,20 @@ export function CreatorProofSection({
     setBusy(true)
     setError(null)
     try {
-      setUpdated(await submitProof(campaignId, { links: cleanLinks(links) }))
+      // startSending refused empty rows, so every row on screen is sent.
+      const sent = await submitProof(campaignId, { links: links.map((row) => row.trim()) })
+      if (!mounted.current) return
+      setUpdated(sent)
       setEditedLinks(null)
       setDirty(false)
       setConfirming(false)
       onSubmitted()
     } catch (e) {
+      if (!mounted.current) return
       setError(messageOf(e))
       setConfirming(false)
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
@@ -242,12 +301,16 @@ export function CreatorProofSection({
           <legend className="fl-label">Links to your posts</legend>
           <ul className="fl-prooflinks">
             {links.map((link, index) => (
-              <li key={index} className="fl-linkrow">
+              <li
+                key={index}
+                className={`fl-linkrow${badRows.includes(index + 1) ? ' is-invalid' : ''}`}
+              >
                 <input
                   className="fl-input"
                   type="url"
                   inputMode="url"
                   aria-label={`Link ${index + 1}`}
+                  aria-invalid={badRows.includes(index + 1) || undefined}
                   placeholder="https://www.instagram.com/reel/…"
                   value={link}
                   disabled={busy}
@@ -286,7 +349,8 @@ export function CreatorProofSection({
 
         <div className="fl-stack">
           <span className="fl-label">
-            Screenshots <small>(optional)</small>
+            Screenshots{' '}
+            <small>{proof.screenshotsRequired ? '(at least one required)' : '(optional)'}</small>
           </span>
           <label
             className="fl-dropzone"

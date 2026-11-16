@@ -268,6 +268,12 @@ export function CreatorCampaignDetailPage() {
               <dd>{campaign.contentRequirements}</dd>
             </>
           )}
+          {campaign.screenshotsRequired && (
+            <>
+              <dt>Screenshots</dt>
+              <dd>Required with the proof</dd>
+            </>
+          )}
 
           {campaign.sentAt && (
             <>

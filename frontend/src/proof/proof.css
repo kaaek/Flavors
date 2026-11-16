@@ -23,6 +23,12 @@
   min-width: 0;
 }
 
+/* A row the last Send refused, like an invalid fl-field. */
+.fl-linkrow.is-invalid .fl-input {
+  border-color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
 .fl-shots {
   list-style: none;
   margin: 0;

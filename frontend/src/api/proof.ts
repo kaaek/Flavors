@@ -34,8 +34,13 @@ export interface DeliveryProof {
   campaignStatus: CampaignStatus
   /** Timer C: five days after the latest final submission. */
   reviewDeadline: string | null
+  /** Part of the agreement: the final proof needs at least one screenshot (FR-F5.1). */
+  screenshotsRequired: boolean
   submissions: ProofSubmission[]
 }
+
+/** How often the brand's view checks for a new version: twice a minute, so one shows within a minute (FR-F5.5). */
+export const PROOF_REFRESH_MS = 30_000
 
 /** A field left out (or null) keeps what the draft has; an empty list clears it. */
 export interface ProofDraftChange {

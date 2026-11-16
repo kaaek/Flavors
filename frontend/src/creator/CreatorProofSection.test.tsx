@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { Campaign } from '../api/campaigns'
@@ -37,6 +37,7 @@ function proof(overrides: Partial<DeliveryProof> = {}): DeliveryProof {
     campaignName: 'Summer menu launch',
     campaignStatus: 'ACTIVE',
     reviewDeadline: null,
+    screenshotsRequired: false,
     submissions: [],
     ...overrides,
   }
@@ -67,6 +68,15 @@ async function proofPart(call: number) {
     form,
     proof: JSON.parse(text) as { links: string[] | null; retainedFileIds: number[] | null },
   }
+}
+
+/** A server answer the test releases when it wants, to check what happens to an answer that arrives late. */
+function later<T>() {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
 }
 
 function renderSection(onSubmitted = vi.fn()) {
@@ -218,6 +228,120 @@ it("shows the server's reason when a save is refused", async () => {
   )
 })
 
+// EX-F5.1.2
+it('refuses an empty link row next to a valid one instead of dropping it, and names the row', async () => {
+  apiFetchMock.mockResolvedValueOnce(proof())
+  renderSection()
+
+  fireEvent.change(await screen.findByLabelText('Link 1'), {
+    target: { value: 'https://example.com/post' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: /Add link/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
+
+  expect(screen.getByRole('alert')).toHaveTextContent('Link 2 is empty. Fill it in or remove it.')
+  expect(screen.getByLabelText('Link 2')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByLabelText('Link 1')).not.toHaveAttribute('aria-invalid')
+  expect(screen.queryByRole('group', { name: 'Send your proof?' })).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Remove link 2' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
+  expect(screen.getByRole('group', { name: 'Send your proof?' })).toBeInTheDocument()
+  expect(apiFetchMock).toHaveBeenCalledTimes(1)
+})
+
+// FR-F5.1
+it('asks for at least one screenshot when the campaign requires it', async () => {
+  const linked = draft({ links: ['https://example.com/post'] })
+  apiFetchMock
+    .mockResolvedValueOnce(proof({ screenshotsRequired: true, submissions: [linked] }))
+    .mockResolvedValueOnce(
+      proof({ screenshotsRequired: true, submissions: [{ ...linked, files: [shot(8)] }] }),
+    )
+  renderSection()
+
+  expect(await screen.findByText('(at least one required)')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'This campaign asks for at least one screenshot.',
+  )
+  expect(screen.queryByRole('group', { name: 'Send your proof?' })).not.toBeInTheDocument()
+
+  const png = new File(['png'], 'insights.png', { type: 'image/png' })
+  fireEvent.change(screen.getByLabelText('Add screenshots'), { target: { files: [png] } })
+  expect(await screen.findByRole('img', { name: 'Screenshot 1' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
+  expect(screen.getByRole('group', { name: 'Send your proof?' })).toBeInTheDocument()
+})
+
+it('keeps screenshots optional when the campaign does not require them', async () => {
+  apiFetchMock.mockResolvedValueOnce(
+    proof({ submissions: [draft({ links: ['https://example.com/post'] })] }),
+  )
+  renderSection()
+
+  expect(await screen.findByText('(optional)')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
+  expect(screen.getByRole('group', { name: 'Send your proof?' })).toBeInTheDocument()
+})
+
+it('starts from a clean form when another campaign is opened, and ignores a late save of the first', async () => {
+  const lateSave = later<DeliveryProof>()
+  apiFetchMock.mockImplementation(async (path: string) => {
+    if (path === '/api/creator/campaigns/42/proof') return proof()
+    if (path === '/api/creator/campaigns/42/proof/draft') return lateSave.promise
+    if (path === '/api/creator/campaigns/43/proof') return proof({ campaignId: 43 })
+    throw new Error(`Unexpected call to ${path}`)
+  })
+  const props = { lastPostingDate: '2030-01-30', onSubmitted: vi.fn() }
+  const { rerender } = render(<CreatorProofSection campaignId={42} {...props} />)
+
+  fireEvent.change(await screen.findByLabelText('Link 1'), {
+    target: { value: 'https://example.com/campaign-42' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
+  rerender(<CreatorProofSection campaignId={43} {...props} />)
+
+  expect(await screen.findByLabelText('Link 1')).toHaveValue('')
+  expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument()
+  await act(async () =>
+    lateSave.resolve(
+      proof({ submissions: [draft({ links: ['https://example.com/campaign-42'] })] }),
+    ),
+  )
+  expect(screen.getByLabelText('Link 1')).toHaveValue('')
+  expect(screen.queryByText(/Draft saved/)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Save draft' })).toBeEnabled()
+})
+
+it('does not tell the page about a send that finishes after another campaign was opened', async () => {
+  const lateSend = later<DeliveryProof>()
+  apiFetchMock.mockImplementation(async (path: string) => {
+    if (path === '/api/creator/campaigns/42/proof') {
+      return proof({ submissions: [draft({ links: ['https://example.com/post'] })] })
+    }
+    if (path === '/api/creator/campaigns/42/proof/submit') return lateSend.promise
+    if (path === '/api/creator/campaigns/43/proof') return proof({ campaignId: 43 })
+    throw new Error(`Unexpected call to ${path}`)
+  })
+  const props = { lastPostingDate: '2030-01-30', onSubmitted: vi.fn() }
+  const { rerender } = render(<CreatorProofSection campaignId={42} {...props} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Send proof' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
+  rerender(<CreatorProofSection campaignId={43} {...props} />)
+  expect(await screen.findByLabelText('Link 1')).toHaveValue('')
+  await act(async () =>
+    lateSend.resolve(
+      proof({ campaignStatus: 'PROOF_SUBMITTED', submissions: [{ ...roundOne, id: 6 }] }),
+    ),
+  )
+
+  expect(props.onSubmitted).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: 'Send proof' })).toBeEnabled()
+  expect(screen.queryByText(/The brand reviews it by/)).not.toBeInTheDocument()
+})
+
 const campaign: Campaign = {
   id: 42,
   name: 'Summer menu launch',
@@ -229,6 +353,7 @@ const campaign: Campaign = {
   lastPostingDate: '2030-01-30',
   deliverables: [{ platform: 'INSTAGRAM', type: 'REEL', count: 2 }],
   contentRequirements: null,
+  screenshotsRequired: false,
   sentAt: '2030-01-01T10:00:00Z',
   responseDeadline: '2030-01-04T10:00:00Z',
   agreedPriceCents: 50000,

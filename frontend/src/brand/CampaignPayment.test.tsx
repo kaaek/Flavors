@@ -29,6 +29,7 @@ const awaiting: Campaign = {
   lastPostingDate: '2030-01-30',
   deliverables: [{ platform: 'INSTAGRAM', type: 'REEL', count: 2 }],
   contentRequirements: null,
+  screenshotsRequired: false,
   sentAt: '2030-01-01T10:00:00Z',
   responseDeadline: '2030-01-04T10:00:00Z',
   agreedPriceCents: 65000,

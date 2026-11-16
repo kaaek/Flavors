@@ -81,7 +81,10 @@ export function CampaignDetailPage() {
   const [campaignOverride, setCampaignOverride] = useState<Campaign | null>(null)
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
-  const current = campaignOverride ?? (result.status === 'ready' ? result.data : null)
+  // An override belongs to the campaign it was loaded for: after opening another campaign, or when a late answer
+  // about the previous one arrives, it no longer applies.
+  const override = campaignOverride?.id === campaignId ? campaignOverride : null
+  const current = override ?? (result.status === 'ready' ? result.data : null)
   const awaitingPayment = current ? isAwaitingPayment(current.status) : false
 
   // The provider's answer can arrive after this page opened, so the escrow is checked again every 30 seconds.
@@ -165,7 +168,7 @@ export function CampaignDetailPage() {
     )
   }
 
-  const campaign = campaignOverride ?? result.data
+  const campaign = override ?? result.data
   // A draft is edited, not read.
   if (campaign.status === 'DRAFT')
     return <Navigate to={`/brand/campaigns/${campaign.id}/edit`} replace />
@@ -303,6 +306,11 @@ export function CampaignDetailPage() {
           campaignId={campaign.id}
           creatorName={campaign.creator?.displayName ?? null}
           lastPostingDate={campaign.lastPostingDate}
+          onChanged={() =>
+            void getCampaign(campaign.id)
+              .then(setCampaignOverride)
+              .catch(() => undefined)
+          }
         />
       )}
       <section className="fl-card fl-section" aria-label="Campaign details">
@@ -336,6 +344,12 @@ export function CampaignDetailPage() {
             <>
               <dt>Content requirements</dt>
               <dd>{campaign.contentRequirements}</dd>
+            </>
+          )}
+          {campaign.screenshotsRequired && (
+            <>
+              <dt>Screenshots</dt>
+              <dd>Required with the proof</dd>
             </>
           )}
           {campaign.sentAt && (
