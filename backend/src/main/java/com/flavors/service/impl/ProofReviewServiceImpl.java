@@ -113,7 +113,7 @@ public class ProofReviewServiceImpl implements ProofReviewService {
         Campaign campaign = campaigns.findById(campaignId).orElseThrow(DeliveryProofNotFoundException::new);
         boolean owns = role == Role.ADMIN
                 || (role == Role.BRAND && campaign.getBrandId().equals(userId))
-                || (role == Role.CREATOR && Objects.equals(campaign.getCreatorId(), userId));
+                || (role == Role.CREATOR && DeliveryProofServiceImpl.visibleToCreator(campaign, userId));
         if (!owns) {
             throw new DeliveryProofNotFoundException();
         }

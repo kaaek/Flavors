@@ -107,6 +107,30 @@ class ProofImageValidatorTest {
     }
 
     @Test
+    void rejectsWebpFilesThatAreOnlyAHeader() {
+        // RIFF header, a chunk header, then only the 10-byte VP8 frame header (or 5-byte VP8L header), with sizes
+        // that match, so the container itself looks complete.
+        assertDamaged(webpWithFirstChunkCutTo(TestImages.WEBP_LOSSY, 10), "image/webp");
+        assertDamaged(webpWithFirstChunkCutTo(TestImages.WEBP_LOSSLESS, 5), "image/webp");
+        // The VP8 header announces a 9-byte first partition and token data after it; here the data stops right after
+        // that partition.
+        assertDamaged(webpWithFirstChunkCutTo(TestImages.WEBP_LOSSY, 19), "image/webp");
+
+        byte[] animated = TestImages.WEBP_ANIMATED.clone();
+        int frame = TestImages.indexOf(animated, "VP8L".getBytes(StandardCharsets.US_ASCII));
+        animated[frame + 4] = 5;
+        assertDamaged(animated, "image/webp");
+    }
+
+    /** The WebP with its first chunk cut to {@code length} bytes, and the chunk and RIFF sizes made to match. */
+    private static byte[] webpWithFirstChunkCutTo(byte[] webp, int length) {
+        byte[] cut = Arrays.copyOf(webp, 12 + 8 + length);
+        TestImages.putU32le(cut, 4, cut.length - 8);
+        TestImages.putU32le(cut, 16, length);
+        return cut;
+    }
+
+    @Test
     void rejectsAnImageWithTooManyPixelsBeforeDecodingIt() {
         assertTooLarge(TestImages.pngClaiming(100_000, 100_000), "image/png");
         // Two 32-bit sides whose product would overflow a long.

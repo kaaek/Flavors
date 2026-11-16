@@ -247,6 +247,15 @@ class ProofReviewServiceImplTest {
     }
 
     @Test
+    void aCampaignStillInDraftShowsTheCreatorNothingNotEvenTheAgreement() {
+        field(campaign, "status", CampaignStatus.DRAFT);
+        field(campaign, "contentRequirements", "Not for the creator yet");
+
+        assertThatThrownBy(() -> service.history(7, Role.CREATOR, 42))
+                .isInstanceOf(DeliveryProofNotFoundException.class);
+    }
+
+    @Test
     void aDraftCannotBeReviewed() {
         submission = new ProofSubmission(42, 1);
         field(submission, "id", 5L);

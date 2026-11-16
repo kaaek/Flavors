@@ -90,6 +90,13 @@ final class TestImages {
         bytes[at + 3] = (byte) value;
     }
 
+    static void putU32le(byte[] bytes, int at, long value) {
+        bytes[at] = (byte) value;
+        bytes[at + 1] = (byte) (value >>> 8);
+        bytes[at + 2] = (byte) (value >>> 16);
+        bytes[at + 3] = (byte) (value >>> 24);
+    }
+
     private static long u32be(byte[] b, int i) {
         return (b[i] & 0xffL) << 24 | (b[i + 1] & 0xffL) << 16 | (b[i + 2] & 0xffL) << 8 | (b[i + 3] & 0xffL);
     }

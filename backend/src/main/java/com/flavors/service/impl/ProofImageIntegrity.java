@@ -25,7 +25,8 @@ import javax.imageio.stream.MemoryCacheImageInputStream;
  *       damage. JPEG has no checksums, so damage that still decodes cleanly cannot be seen.</li>
  *   <li>GIF: every block is walked up to the trailer, then the first frame is decoded.</li>
  *   <li>WebP: the JDK has no WebP decoder, so the RIFF container, every chunk length and the bitstream header are
- *       checked. Damage inside the compressed data itself is not detected.</li>
+ *       checked, and the image data the header announces must follow it (a header-only file is refused). Damage
+ *       inside the compressed data itself is not detected.</li>
  * </ul>
  *
  * <p>Resource limits: at most {@link #MAX_PIXELS} pixels, read from the header before anything is decoded. Decoding
@@ -200,6 +201,7 @@ final class ProofImageIntegrity {
                     if (!extended || size < 16 + 8) {
                         throw damaged();
                     }
+                    requireAnimationFrame(bytes, at + 16, at + (int) size);
                     frame = true;
                 }
                 default -> {
@@ -223,12 +225,19 @@ final class ProofImageIntegrity {
                 || (bytes[at + 5] & 0xff) != 0x2a) {
             throw damaged();
         }
+        // The tag's top 19 bits are the first partition's length; it and at least one byte of the token partition
+        // must follow the 10-byte header, as libwebp requires before it decodes anything.
+        long firstPartition = Bytes.u24le(bytes, at) >>> 5;
+        if (firstPartition == 0 || 10 + firstPartition >= size) {
+            throw damaged();
+        }
         requireSize(Bytes.u16le(bytes, at + 6) & 0x3fff, Bytes.u16le(bytes, at + 8) & 0x3fff);
     }
 
     private static void requireVp8l(byte[] bytes, int at, long size) {
         // Signature 0x2F, then 14 bits width - 1, 14 bits height - 1, 1 alpha bit and a 3-bit version that must be 0.
-        if (size < 5 || (bytes[at] & 0xff) != 0x2f) {
+        // Image data must follow these 5 bytes.
+        if (size <= 5 || (bytes[at] & 0xff) != 0x2f) {
             throw damaged();
         }
         long bits = Bytes.u32le(bytes, at + 1);
@@ -236,6 +245,33 @@ final class ProofImageIntegrity {
             throw damaged();
         }
         requireSize(1 + (bits & 0x3fff), 1 + ((bits >>> 14) & 0x3fff));
+    }
+
+    /** The chunks inside one animation frame (after its 16-byte header): an optional ALPH, then a VP8 or VP8L. */
+    private static void requireAnimationFrame(byte[] bytes, int from, int end) {
+        boolean image = false;
+        int at = from;
+        while (at < end) {
+            if (end - at < 8) {
+                throw damaged();
+            }
+            String chunk = new String(bytes, at, 4, StandardCharsets.US_ASCII);
+            long size = Bytes.u32le(bytes, at + 4);
+            if (size > end - at - 8) {
+                throw damaged();
+            }
+            if (chunk.equals("VP8 ")) {
+                requireVp8(bytes, at + 8, size);
+                image = true;
+            } else if (chunk.equals("VP8L")) {
+                requireVp8l(bytes, at + 8, size);
+                image = true;
+            }
+            at += 8 + (int) (size + (size & 1));
+        }
+        if (!image) {
+            throw damaged();
+        }
     }
 
     // --- Decoding (PNG, JPEG, GIF) ----------------------------------------------------------------------------------

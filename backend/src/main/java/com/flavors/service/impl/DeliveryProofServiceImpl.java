@@ -156,8 +156,7 @@ public class DeliveryProofServiceImpl implements DeliveryProofService {
         Campaign campaign = campaigns.findById(submission.getCampaignId())
                 .orElseThrow(DeliveryProofNotFoundException::new);
 
-        boolean creatorOwns = role == Role.CREATOR && campaign.getCreatorId() != null
-                && campaign.getCreatorId().equals(userId);
+        boolean creatorOwns = role == Role.CREATOR && visibleToCreator(campaign, userId);
         boolean brandOwns = role == Role.BRAND && campaign.getBrandId().equals(userId);
         boolean admin = role == Role.ADMIN;
         boolean maySeeSubmitted = submission.getStatus() == ProofSubmissionStatus.SUBMITTED
@@ -172,10 +171,19 @@ public class DeliveryProofServiceImpl implements DeliveryProofService {
     private Campaign creatorCampaign(long creatorId, long campaignId, boolean lock) {
         Campaign campaign = (lock ? campaigns.findByIdForUpdate(campaignId) : campaigns.findById(campaignId))
                 .orElseThrow(DeliveryProofNotFoundException::new);
-        if (campaign.getCreatorId() == null || !campaign.getCreatorId().equals(creatorId)) {
+        if (!visibleToCreator(campaign, creatorId)) {
             throw new DeliveryProofNotFoundException();
         }
         return campaign;
+    }
+
+    /**
+     * The creator's campaign pages' rule (Architecture section 16): a draft that already names her is not hers to see
+     * until it is sent, so it answers 404 like someone else's campaign or an unknown id.
+     */
+    static boolean visibleToCreator(Campaign campaign, long creatorId) {
+        return campaign.getStatus() != CampaignStatus.DRAFT && campaign.getCreatorId() != null
+                && campaign.getCreatorId().equals(creatorId);
     }
 
     private static void requireEditable(Campaign campaign) {

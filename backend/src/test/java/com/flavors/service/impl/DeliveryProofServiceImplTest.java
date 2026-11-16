@@ -126,6 +126,23 @@ class DeliveryProofServiceImplTest {
     }
 
     @Test
+    void aDraftThatNamesTheCreatorIsNotFoundForHerLikeAnUnknownCampaign() {
+        when(campaign.getStatus()).thenReturn(CampaignStatus.DRAFT);
+        when(files.findById(8L)).thenReturn(Optional.of(existingFile()));
+        when(submissions.findById(5L)).thenReturn(Optional.of(draft));
+
+        assertThatThrownBy(() -> service.getForCreator(7, 42)).isInstanceOf(DeliveryProofNotFoundException.class);
+        assertThatThrownBy(() -> service.saveDraft(7, 42, null, List.of()))
+                .isInstanceOf(DeliveryProofNotFoundException.class);
+        assertThatThrownBy(() -> service.submit(7, 42, null, List.of()))
+                .isInstanceOf(DeliveryProofNotFoundException.class);
+        assertThatThrownBy(() -> service.download(7, Role.CREATOR, 8))
+                .isInstanceOf(DeliveryProofNotFoundException.class);
+        verifyNoInteractions(storage, links, audit);
+        verify(submissions, never()).saveAndFlush(any());
+    }
+
+    @Test
     void submittedCampaignCannotBeEditedOrSentAgain() {
         when(campaign.getStatus()).thenReturn(CampaignStatus.PROOF_SUBMITTED);
 
