@@ -750,6 +750,9 @@ a complete, undamaged image of at most 25 megapixels (see image checks below). S
 | `GET /api/admin/campaigns/{campaignId}/proof` | ADMIN | Submitted versions only |
 | `GET /api/proof-files/{fileId}` | authorized CREATOR, BRAND or ADMIN | Proxy one private screenshot after ownership/state checks |
 
+- **Who sees what:** a creator sees a campaign's proof only once it is sent to her: like her campaign pages (§16), a
+  campaign still in `DRAFT` that already names her answers 404 on every creator proof endpoint (read, save, submit,
+  screenshot download), exactly like someone else's campaign or an unknown id (NF-1).
 - Draft saves and final submission take the campaign row lock (`CampaignRepository.findByIdForUpdate`), the same lock the
   request answers and payments use, so they run one after the other. Database partial unique indexes still enforce one
   draft and one submitted version per round if two app instances receive the same operation.
@@ -760,7 +763,9 @@ a complete, undamaged image of at most 25 megapixels (see image checks below). S
   the file, so: PNG chunks are walked to `IEND` with every CRC checked, then the image is decoded; JPEG is decoded and
   any decoder warning (a missing end marker, a short data segment) counts as damage; GIF blocks are walked to the trailer
   and the first frame is decoded; WebP has no JDK decoder, so its RIFF size, every chunk length and the VP8/VP8L/VP8X
-  header are checked. Damage that still decodes cleanly cannot be seen (JPEG has no checksums, and WebP data is not
+  header are checked, and the data the header announces must follow it (a VP8 frame's first partition and token data,
+  VP8L image data, the image inside each animation frame), so a header-only file is refused. Damage that still decodes
+  cleanly cannot be seen (JPEG has no checksums, and WebP data is not
   decoded). Resource limits: the size is read from the header and refused above 25 megapixels before any decoding;
   decoding subsamples to at most 1024 pixels per side, skips metadata (compressed text chunks are never inflated),
   reads from memory (no temporary files), and at most two uploads are decoded at a time.
@@ -777,7 +782,8 @@ a complete, undamaged image of at most 25 megapixels (see image checks below). S
   so the pages only gain one block each. The creator's `CreatorProofSection` edits the round's draft: up to 10 link rows
   and a dropzone for screenshots, checked in the browser first (type, 5 MB, at most 5). A screenshot is saved as soon as
   it is uploaded, as the design's dropzone says; every save also sends the links on screen, so nothing typed is lost.
-  **Send proof** asks for a confirmation inline, like the admin's reject form, then shows Timer C. Before that it
+  **Send proof** asks for a confirmation inline, like the admin's reject form, then shows Timer C (`ReviewTimer`,
+  redrawn every minute until it ends). Before that it
   refuses an empty or invalid row and marks it, and asks for a screenshot when the campaign requires one. A correction
   round starts from the last version's links (screenshots are uploaded again). The brand's `BrandProofSection` is
   read-only and checks for a new version every 30 seconds while one can arrive (`ACTIVE`, `CORRECTIONS_REQUESTED`), so
@@ -790,14 +796,16 @@ a complete, undamaged image of at most 25 megapixels (see image checks below). S
   belongs to another campaign.
 - Tests: `DeliveryProofControllerTest`, `DeliveryProofServiceImplTest` (including required and optional screenshots),
   `ProofImageValidatorTest` (real images of each type; cut off anywhere, damaged chunks, damaged data with valid
-  checksums, broken WebP headers, too many pixels, the 25-megapixel edge), `FileSystemProofFileStorageTest`,
-  `S3ProofFileStorageTest`, and `DeliveryProofServiceImplIT` (draft privacy, final submission/Timer C, invalid and blank
-  links, required screenshots, version retention, ownership, transactional object cleanup, concurrent submission,
-  limits and content validation, a cut-off screenshot leaves nothing stored); `BrandCampaignControllerTest` and
-  `CampaignServiceImplIT` for the campaign setting. Frontend `CreatorProofSection.test.tsx` (blank rows, required
-  screenshots, a clean form and ignored late answers after switching campaigns), `BrandProofSection.test.tsx` (the
-  30-second check, navigating between campaigns, a late check), `CampaignFormPage.test.tsx` (the checkbox),
-  `client.test.ts` (FormData) and `timeLeft.test.ts`.
+  checksums, broken WebP headers, header-only WebP files, too many pixels, the 25-megapixel edge),
+  `FileSystemProofFileStorageTest`, `S3ProofFileStorageTest`, and `DeliveryProofServiceImplIT` (draft privacy, final
+  submission/Timer C, invalid and blank links, required screenshots, version retention, ownership, transactional
+  object cleanup, concurrent submission, limits and content validation, a cut-off screenshot leaves nothing stored);
+  `BrandCampaignControllerTest` and `CampaignServiceImplIT` for the campaign setting; `CreatorProofVisibilityIT` (a
+  draft naming the creator answers on every creator proof and review endpoint exactly like an unknown campaign).
+  Frontend `CreatorProofSection.test.tsx` (blank rows, required screenshots, a clean form and ignored late answers
+  after switching campaigns), `BrandProofSection.test.tsx` (the 30-second check, navigating between campaigns, a late
+  check), `CampaignFormPage.test.tsx` (the checkbox), `ReviewTimer.test.tsx` (the countdown moves while the page is
+  open), `client.test.ts` (FormData) and `timeLeft.test.ts`.
   `CampaignPayment.test.tsx` and `CreatorCampaignDetailPage.test.tsx` stub the proof section, since they test payment
   and the request answer only.
 
@@ -841,6 +849,12 @@ payment/dispute stories. V5 already owns `proof_review`, so no new migration is 
   reason. Because the campaign stays `PROOF_SUBMITTED` after approve/reject, `ProofOutcome` says what happened and that
   release or a dispute is not available yet, instead of relying on the status chip. If the creator's reviews can't be
   loaded, the proof form still works without them.
+- **Kept current:** with reviews, the brand's view also changes from outside the page: a decision made in another tab
+  or session can ask for corrections, which leads to a new version. So `BrandProofSection` checks every 30 seconds while
+  the campaign is `ACTIVE`, `PROOF_SUBMITTED` or `CORRECTIONS_REQUESTED` (not only while a version can arrive, as in
+  §18), and stops once nothing can change (`COMPLETED`, `DISPUTED` and the other end states).
+- **Creators:** the reviews endpoint follows the same rule as the proof (§18): a campaign still in `DRAFT` answers 404
+  to the creator it names, so its agreement is not shown before it is sent.
 - **Per version, per campaign:** `BrandProofSection` keys `ProofReviewPanel` by the version under review, so its
   state (the choice, the reason, "decided") belongs to that version: when the creator sends a corrected version, the
   controls come back for it. The section itself is keyed by the campaign (§18). Its reloads (the 30-second check from
@@ -867,5 +881,6 @@ the screenshot setting), overdue filtering, and approval and rejection each reco
 `ProofReviewApiIT` times both decisions through the whole HTTP stack (security, JSON, controller, PostgreSQL). CI must
 run the integration suite; test timings alone do not establish NF-4 in production. Frontend: `BrandProofSection.test.tsx`
 (agreement, each decision and its confirmation, reason rules, the last round, an expired review time, fresh controls
-for a corrected version, a decision that finishes after navigating) and `CreatorProofSection.test.tsx` (correction
+for a corrected version, a decision that finishes after navigating, an open page kept current while corrections are
+requested in another session and the creator resends) and `CreatorProofSection.test.tsx` (correction
 reason and rounds left, approval and rejection notes, missing reviews).
