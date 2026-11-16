@@ -701,3 +701,26 @@ Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (
 - **Not built here:** the real Whish merchant integration. The paths and answer fields come from unofficial notes and are
   configurable (`flavors.whish.create-path`, `status-path`). See the README for what the merchant account must provide.
   Amount and currency must be verified once the official Whish spec is available: the status check does not compare them today.
+
+
+## EEC-35 — Brand view of a creator's verified portfolio
+
+A logged-in **BRAND** opens `/brand/creators/:creatorId/portfolio` from the creator search results.
+`App.tsx` guards this route using `RequireRole` and `AppShell`. The read-only React page
+`brand/CreatorPortfolioPage.tsx` loads `GET /api/brand/creators/{creatorId}/portfolio` through
+`apiFetch`/`useFetch` (same-origin session cookie). The backend `CreatorPortfolioController` delegates
+to `PortfolioViewService` / `PortfolioViewServiceImpl`, which assembles a
+`CreatorPortfolioResponse` DTO from the approved creator, connected social accounts, featured
+campaigns, tracked redemptions, and reviews. The browser never receives JPA entities.
+
+- **Access:** only logged-in brands may view approved creators; authorization and approval checks
+  are enforced server-side, not inferred from frontend labels.
+- **Verification:** a campaign result is verified only when its status is `COMPLETED` and it has
+  at least one tracked redemption. Unverified results are never given a verified badge. ROI is
+  displayed only when returned by the backend; null is shown as unavailable.
+- **Metrics:** each connected account's follower count, engagement rate and `lastPulledAt`
+  are shown together, so stale figures remain visibly dated. Monetary amounts are integer USD cents.
+- **Empty states:** no featured campaigns, no reviews and no social accounts each have an
+  explicit message; other portfolio sections remain visible. Failed requests show an error state.
+- **Tests:** frontend `CreatorPortfolioPage.test.tsx`; backend `CreatorPortfolioControllerTest`,
+  `PortfolioViewServiceImplIT` and `RoiTest`.
