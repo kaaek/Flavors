@@ -13,6 +13,7 @@ import { CampaignDetailPage } from './brand/CampaignDetailPage'
 import { CampaignFormPage } from './brand/CampaignFormPage'
 import { CampaignListPage } from './brand/CampaignListPage'
 import { CreatorSearchPage } from './brand/CreatorSearchPage'
+import { CreatorPortfolioPage } from './brand/CreatorPortfolioPage'
 import { BrandSearchPage } from './creator/BrandSearchPage'
 import { CreatorHome } from './creator/CreatorHome'
 import { CreatorCampaignListPage } from './creator/CreatorCampaignListPage'
@@ -86,6 +87,7 @@ export function AppRoutes() {
       <Route element={<RoleArea role="BRAND" />}>
         <Route path="/brand" element={<BrandHome />} />
         <Route path="/brand/creators" element={<CreatorSearchPage />} />
+        <Route path="/brand/creators/:creatorId/portfolio" element={<CreatorPortfolioPage />} />
         <Route path="/brand/campaigns" element={<CampaignListPage />} />
         <Route path="/brand/campaigns/new" element={<CampaignFormPage />} />
         <Route path="/brand/campaigns/:id" element={<CampaignDetailPage />} />
