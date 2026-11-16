@@ -801,10 +801,10 @@ a complete, undamaged image of at most 25 megapixels (see image checks below). S
   `CampaignPayment.test.tsx` and `CreatorCampaignDetailPage.test.tsx` stub the proof section, since they test payment
   and the request answer only.
 
-## 19. Campaign delivery review (UC-F6.1, EEC-47) - backend core
+## 19. Campaign delivery review (UC-F6.1, EEC-47) - built, payment follow-ups deferred
 
-This increment depends on EEC-46. It implements review decisions and correction rounds, not the payment/dispute stories
-or the campaign frontend. V5 already owns `proof_review`, so no new migration is required.
+This increment depends on EEC-46. It implements review decisions and correction rounds, backend and pages, not the
+payment/dispute stories. V5 already owns `proof_review`, so no new migration is required.
 
 | Method and path | Who | What |
 |---|---|---|
@@ -832,6 +832,14 @@ or the campaign frontend. V5 already owns `proof_review`, so no new migration is
   `PROOF_REJECTED`) commit with the review and campaign change.
 - Decision timestamps are normalized to PostgreSQL microseconds before persistence, so an identical retry returns the
   same timestamp. The deciding user's id stays in the database and audit log; review responses do not expose it.
+- **Pages:** the brand's `BrandProofSection` also loads the reviews. `ProofReviewPanel` shows only while the backend lists
+  decisions: Timer C, the agreement to check against, and Approve / Request corrections / Reject, each confirmed
+  inline (a rejection needs a reason; a correction note is optional). After a decision the section and the page header
+  reload. Both sides show the decision on the newest version with `ProofOutcome`, matched against the versions on screen
+  so a version sent a moment ago never shows an older decision, and `ProofRounds` marks each round with its decision and
+  reason. Because the campaign stays `PROOF_SUBMITTED` after approve/reject, `ProofOutcome` says what happened and that
+  release or a dispute is not available yet, instead of relying on the status chip. If the creator's reviews can't be
+  loaded, the proof form still works without them.
 
 **Deferred integration, not a completed financial workflow:** approval/rejection clears Timer C but leaves the campaign
 `PROOF_SUBMITTED` while the required follow-up is pending. `ProofReviewResponse.requiredFollowUp` is `RELEASE_PAYMENT`,
@@ -850,4 +858,6 @@ role/CSRF guards, validation and deadline boundaries without Docker. `ProofRevie
 translation without a database. `ProofReviewServiceImplIT` covers PostgreSQL mappings,
 persisted decisions/audit, the complete correction/resubmission cycle, concurrent decisions, agreement reads, overdue
 filtering, and five-second decision recording. CI must run the integration suite; unit timings alone do not establish NF-4
-in production.
+in production. Frontend: `BrandProofSection.test.tsx` (agreement, each decision and its confirmation, reason rules, the
+last round, an expired review time) and `CreatorProofSection.test.tsx` (correction reason and rounds left, approval and
+rejection notes, missing reviews).

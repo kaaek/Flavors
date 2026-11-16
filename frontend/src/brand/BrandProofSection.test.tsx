@@ -2,8 +2,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { Campaign } from '../api/campaigns'
-import { apiFetch } from '../api/client'
+import { ApiError, apiFetch } from '../api/client'
 import { PROOF_REFRESH_MS, type DeliveryProof, type ProofSubmission } from '../api/proof'
+import type { CampaignProofReviews, ProofReview } from '../api/proofReviews'
 import { BrandProofSection } from './BrandProofSection'
 import { CampaignDetailPage } from './CampaignDetailPage'
 
@@ -13,6 +14,9 @@ vi.mock('../api/client', async (importOriginal) => ({
 }))
 
 const apiFetchMock = vi.mocked(apiFetch)
+
+const PROOF = '/api/brand/campaigns/42/proof'
+const REVIEWS = '/api/brand/campaigns/42/proof/reviews'
 
 function version(round: number, overrides: Partial<ProofSubmission> = {}): ProofSubmission {
   return {
@@ -32,15 +36,63 @@ function proof(overrides: Partial<DeliveryProof> = {}): DeliveryProof {
     campaignId: 42,
     campaignName: 'Summer menu launch',
     campaignStatus: 'PROOF_SUBMITTED',
-    reviewDeadline: '2030-01-21T12:05:00Z',
+    reviewDeadline: '2099-01-21T12:05:00Z',
     screenshotsRequired: false,
     submissions: [],
     ...overrides,
   }
 }
 
-function renderSection() {
-  const onChanged = vi.fn()
+function review(overrides: Partial<ProofReview> = {}): ProofReview {
+  return {
+    id: 70,
+    submissionId: 1,
+    decision: 'APPROVED',
+    reason: null,
+    decidedAt: '2030-01-18T09:00:00Z',
+    requiredFollowUp: 'RELEASE_PAYMENT',
+    ...overrides,
+  }
+}
+
+function reviews(overrides: Partial<CampaignProofReviews> = {}): CampaignProofReviews {
+  return {
+    campaignId: 42,
+    campaignStatus: 'PROOF_SUBMITTED',
+    correctionRoundsUsed: 0,
+    reviewDeadline: '2099-01-21T12:05:00Z',
+    latestSubmissionId: 1,
+    agreement: {
+      startDate: '2030-01-10',
+      lastPostingDate: '2030-01-30',
+      contentRequirements: 'Show the new lunch menu and tag the branch.',
+      deliverables: [{ platform: 'INSTAGRAM', type: 'REEL', count: 2 }],
+    },
+    availableDecisions: ['APPROVED', 'CORRECTIONS_REQUESTED', 'REJECTED'],
+    reviews: [],
+    ...overrides,
+  }
+}
+
+type Options = { method?: string; body?: unknown }
+
+/** Answers by "METHOD path", so the order of the page's requests doesn't matter. */
+function serve(routes: Record<string, unknown>) {
+  apiFetchMock.mockImplementation((async (path: string, options?: Options) => {
+    const key = `${options?.method ?? 'GET'} ${path}`
+    if (!(key in routes)) throw new Error(`Unexpected request: ${key}`)
+    const answer = routes[key]
+    return typeof answer === 'function' ? (answer as (o?: Options) => unknown)(options) : answer
+  }) as typeof apiFetch)
+}
+
+function requestsTo(method: string, path: string) {
+  return apiFetchMock.mock.calls
+    .filter(([p, o]) => p === path && (o?.method ?? 'GET') === method)
+    .map(([, o]) => o as Options)
+}
+
+function renderSection(onChanged = vi.fn()) {
   render(
     <BrandProofSection
       campaignId={42}
@@ -50,6 +102,21 @@ function renderSection() {
     />,
   )
   return onChanged
+}
+
+/** A review that is waiting for the brand, and what the backend returns after the decision is saved. */
+function awaitingDecision(after: Partial<CampaignProofReviews>, afterStatus: Campaign['status']) {
+  let saved: ProofReview | null = null
+  serve({
+    [`GET ${PROOF}`]: () =>
+      proof({ submissions: [version(1)], campaignStatus: saved ? afterStatus : 'PROOF_SUBMITTED' }),
+    [`GET ${REVIEWS}`]: () => (saved ? reviews({ ...after, reviews: [saved] }) : reviews()),
+    [`POST ${PROOF}/1/review`]: (options?: Options) => {
+      const body = options?.body as { decision: ProofReview['decision']; reason: string | null }
+      saved = review({ decision: body.decision, reason: body.reason })
+      return saved
+    },
+  })
 }
 
 /** A server answer the test releases when it wants, to check what happens to an answer that arrives late. */
@@ -91,8 +158,34 @@ async function checkForNewProof() {
   await act(async () => refreshes[refreshes.length - 1]())
 }
 
+/** What the brand's view gets before the creator sends anything. */
+function notSentYet(campaignId: number) {
+  return {
+    proof: proof({ campaignId, campaignStatus: 'ACTIVE', reviewDeadline: null }),
+    reviews: reviews({
+      campaignId,
+      campaignStatus: 'ACTIVE',
+      reviewDeadline: null,
+      latestSubmissionId: null,
+      availableDecisions: [],
+    }),
+  }
+}
+
+const corrections = review({
+  decision: 'CORRECTIONS_REQUESTED',
+  requiredFollowUp: 'RESUBMIT_PROOF',
+})
+
 it('says when nothing has been sent yet', async () => {
-  apiFetchMock.mockResolvedValueOnce(proof({ campaignStatus: 'ACTIVE', reviewDeadline: null }))
+  serve({
+    [`GET ${PROOF}`]: proof({ campaignStatus: 'ACTIVE', reviewDeadline: null }),
+    [`GET ${REVIEWS}`]: reviews({
+      campaignStatus: 'ACTIVE',
+      latestSubmissionId: null,
+      availableDecisions: [],
+    }),
+  })
   renderSection()
 
   expect(
@@ -100,7 +193,7 @@ it('says when nothing has been sent yet', async () => {
       "Nour Haddad hasn't sent the proof yet. The last posting date is Jan 30, 2030.",
     ),
   ).toBeInTheDocument()
-  expect(apiFetchMock).toHaveBeenCalledWith('/api/brand/campaigns/42/proof')
+  expect(screen.queryByRole('heading', { name: 'Review proof' })).not.toBeInTheDocument()
 })
 
 it('shows every sent version, newest first and open, with its links and screenshots', async () => {
@@ -110,16 +203,22 @@ it('shows every sent version, newest first and open, with its links and screensh
     sizeBytes: 100,
     downloadUrl: '/api/proof-files/8',
   }
-  apiFetchMock.mockResolvedValueOnce(
-    proof({ submissions: [version(1), version(2, { files: [screenshot] })] }),
-  )
+  serve({
+    [`GET ${PROOF}`]: proof({ submissions: [version(1), version(2, { files: [screenshot] })] }),
+    [`GET ${REVIEWS}`]: reviews({
+      latestSubmissionId: 2,
+      correctionRoundsUsed: 1,
+      reviews: [review({ decision: 'CORRECTIONS_REQUESTED', reason: 'Tag the branch.' })],
+    }),
+  })
   renderSection()
 
   const rounds = await screen.findAllByText(/^Round \d$/)
   expect(rounds.map((r) => r.textContent)).toEqual(['Round 2', 'Round 1'])
   const newest = rounds[0].closest('details') as HTMLDetailsElement
+  const older = rounds[1].closest('details') as HTMLDetailsElement
   expect(newest.open).toBe(true)
-  expect((rounds[1].closest('details') as HTMLDetailsElement).open).toBe(false)
+  expect(older.open).toBe(false)
   expect(within(newest).getByRole('link', { name: /round-2/ })).toHaveAttribute(
     'href',
     'https://www.instagram.com/reel/round-2/',
@@ -128,26 +227,129 @@ it('shows every sent version, newest first and open, with its links and screensh
     'src',
     '/api/proof-files/8',
   )
+  // The older round carries the brand's earlier decision and its reason.
+  expect(within(older).getByText('Corrections requested')).toBeInTheDocument()
+  expect(within(older).getByText('Tag the branch.')).toBeInTheDocument()
 })
 
 it('never turns a link that is not a web address into a clickable link', async () => {
-  apiFetchMock.mockResolvedValueOnce(
-    proof({ submissions: [version(1, { links: ['javascript:alert(1)'] })] }),
-  )
+  serve({
+    [`GET ${PROOF}`]: proof({ submissions: [version(1, { links: ['javascript:alert(1)'] })] }),
+    [`GET ${REVIEWS}`]: reviews({ availableDecisions: [] }),
+  })
   renderSection()
 
   expect(await screen.findByText('javascript:alert(1)')).toBeInTheDocument()
   expect(screen.queryByRole('link')).not.toBeInTheDocument()
 })
 
-it('waits for a new version while corrections are requested', async () => {
-  apiFetchMock.mockResolvedValueOnce(
-    proof({ campaignStatus: 'CORRECTIONS_REQUESTED', submissions: [version(1)] }),
-  )
+it('lets the brand check the agreement and approve, then says what approval means today', async () => {
+  awaitingDecision({ availableDecisions: [], reviewDeadline: null }, 'PROOF_SUBMITTED')
+  const onChanged = renderSection()
+
+  const panel = (await screen.findByRole('heading', { name: 'Review proof' })).closest('section')!
+  expect(within(panel).getByText('2 × Instagram reel')).toBeInTheDocument()
+  expect(within(panel).getByText('Show the new lunch menu and tag the branch.')).toBeInTheDocument()
+  expect(within(panel).getByRole('progressbar', { name: /Review by/ })).toBeInTheDocument()
+  expect(within(panel).getByText('You can request corrections 2 more times.')).toBeInTheDocument()
+
+  fireEvent.click(within(panel).getByRole('button', { name: 'Approve proof' }))
+  const confirm = screen.getByRole('group', { name: 'Approve this proof?' })
+  expect(requestsTo('POST', `${PROOF}/1/review`)).toHaveLength(0)
+  fireEvent.click(within(confirm).getByRole('button', { name: 'Approve proof' }))
+
+  expect(await screen.findByText(/You approved the proof on/)).toBeInTheDocument()
+  expect(screen.getByText(/Releasing it is not automated yet/)).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Review proof' })).not.toBeInTheDocument()
+  expect(requestsTo('POST', `${PROOF}/1/review`)[0].body).toEqual({
+    decision: 'APPROVED',
+    reason: null,
+  })
+  expect(onChanged).toHaveBeenCalledOnce()
+})
+
+it('will not reject without a reason, and sends the reason trimmed', async () => {
+  awaitingDecision({ availableDecisions: [], reviewDeadline: null }, 'PROOF_SUBMITTED')
   renderSection()
 
+  fireEvent.click(await screen.findByRole('button', { name: 'Reject…' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Reject proof' }))
+  expect(screen.getByText('Write a reason before rejecting.')).toBeInTheDocument()
+  expect(screen.getByLabelText(/Reason/)).toHaveAttribute('aria-invalid', 'true')
+  expect(requestsTo('POST', `${PROOF}/1/review`)).toHaveLength(0)
+
+  fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: '  Never posted.  ' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Reject proof' }))
+
+  expect(await screen.findByText(/You rejected the proof on/)).toBeInTheDocument()
+  expect(requestsTo('POST', `${PROOF}/1/review`)[0].body).toEqual({
+    decision: 'REJECTED',
+    reason: 'Never posted.',
+  })
+})
+
+it('asks for corrections with an optional note, then waits for the new version', async () => {
+  awaitingDecision(
+    {
+      campaignStatus: 'CORRECTIONS_REQUESTED',
+      correctionRoundsUsed: 1,
+      availableDecisions: [],
+      reviewDeadline: null,
+      reviews: [review({ decision: 'CORRECTIONS_REQUESTED', reason: null })],
+    },
+    'CORRECTIONS_REQUESTED',
+  )
+  const onChanged = renderSection()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Request corrections' }))
+  const confirm = screen.getByRole('group', { name: 'Request corrections' })
+  expect(within(confirm).getByText(/You can ask 1 more time after this/)).toBeInTheDocument()
+  fireEvent.click(within(confirm).getByRole('button', { name: 'Request corrections' }))
+
   expect(await screen.findByText('Waiting for a new version from Nour Haddad.')).toBeInTheDocument()
-  expect((screen.getByText('Round 1').closest('details') as HTMLDetailsElement).open).toBe(false)
+  expect(requestsTo('POST', `${PROOF}/1/review`)[0].body).toEqual({
+    decision: 'CORRECTIONS_REQUESTED',
+    reason: null,
+  })
+  expect(onChanged).toHaveBeenCalledOnce()
+})
+
+it('offers only approve and reject once both correction requests are used', async () => {
+  serve({
+    [`GET ${PROOF}`]: proof({ submissions: [version(1), version(2), version(3)] }),
+    [`GET ${REVIEWS}`]: reviews({
+      correctionRoundsUsed: 2,
+      latestSubmissionId: 3,
+      availableDecisions: ['APPROVED', 'REJECTED'],
+    }),
+  })
+  renderSection()
+
+  expect(await screen.findByRole('button', { name: 'Approve proof' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Request corrections' })).not.toBeInTheDocument()
+  expect(screen.getByText(/used both correction requests/)).toBeInTheDocument()
+})
+
+it("shows the server's answer when the review time ended in the meantime", async () => {
+  serve({
+    [`GET ${PROOF}`]: proof({ submissions: [version(1)] }),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`POST ${PROOF}/1/review`]: () => {
+      throw new ApiError(409, { detail: 'The five-day review period has ended.' })
+    },
+  })
+  renderSection()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve proof' }))
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Approve this proof?' })).getByRole('button', {
+      name: 'Approve proof',
+    }),
+  )
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'The five-day review period has ended.',
+  )
 })
 
 const campaign: Campaign = {
@@ -173,9 +375,11 @@ const campaign: Campaign = {
 }
 
 function renderPage(status: Campaign['status']) {
-  apiFetchMock.mockImplementation(async (path: string) =>
-    path.endsWith('/proof') ? proof({ submissions: [version(1)] }) : { ...campaign, status },
-  )
+  serve({
+    'GET /api/brand/campaigns/42': { ...campaign, status },
+    [`GET ${PROOF}`]: proof({ campaignStatus: status, submissions: [version(1)] }),
+    [`GET ${REVIEWS}`]: reviews({ campaignStatus: status }),
+  })
   render(
     <MemoryRouter initialEntries={['/brand/campaigns/42']}>
       <Routes>
@@ -185,18 +389,20 @@ function renderPage(status: Campaign['status']) {
   )
 }
 
-it('shows the proof on the campaign page once it is sent', async () => {
+it('shows the proof and its review on the campaign page once it is sent', async () => {
   renderPage('PROOF_SUBMITTED')
 
   expect(await screen.findByRole('heading', { name: 'Delivery proof' })).toBeInTheDocument()
-  expect(await screen.findByText('Round 1')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'Review proof' })).toBeInTheDocument()
 })
 
 // FR-F5.5
 it('shows a version the creator sends within a minute, without a reload', async () => {
-  apiFetchMock
-    .mockResolvedValueOnce(proof({ campaignStatus: 'ACTIVE', reviewDeadline: null }))
-    .mockResolvedValueOnce(proof({ submissions: [version(1)] }))
+  let sent = false
+  serve({
+    [`GET ${PROOF}`]: () => (sent ? proof({ submissions: [version(1)] }) : notSentYet(42).proof),
+    [`GET ${REVIEWS}`]: () => (sent ? reviews() : notSentYet(42).reviews),
+  })
   const onChanged = renderSection()
 
   expect(await screen.findByText(/hasn't sent the proof yet/)).toBeInTheDocument()
@@ -204,16 +410,17 @@ it('shows a version the creator sends within a minute, without a reload', async 
   expect(PROOF_REFRESH_MS).toBeLessThanOrEqual(60_000)
   await waitFor(() => expect(refreshes).toHaveLength(1))
 
+  sent = true
   await checkForNewProof()
 
   expect(await screen.findByText('Round 1')).toBeInTheDocument()
-  expect(apiFetchMock).toHaveBeenLastCalledWith('/api/brand/campaigns/42/proof')
+  expect(screen.getByRole('button', { name: 'Approve proof' })).toBeInTheDocument()
   // The status moved on (ACTIVE to PROOF_SUBMITTED), so the page reloads its header.
   expect(onChanged).toHaveBeenCalledOnce()
 })
 
 it('stops checking once a version waits for review', async () => {
-  apiFetchMock.mockResolvedValueOnce(proof({ submissions: [version(1)] }))
+  serve({ [`GET ${PROOF}`]: proof({ submissions: [version(1)] }), [`GET ${REVIEWS}`]: reviews() })
   renderSection()
 
   expect(await screen.findByText('Round 1')).toBeInTheDocument()
@@ -222,15 +429,26 @@ it('stops checking once a version waits for review', async () => {
 })
 
 it('keeps checking while corrections are requested, without reloading the page for nothing', async () => {
-  apiFetchMock.mockResolvedValue(
-    proof({ campaignStatus: 'CORRECTIONS_REQUESTED', submissions: [version(1)] }),
-  )
+  serve({
+    [`GET ${PROOF}`]: proof({
+      campaignStatus: 'CORRECTIONS_REQUESTED',
+      reviewDeadline: null,
+      submissions: [version(1)],
+    }),
+    [`GET ${REVIEWS}`]: reviews({
+      campaignStatus: 'CORRECTIONS_REQUESTED',
+      correctionRoundsUsed: 1,
+      reviewDeadline: null,
+      availableDecisions: [],
+      reviews: [corrections],
+    }),
+  })
   const onChanged = renderSection()
   expect(await screen.findByText('Waiting for a new version from Nour Haddad.')).toBeInTheDocument()
 
   await checkForNewProof()
 
-  expect(apiFetchMock).toHaveBeenCalledTimes(2)
+  expect(requestsTo('GET', PROOF)).toHaveLength(2)
   expect(onChanged).not.toHaveBeenCalled()
 })
 
@@ -240,6 +458,12 @@ const otherCampaign: Campaign = {
   name: 'Winter menu launch',
   status: 'ACTIVE',
   creator: null,
+}
+
+const campaign43Routes = {
+  'GET /api/brand/campaigns/43': otherCampaign,
+  'GET /api/brand/campaigns/43/proof': notSentYet(43).proof,
+  'GET /api/brand/campaigns/43/proof/reviews': notSentYet(43).reviews,
 }
 
 /** The brand's campaign page, with a link to another campaign (as a notification could give). */
@@ -255,26 +479,20 @@ function renderPageWithLinkTo43() {
 }
 
 it('shows only the open campaign after navigating, not what was refreshed for the previous one', async () => {
-  let checks42 = 0
-  apiFetchMock.mockImplementation(async (path: string) => {
-    switch (path) {
-      case '/api/brand/campaigns/42':
-        return { ...campaign, status: checks42 === 0 ? 'ACTIVE' : 'PROOF_SUBMITTED' }
-      case '/api/brand/campaigns/42/proof':
-        return checks42++ === 0
-          ? proof({ campaignStatus: 'ACTIVE', reviewDeadline: null })
-          : proof({ submissions: [version(1)] })
-      case '/api/brand/campaigns/43':
-        return otherCampaign
-      case '/api/brand/campaigns/43/proof':
-        return proof({ campaignId: 43, campaignStatus: 'ACTIVE', reviewDeadline: null })
-      default:
-        throw new Error(`Unexpected call to ${path}`)
-    }
+  let sent = false
+  serve({
+    'GET /api/brand/campaigns/42': () => ({
+      ...campaign,
+      status: sent ? 'PROOF_SUBMITTED' : 'ACTIVE',
+    }),
+    [`GET ${PROOF}`]: () => (sent ? proof({ submissions: [version(1)] }) : notSentYet(42).proof),
+    [`GET ${REVIEWS}`]: () => (sent ? reviews() : notSentYet(42).reviews),
+    ...campaign43Routes,
   })
   renderPageWithLinkTo43()
   expect(await screen.findByText(/Nour Haddad hasn't sent the proof yet/)).toBeInTheDocument()
 
+  sent = true
   await checkForNewProof()
   expect(await screen.findByText('Round 1')).toBeInTheDocument()
   expect(await screen.findByText('Proof submitted')).toBeInTheDocument()
@@ -284,27 +502,18 @@ it('shows only the open campaign after navigating, not what was refreshed for th
   expect(await screen.findByRole('heading', { name: 'Winter menu launch' })).toBeInTheDocument()
   expect(await screen.findByText(/The creator hasn't sent the proof yet/)).toBeInTheDocument()
   expect(screen.queryByText('Round 1')).not.toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Review proof' })).not.toBeInTheDocument()
   expect(screen.queryByText('Proof submitted')).not.toBeInTheDocument()
 })
 
 it('ignores a check about the previous campaign that answers after navigating', async () => {
-  const lateCheck = later<DeliveryProof>()
-  let checks42 = 0
-  apiFetchMock.mockImplementation(async (path: string) => {
-    switch (path) {
-      case '/api/brand/campaigns/42':
-        return { ...campaign, status: 'ACTIVE' }
-      case '/api/brand/campaigns/42/proof':
-        return checks42++ === 0
-          ? proof({ campaignStatus: 'ACTIVE', reviewDeadline: null })
-          : lateCheck.promise
-      case '/api/brand/campaigns/43':
-        return otherCampaign
-      case '/api/brand/campaigns/43/proof':
-        return proof({ campaignId: 43, campaignStatus: 'ACTIVE', reviewDeadline: null })
-      default:
-        throw new Error(`Unexpected call to ${path}`)
-    }
+  const lateProof = later<DeliveryProof>()
+  let checks = 0
+  serve({
+    'GET /api/brand/campaigns/42': { ...campaign, status: 'ACTIVE' },
+    [`GET ${PROOF}`]: () => (checks++ === 0 ? notSentYet(42).proof : lateProof.promise),
+    [`GET ${REVIEWS}`]: () => notSentYet(42).reviews,
+    ...campaign43Routes,
   })
   renderPageWithLinkTo43()
   expect(await screen.findByText(/Nour Haddad hasn't sent the proof yet/)).toBeInTheDocument()
@@ -312,14 +521,12 @@ it('ignores a check about the previous campaign that answers after navigating', 
   await checkForNewProof()
   fireEvent.click(screen.getByRole('link', { name: 'Open the other campaign' }))
   expect(await screen.findByText(/The creator hasn't sent the proof yet/)).toBeInTheDocument()
-  await act(async () => lateCheck.resolve(proof({ submissions: [version(1)] })))
+  await act(async () => lateProof.resolve(proof({ submissions: [version(1)] })))
 
   expect(screen.queryByText('Round 1')).not.toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Winter menu launch' })).toBeInTheDocument()
   // The late answer did not make the page reload campaign 42 either.
-  expect(
-    apiFetchMock.mock.calls.filter(([path]) => path === '/api/brand/campaigns/42'),
-  ).toHaveLength(1)
+  expect(requestsTo('GET', '/api/brand/campaigns/42')).toHaveLength(1)
 })
 
 it('has no proof section before the campaign is paid', async () => {
@@ -327,5 +534,5 @@ it('has no proof section before the campaign is paid', async () => {
 
   expect(await screen.findByRole('heading', { name: 'Awaiting payment' })).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Delivery proof' })).not.toBeInTheDocument()
-  expect(apiFetchMock).not.toHaveBeenCalledWith('/api/brand/campaigns/42/proof')
+  expect(requestsTo('GET', PROOF)).toHaveLength(0)
 })

@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { Campaign } from '../api/campaigns'
 import { ApiError, apiFetch } from '../api/client'
 import type { DeliveryProof, ProofSubmission } from '../api/proof'
+import type { CampaignProofReviews, ProofReview } from '../api/proofReviews'
 import { CreatorCampaignDetailPage } from './CreatorCampaignDetailPage'
 import { CreatorProofSection } from './CreatorProofSection'
 
@@ -13,6 +14,9 @@ vi.mock('../api/client', async (importOriginal) => ({
 }))
 
 const apiFetchMock = vi.mocked(apiFetch)
+
+const PROOF = '/api/creator/campaigns/42/proof'
+const REVIEWS = '/api/creator/campaigns/42/proof/reviews'
 
 const roundOne: ProofSubmission = {
   id: 5,
@@ -56,9 +60,58 @@ function draft(overrides: Partial<ProofSubmission> = {}): ProofSubmission {
   }
 }
 
+function review(overrides: Partial<ProofReview> = {}): ProofReview {
+  return {
+    id: 70,
+    submissionId: roundOne.id,
+    decision: 'CORRECTIONS_REQUESTED',
+    reason: 'Please tag the Hamra branch.',
+    decidedAt: '2030-01-18T09:00:00Z',
+    requiredFollowUp: 'RESUBMIT_PROOF',
+    ...overrides,
+  }
+}
+
+function reviews(overrides: Partial<CampaignProofReviews> = {}): CampaignProofReviews {
+  return {
+    campaignId: 42,
+    campaignStatus: 'ACTIVE',
+    correctionRoundsUsed: 0,
+    reviewDeadline: null,
+    latestSubmissionId: null,
+    agreement: {
+      startDate: null,
+      lastPostingDate: null,
+      contentRequirements: null,
+      deliverables: [],
+    },
+    availableDecisions: [],
+    reviews: [],
+    ...overrides,
+  }
+}
+
+type Options = { method?: string; body?: unknown }
+
+/** Answers by "METHOD path", so the order of the page's requests doesn't matter. */
+function serve(routes: Record<string, unknown>) {
+  apiFetchMock.mockImplementation((async (path: string, options?: Options) => {
+    const key = `${options?.method ?? 'GET'} ${path}`
+    if (!(key in routes)) throw new Error(`Unexpected request: ${key}`)
+    const answer = routes[key]
+    return typeof answer === 'function' ? (answer as (o?: Options) => unknown)(options) : answer
+  }) as typeof apiFetch)
+}
+
+function requestsTo(method: string, path: string) {
+  return apiFetchMock.mock.calls
+    .filter(([p, o]) => p === path && (o?.method ?? 'GET') === method)
+    .map(([, o]) => o as Options)
+}
+
 /** The JSON part of a draft or submit request, as the backend reads it. */
-async function proofPart(call: number) {
-  const form = apiFetchMock.mock.calls[call][1]?.body as FormData
+async function proofPart(options: Options) {
+  const form = options.body as FormData
   const text = await new Promise<string>((resolve) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result))
@@ -95,9 +148,13 @@ afterEach(() => {
 })
 
 it('saves the links on screen as a draft', async () => {
-  apiFetchMock
-    .mockResolvedValueOnce(proof())
-    .mockResolvedValueOnce(proof({ submissions: [draft({ links: ['https://example.com/post'] })] }))
+  serve({
+    [`GET ${PROOF}`]: proof(),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`PUT ${PROOF}/draft`]: proof({
+      submissions: [draft({ links: ['https://example.com/post'] })],
+    }),
+  })
   renderSection()
 
   fireEvent.change(await screen.findByLabelText('Link 1'), {
@@ -107,16 +164,19 @@ it('saves the links on screen as a draft', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
 
   expect(await screen.findByText(/Draft saved \d/)).toBeInTheDocument()
-  expect(apiFetchMock.mock.calls[1][0]).toBe('/api/creator/campaigns/42/proof/draft')
-  expect(apiFetchMock.mock.calls[1][1]?.method).toBe('PUT')
-  const { proof: sent } = await proofPart(1)
-  expect(sent).toEqual({ links: ['https://example.com/post'], retainedFileIds: null })
+  const [put] = requestsTo('PUT', `${PROOF}/draft`)
+  expect((await proofPart(put)).proof).toEqual({
+    links: ['https://example.com/post'],
+    retainedFileIds: null,
+  })
 })
 
 it('uploads a screenshot as soon as it is chosen, together with the links on screen', async () => {
-  apiFetchMock
-    .mockResolvedValueOnce(proof())
-    .mockResolvedValueOnce(proof({ submissions: [draft({ files: [shot(8)] })] }))
+  serve({
+    [`GET ${PROOF}`]: proof(),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`PUT ${PROOF}/draft`]: proof({ submissions: [draft({ files: [shot(8)] })] }),
+  })
   renderSection()
 
   fireEvent.change(await screen.findByLabelText('Link 1'), {
@@ -129,7 +189,7 @@ it('uploads a screenshot as soon as it is chosen, together with the links on scr
     'src',
     '/api/proof-files/8',
   )
-  const { form, proof: sent } = await proofPart(1)
+  const { form, proof: sent } = await proofPart(requestsTo('PUT', `${PROOF}/draft`)[0])
   expect(form.getAll('files')).toHaveLength(1)
   expect(sent.links).toEqual(['https://example.com/post'])
   // The typed link stays on screen after the upload.
@@ -137,7 +197,7 @@ it('uploads a screenshot as soon as it is chosen, together with the links on scr
 })
 
 it('refuses a file that is not an image, or is larger than 5 MB, without calling the server', async () => {
-  apiFetchMock.mockResolvedValueOnce(proof())
+  serve({ [`GET ${PROOF}`]: proof(), [`GET ${REVIEWS}`]: reviews() })
   renderSection()
   const input = await screen.findByLabelText('Add screenshots')
 
@@ -150,29 +210,34 @@ it('refuses a file that is not an image, or is larger than 5 MB, without calling
   fireEvent.change(input, { target: { files: [big] } })
   expect(screen.getByRole('alert')).toHaveTextContent('5 MB or smaller')
 
-  expect(apiFetchMock).toHaveBeenCalledTimes(1)
+  expect(requestsTo('PUT', `${PROOF}/draft`)).toHaveLength(0)
 })
 
 it('removing one screenshot keeps the others', async () => {
-  apiFetchMock
-    .mockResolvedValueOnce(proof({ submissions: [draft({ files: [shot(8), shot(9)] })] }))
-    .mockResolvedValueOnce(proof({ submissions: [draft({ files: [shot(9)] })] }))
+  serve({
+    [`GET ${PROOF}`]: proof({ submissions: [draft({ files: [shot(8), shot(9)] })] }),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`PUT ${PROOF}/draft`]: proof({ submissions: [draft({ files: [shot(9)] })] }),
+  })
   renderSection()
 
   fireEvent.click(await screen.findByRole('button', { name: 'Remove screenshot 1' }))
 
   await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(1))
-  const { proof: sent } = await proofPart(1)
+  const { proof: sent } = await proofPart(requestsTo('PUT', `${PROOF}/draft`)[0])
   expect(sent.retainedFileIds).toEqual([9])
 })
 
 it('asks for a working link and a confirmation before sending, then shows the review timer', async () => {
-  const sentProof = proof({
-    campaignStatus: 'PROOF_SUBMITTED',
-    reviewDeadline: '2099-01-21T12:05:00Z',
-    submissions: [{ ...roundOne, links: ['https://example.com/post'] }],
+  serve({
+    [`GET ${PROOF}`]: proof(),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`POST ${PROOF}/submit`]: proof({
+      campaignStatus: 'PROOF_SUBMITTED',
+      reviewDeadline: '2099-01-21T12:05:00Z',
+      submissions: [{ ...roundOne, links: ['https://example.com/post'] }],
+    }),
   })
-  apiFetchMock.mockResolvedValueOnce(proof()).mockResolvedValueOnce(sentProof)
   const onSubmitted = renderSection()
 
   fireEvent.click(await screen.findByRole('button', { name: 'Send proof' }))
@@ -187,7 +252,7 @@ it('asks for a working link and a confirmation before sending, then shows the re
   })
   fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
   expect(screen.getByRole('group', { name: 'Send your proof?' })).toBeInTheDocument()
-  expect(apiFetchMock).toHaveBeenCalledTimes(1)
+  expect(requestsTo('POST', `${PROOF}/submit`)).toHaveLength(0)
 
   fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
 
@@ -195,30 +260,18 @@ it('asks for a working link and a confirmation before sending, then shows the re
   expect(screen.getByRole('progressbar', { name: 'Brand review of proof' })).toBeInTheDocument()
   expect(screen.queryByLabelText('Link 1')).not.toBeInTheDocument()
   expect(onSubmitted).toHaveBeenCalledOnce()
-  expect(apiFetchMock.mock.calls[1][0]).toBe('/api/creator/campaigns/42/proof/submit')
-  expect(apiFetchMock.mock.calls[1][1]?.method).toBe('POST')
-  const { proof: sent } = await proofPart(1)
+  const { proof: sent } = await proofPart(requestsTo('POST', `${PROOF}/submit`)[0])
   expect(sent.links).toEqual(['https://example.com/post'])
 })
 
-it('starts a correction round from the last version, and keeps that version in the history', async () => {
-  apiFetchMock.mockResolvedValueOnce(
-    proof({ campaignStatus: 'CORRECTIONS_REQUESTED', submissions: [roundOne] }),
-  )
-  renderSection()
-
-  expect(await screen.findByLabelText('Link 1')).toHaveValue('https://www.instagram.com/reel/one/')
-  expect(screen.getByText(/Round 2 of 3/)).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: 'Proof history' })).toBeInTheDocument()
-  expect(screen.getByText('Round 1')).toBeInTheDocument()
-})
-
 it("shows the server's reason when a save is refused", async () => {
-  apiFetchMock
-    .mockResolvedValueOnce(proof())
-    .mockRejectedValueOnce(
-      new ApiError(400, { detail: 'A proof link cannot exceed 2048 characters.' }),
-    )
+  serve({
+    [`GET ${PROOF}`]: proof(),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`PUT ${PROOF}/draft`]: () => {
+      throw new ApiError(400, { detail: 'A proof link cannot exceed 2048 characters.' })
+    },
+  })
   renderSection()
 
   fireEvent.click(await screen.findByRole('button', { name: 'Save draft' }))
@@ -228,9 +281,106 @@ it("shows the server's reason when a save is refused", async () => {
   )
 })
 
+it("starts a correction round from the last version and shows the brand's reason (EEC-47)", async () => {
+  serve({
+    [`GET ${PROOF}`]: proof({ campaignStatus: 'CORRECTIONS_REQUESTED', submissions: [roundOne] }),
+    [`GET ${REVIEWS}`]: reviews({
+      campaignStatus: 'CORRECTIONS_REQUESTED',
+      correctionRoundsUsed: 1,
+      latestSubmissionId: roundOne.id,
+      reviews: [review()],
+    }),
+  })
+  renderSection()
+
+  expect(await screen.findByLabelText('Link 1')).toHaveValue('https://www.instagram.com/reel/one/')
+  expect(screen.getByText(/Round 2 of 3/)).toBeInTheDocument()
+  const decision = await screen.findByText(/The brand asked for corrections on/)
+  const alert = decision.closest('.fl-alert') as HTMLElement
+  expect(within(alert).getByText('Please tag the Hamra branch.')).toBeInTheDocument()
+  expect(within(alert).getByText(/can ask for corrections 1 more time\./)).toBeInTheDocument()
+  // The history marks the round with the decision.
+  const history = screen.getByRole('heading', { name: 'Proof history' }).closest('section')!
+  expect(within(history).getByText('Corrections requested')).toBeInTheDocument()
+})
+
+it('tells the creator when the last round has started', async () => {
+  const roundTwo = { ...roundOne, id: 7, round: 2 }
+  serve({
+    [`GET ${PROOF}`]: proof({
+      campaignStatus: 'CORRECTIONS_REQUESTED',
+      submissions: [roundOne, roundTwo],
+    }),
+    [`GET ${REVIEWS}`]: reviews({
+      campaignStatus: 'CORRECTIONS_REQUESTED',
+      correctionRoundsUsed: 2,
+      latestSubmissionId: roundTwo.id,
+      reviews: [review(), review({ id: 71, submissionId: roundTwo.id, reason: null })],
+    }),
+  })
+  renderSection()
+
+  expect(await screen.findByText(/This is the last round/)).toBeInTheDocument()
+  expect(screen.getByText(/Round 3 of 3/)).toBeInTheDocument()
+})
+
+it('says what an approval means while payment release is not automated', async () => {
+  serve({
+    [`GET ${PROOF}`]: proof({ campaignStatus: 'PROOF_SUBMITTED', submissions: [roundOne] }),
+    [`GET ${REVIEWS}`]: reviews({
+      campaignStatus: 'PROOF_SUBMITTED',
+      latestSubmissionId: roundOne.id,
+      reviews: [
+        review({ decision: 'APPROVED', reason: null, requiredFollowUp: 'RELEASE_PAYMENT' }),
+      ],
+    }),
+  })
+  renderSection()
+
+  expect(await screen.findByText(/The brand approved your proof on/)).toBeInTheDocument()
+  expect(screen.getByText(/Releasing it is not automated yet/)).toBeInTheDocument()
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+})
+
+it('shows a rejection with its reason', async () => {
+  serve({
+    [`GET ${PROOF}`]: proof({ campaignStatus: 'PROOF_SUBMITTED', submissions: [roundOne] }),
+    [`GET ${REVIEWS}`]: reviews({
+      campaignStatus: 'PROOF_SUBMITTED',
+      latestSubmissionId: roundOne.id,
+      reviews: [
+        review({
+          decision: 'REJECTED',
+          reason: 'The reels were never posted.',
+          requiredFollowUp: 'FREEZE_PAYMENT_AND_OPEN_DISPUTE',
+        }),
+      ],
+    }),
+  })
+  renderSection()
+
+  const title = await screen.findByText(/The brand rejected your proof on/)
+  const alert = title.closest('.fl-alert') as HTMLElement
+  expect(within(alert).getByText('The reels were never posted.')).toBeInTheDocument()
+  expect(within(alert).getByText(/Opening a dispute is not available/)).toBeInTheDocument()
+})
+
+it('still works when the decisions cannot be loaded', async () => {
+  serve({
+    [`GET ${PROOF}`]: proof(),
+    [`GET ${REVIEWS}`]: () => {
+      throw new ApiError(500, {})
+    },
+  })
+  renderSection()
+
+  expect(await screen.findByLabelText('Link 1')).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
 // EX-F5.1.2
 it('refuses an empty link row next to a valid one instead of dropping it, and names the row', async () => {
-  apiFetchMock.mockResolvedValueOnce(proof())
+  serve({ [`GET ${PROOF}`]: proof(), [`GET ${REVIEWS}`]: reviews() })
   renderSection()
 
   fireEvent.change(await screen.findByLabelText('Link 1'), {
@@ -247,17 +397,20 @@ it('refuses an empty link row next to a valid one instead of dropping it, and na
   fireEvent.click(screen.getByRole('button', { name: 'Remove link 2' }))
   fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
   expect(screen.getByRole('group', { name: 'Send your proof?' })).toBeInTheDocument()
-  expect(apiFetchMock).toHaveBeenCalledTimes(1)
+  expect(requestsTo('POST', `${PROOF}/submit`)).toHaveLength(0)
 })
 
 // FR-F5.1
 it('asks for at least one screenshot when the campaign requires it', async () => {
   const linked = draft({ links: ['https://example.com/post'] })
-  apiFetchMock
-    .mockResolvedValueOnce(proof({ screenshotsRequired: true, submissions: [linked] }))
-    .mockResolvedValueOnce(
-      proof({ screenshotsRequired: true, submissions: [{ ...linked, files: [shot(8)] }] }),
-    )
+  serve({
+    [`GET ${PROOF}`]: proof({ screenshotsRequired: true, submissions: [linked] }),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`PUT ${PROOF}/draft`]: proof({
+      screenshotsRequired: true,
+      submissions: [{ ...linked, files: [shot(8)] }],
+    }),
+  })
   renderSection()
 
   expect(await screen.findByText('(at least one required)')).toBeInTheDocument()
@@ -275,9 +428,10 @@ it('asks for at least one screenshot when the campaign requires it', async () =>
 })
 
 it('keeps screenshots optional when the campaign does not require them', async () => {
-  apiFetchMock.mockResolvedValueOnce(
-    proof({ submissions: [draft({ links: ['https://example.com/post'] })] }),
-  )
+  serve({
+    [`GET ${PROOF}`]: proof({ submissions: [draft({ links: ['https://example.com/post'] })] }),
+    [`GET ${REVIEWS}`]: reviews(),
+  })
   renderSection()
 
   expect(await screen.findByText('(optional)')).toBeInTheDocument()
@@ -285,13 +439,18 @@ it('keeps screenshots optional when the campaign does not require them', async (
   expect(screen.getByRole('group', { name: 'Send your proof?' })).toBeInTheDocument()
 })
 
+const campaign43Routes = {
+  'GET /api/creator/campaigns/43/proof': proof({ campaignId: 43 }),
+  'GET /api/creator/campaigns/43/proof/reviews': reviews({ campaignId: 43 }),
+}
+
 it('starts from a clean form when another campaign is opened, and ignores a late save of the first', async () => {
   const lateSave = later<DeliveryProof>()
-  apiFetchMock.mockImplementation(async (path: string) => {
-    if (path === '/api/creator/campaigns/42/proof') return proof()
-    if (path === '/api/creator/campaigns/42/proof/draft') return lateSave.promise
-    if (path === '/api/creator/campaigns/43/proof') return proof({ campaignId: 43 })
-    throw new Error(`Unexpected call to ${path}`)
+  serve({
+    [`GET ${PROOF}`]: proof(),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`PUT ${PROOF}/draft`]: () => lateSave.promise,
+    ...campaign43Routes,
   })
   const props = { lastPostingDate: '2030-01-30', onSubmitted: vi.fn() }
   const { rerender } = render(<CreatorProofSection campaignId={42} {...props} />)
@@ -316,19 +475,21 @@ it('starts from a clean form when another campaign is opened, and ignores a late
 
 it('does not tell the page about a send that finishes after another campaign was opened', async () => {
   const lateSend = later<DeliveryProof>()
-  apiFetchMock.mockImplementation(async (path: string) => {
-    if (path === '/api/creator/campaigns/42/proof') {
-      return proof({ submissions: [draft({ links: ['https://example.com/post'] })] })
-    }
-    if (path === '/api/creator/campaigns/42/proof/submit') return lateSend.promise
-    if (path === '/api/creator/campaigns/43/proof') return proof({ campaignId: 43 })
-    throw new Error(`Unexpected call to ${path}`)
+  serve({
+    [`GET ${PROOF}`]: proof({ submissions: [draft({ links: ['https://example.com/post'] })] }),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`POST ${PROOF}/submit`]: () => lateSend.promise,
+    ...campaign43Routes,
   })
   const props = { lastPostingDate: '2030-01-30', onSubmitted: vi.fn() }
   const { rerender } = render(<CreatorProofSection campaignId={42} {...props} />)
 
   fireEvent.click(await screen.findByRole('button', { name: 'Send proof' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Send proof' }))
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Send your proof?' })).getByRole('button', {
+      name: 'Send proof',
+    }),
+  )
   rerender(<CreatorProofSection campaignId={43} {...props} />)
   expect(await screen.findByLabelText('Link 1')).toHaveValue('')
   await act(async () =>
@@ -365,9 +526,11 @@ const campaign: Campaign = {
 }
 
 function renderPage(status: Campaign['status']) {
-  apiFetchMock.mockImplementation(async (path: string) =>
-    path.endsWith('/proof') ? proof() : { ...campaign, status },
-  )
+  serve({
+    'GET /api/creator/campaigns/42': { ...campaign, status },
+    [`GET ${PROOF}`]: proof({ campaignStatus: status }),
+    [`GET ${REVIEWS}`]: reviews({ campaignStatus: status }),
+  })
   render(
     <MemoryRouter initialEntries={['/creator/campaigns/42']}>
       <Routes>
@@ -381,7 +544,7 @@ it('shows the proof form on the campaign page once the campaign is active', asyn
   renderPage('ACTIVE')
 
   expect(await screen.findByRole('heading', { name: 'Delivery proof' })).toBeInTheDocument()
-  expect(apiFetchMock).toHaveBeenCalledWith('/api/creator/campaigns/42/proof')
+  expect(requestsTo('GET', PROOF)).toHaveLength(1)
 })
 
 it('does not ask for proof before the campaign is paid', async () => {
@@ -389,5 +552,5 @@ it('does not ask for proof before the campaign is paid', async () => {
 
   expect(await screen.findByText(/Waiting for the brand to pay/)).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Delivery proof' })).not.toBeInTheDocument()
-  expect(apiFetchMock).not.toHaveBeenCalledWith('/api/creator/campaigns/42/proof')
+  expect(requestsTo('GET', PROOF)).toHaveLength(0)
 })

@@ -325,11 +325,12 @@ The browser never receives a bucket credential or object key. It uploads through
 screenshots through `/api/proof-files/{fileId}`. The backend checks the campaign owner and submission state before proxying
 the private object. No bucket CORS rule or public access is needed.
 
-### Delivery-proof review (EEC-47, backend core)
+### Delivery-proof review (EEC-47)
 
 Brands can record a review, request up to two correction rounds, and read the decision history and agreed delivery terms.
-Creator and admin history is read-only. This adds no environment variables. See
-[Architecture section 19](Architecture.md#19-campaign-delivery-review-uc-f61-eec-47---backend-core) for the API and limits.
+Creator and admin history is read-only. Both campaign pages show the decisions; brands decide on theirs. This adds no
+environment variables. See
+[Architecture section 19](Architecture.md#19-campaign-delivery-review-uc-f61-eec-47---built-payment-follow-ups-deferred) for the API and limits.
 
 Payment release/freezing and dispute creation are deferred to UC-F7.2/UC-F8.1. A recorded approval/rejection reports its
 `requiredFollowUp`; it does not mean money has moved or a dispute exists. Timer C candidate detection is implemented,

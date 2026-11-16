@@ -87,6 +87,14 @@
   padding: 0 var(--space-4) var(--space-4);
 }
 
+/* The brand's reason for a decision, shown as a quote; line breaks the brand typed are kept. */
+.fl-quote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-border);
+  white-space: pre-line;
+}
+
 /* An inline confirmation step, like the admin's reject form: the question replaces the buttons that asked it. */
 .fl-confirm {
   display: grid;

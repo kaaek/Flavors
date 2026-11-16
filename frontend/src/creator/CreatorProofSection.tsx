@@ -9,9 +9,11 @@ import {
   type DeliveryProof,
   type ProofDraftChange,
 } from '../api/proof'
+import { getCreatorProofReviews } from '../api/proofReviews'
 import { Icon } from '../layout/Icon'
 import { useFetchWith } from '../layout/useFetch'
 import { LOCALE } from '../lib/locale'
+import { ProofOutcome } from '../proof/ProofOutcome'
 import { ProofRounds } from '../proof/ProofRounds'
 import { ReviewTimer } from '../proof/ReviewTimer'
 import { formatDay, formatWhen } from '../proof/dates'
@@ -128,6 +130,9 @@ export function CreatorProofSection(props: Props) {
 function CampaignProofForm({ campaignId, lastPostingDate, onSubmitted }: Props) {
   const load = useCallback(() => getCreatorProof(campaignId), [campaignId])
   const result = useFetchWith<DeliveryProof>(load)
+  // The brand's decisions (EEC-47). If they can't be loaded the form still works; it just shows no decisions.
+  const loadReviews = useCallback(() => getCreatorProofReviews(campaignId), [campaignId])
+  const reviewsResult = useFetchWith(loadReviews)
 
   const [updated, setUpdated] = useState<DeliveryProof | null>(null)
   // null until the creator edits or saves; until then the rows come from the loaded proof.
@@ -173,6 +178,16 @@ function CampaignProofForm({ campaignId, lastPostingDate, onSubmitted }: Props) 
   const round = draft?.round ?? (latest?.round ?? 0) + 1
   const links = editedLinks ?? startingLinks(proof)
   const files = draft?.files ?? []
+  const reviews = reviewsResult.status === 'ready' ? reviewsResult.data : null
+  const outcome = reviews && (
+    <ProofOutcome
+      reviews={reviews.reviews}
+      latestVersionId={latest?.id ?? null}
+      campaignStatus={status}
+      correctionRoundsUsed={reviews.correctionRoundsUsed}
+      viewer="creator"
+    />
+  )
 
   function editLinks(next: string[]) {
     setEditedLinks(next)
@@ -261,28 +276,32 @@ function CampaignProofForm({ campaignId, lastPostingDate, onSubmitted }: Props) 
 
   if (!editable) {
     return (
-      <section className="fl-card fl-section fl-stack" aria-labelledby="proof-title">
-        <h2 id="proof-title">Delivery proof</h2>
-        {status === 'PROOF_SUBMITTED' && latest && proof.reviewDeadline && (
-          <>
-            <p className="fl-muted">
-              Sent on {formatWhen(latest.submittedAt)}. The brand reviews it by{' '}
-              {formatWhen(proof.reviewDeadline)}.
-            </p>
-            <ReviewTimer deadline={proof.reviewDeadline} label="Brand review of proof" />
-          </>
-        )}
-        {versions.length > 0 ? (
-          <ProofRounds versions={versions} openLatest />
-        ) : (
-          <p className="fl-muted">No proof was sent for this campaign.</p>
-        )}
-      </section>
+      <>
+        {outcome}
+        <section className="fl-card fl-section fl-stack" aria-labelledby="proof-title">
+          <h2 id="proof-title">Delivery proof</h2>
+          {status === 'PROOF_SUBMITTED' && latest && proof.reviewDeadline && (
+            <>
+              <p className="fl-muted">
+                Sent on {formatWhen(latest.submittedAt)}. The brand reviews it by{' '}
+                {formatWhen(proof.reviewDeadline)}.
+              </p>
+              <ReviewTimer deadline={proof.reviewDeadline} label="Brand review of proof" />
+            </>
+          )}
+          {versions.length > 0 ? (
+            <ProofRounds versions={versions} openLatest reviews={reviews?.reviews} />
+          ) : (
+            <p className="fl-muted">No proof was sent for this campaign.</p>
+          )}
+        </section>
+      </>
     )
   }
 
   return (
     <>
+      {outcome}
       <section className="fl-card fl-section fl-stack" aria-labelledby="proof-title">
         <div className="fl-row fl-row--between">
           <h2 id="proof-title">Delivery proof</h2>
@@ -291,11 +310,16 @@ function CampaignProofForm({ campaignId, lastPostingDate, onSubmitted }: Props) 
             {saveState && ` · ${saveState}`}
           </span>
         </div>
-        <p className="fl-hint">
-          {status === 'CORRECTIONS_REQUESTED'
-            ? 'Send a new version with the changes the brand asked for.'
-            : `Post by ${formatDay(lastPostingDate)}, then add the links to your posts. The brand sees nothing until you send it.`}
-        </p>
+        {status === 'ACTIVE' && (
+          <p className="fl-hint">
+            Post by {formatDay(lastPostingDate)}, then add the links to your posts. The brand sees
+            nothing until you send it.
+          </p>
+        )}
+        {/* In a correction round the brand's decision above says what to change; this covers a failed load. */}
+        {status === 'CORRECTIONS_REQUESTED' && !reviews && (
+          <p className="fl-hint">Send a new version with the changes the brand asked for.</p>
+        )}
 
         <fieldset className="fl-field fl-fieldset">
           <legend className="fl-label">Links to your posts</legend>
@@ -479,7 +503,7 @@ function CampaignProofForm({ campaignId, lastPostingDate, onSubmitted }: Props) 
       {versions.length > 0 && (
         <section className="fl-card fl-section fl-stack" aria-labelledby="proof-history-title">
           <h2 id="proof-history-title">Proof history</h2>
-          <ProofRounds versions={versions} openLatest={false} />
+          <ProofRounds versions={versions} openLatest={false} reviews={reviews?.reviews} />
         </section>
       )}
     </>
