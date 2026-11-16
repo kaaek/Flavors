@@ -280,7 +280,8 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and a
 read-only `campaign` (EEC-36); `campaign` (now with its price, dates, branches and deliverables), `campaign_deliverable` and
 `notification` (write only) in EEC-40; `proof_submission`, `proof_link`, `proof_file` (EEC-46, which also lets `campaign`
-record a proof submission and Timer C). Later stories add columns and methods to these classes instead of writing second copies.
+record a proof submission and Timer C); `proof_review` (EEC-47 review core). Later stories add columns and methods to these
+classes instead of writing second copies.
 
 ## 5. Security — built
 
@@ -799,3 +800,54 @@ a complete, undamaged image of at most 25 megapixels (see image checks below). S
   `client.test.ts` (FormData) and `timeLeft.test.ts`.
   `CampaignPayment.test.tsx` and `CreatorCampaignDetailPage.test.tsx` stub the proof section, since they test payment
   and the request answer only.
+
+## 19. Campaign delivery review (UC-F6.1, EEC-47) - backend core
+
+This increment depends on EEC-46. It implements review decisions and correction rounds, not the payment/dispute stories
+or the campaign frontend. V5 already owns `proof_review`, so no new migration is required.
+
+| Method and path | Who | What |
+|---|---|---|
+| `POST /api/brand/campaigns/{campaignId}/proof/{submissionId}/review` | owning BRAND | JSON `{decision, reason}`; decision is `APPROVED`, `CORRECTIONS_REQUESTED` or `REJECTED`; returns 200 including on an identical retry |
+| `GET /api/brand/campaigns/{campaignId}/proof/reviews` | owning BRAND | Agreement (dates, content requirements, platform/type/count), decision history and available decisions for the latest final submission |
+| `GET /api/creator/campaigns/{campaignId}/proof/reviews` | assigned CREATOR | Read-only agreement/history, including correction/rejection reasons |
+| `GET /api/admin/campaigns/{campaignId}/proof/reviews` | ADMIN | Read-only agreement/history |
+
+- Proof links/images remain at the EEC-46 endpoints. The brand checks them manually against the agreement; this API
+  does not claim to verify posts on an external platform. Agreement reads use a read-only JDBC projection of existing V3
+  tables; this story does not edit campaign terms or introduce a competing campaign entity.
+- The decision loads the campaign with `CampaignRepository.findByIdAndBrandIdForUpdate`, which filters by the owning brand,
+  so another brand cannot lock the campaign. It is the same row lock as EEC-46 and the request answers, and a new decision
+  is accepted only on the latest submitted version while its campaign is `PROOF_SUBMITTED` and the current time is
+  strictly before Timer C.
+- A correction request increments `correction_rounds_used`, sets `CORRECTIONS_REQUESTED`, and clears the old deadline.
+  EEC-46 then accepts a new final submission and starts a fresh five-day deadline. After two correction requests, only
+  approve/reject remain available. Every review and submitted version is retained.
+- A rejection requires a non-blank reason. Reasons are trimmed and limited to 2000 characters. Correction reasons are
+  optional under the current acceptance criteria. Missing decisions and oversized reasons return field errors (400);
+  inaccessible proofs return 404; a stale/expired/contradictory decision returns 409.
+- One review per submission is enforced by V5's unique constraint. Identical retries return the original row, even after
+  its deadline or a later round, without repeating the audit or consuming another correction round. A different decision
+  or reason for the same submission is refused. Audit actions (`PROOF_APPROVED`, `PROOF_CORRECTIONS_REQUESTED`,
+  `PROOF_REJECTED`) commit with the review and campaign change.
+- Decision timestamps are normalized to PostgreSQL microseconds before persistence, so an identical retry returns the
+  same timestamp. The deciding user's id stays in the database and audit log; review responses do not expose it.
+
+**Deferred integration, not a completed financial workflow:** approval/rejection clears Timer C but leaves the campaign
+`PROOF_SUBMITTED` while the required follow-up is pending. `ProofReviewResponse.requiredFollowUp` is `RELEASE_PAYMENT`,
+`FREEZE_PAYMENT_AND_OPEN_DISPUTE`, or `RESUBMIT_PROOF`. The saved `proof_review` is the durable decision record; it is
+not a processed outbox or a successful payout/dispute. There is no payment-provider call, escrow mutation, dispute row,
+`COMPLETED` transition, or `DISPUTED` transition in this increment. UC-F7.2/UC-F8.1 must provide those effects and their
+idempotent processing before EEC-47 is considered complete end to end.
+
+`ProofReviewService.findOverdueCampaignIds()` supplies at most 100 unanswered, overdue current submissions for the future
+Timer C worker. It excludes reviewed versions and campaigns in `CORRECTIONS_REQUESTED`, even if an old deadline remains.
+The payment worker must lock and recheck each candidate before releasing funds; this method is only a read snapshot.
+No scheduled auto-release is enabled yet. TC-F6.1.5 and the financial/dispute portions of TC-F6.1.1/TC-F6.1.4 remain pending.
+
+Tests: `ProofReviewServiceImplTest` and `ProofReviewControllerTest` cover the decision rules, retry behavior, privacy,
+role/CSRF guards, validation and deadline boundaries without Docker. `ProofReviewQueryTest` validates Hibernate query
+translation without a database. `ProofReviewServiceImplIT` covers PostgreSQL mappings,
+persisted decisions/audit, the complete correction/resubmission cycle, concurrent decisions, agreement reads, overdue
+filtering, and five-second decision recording. CI must run the integration suite; unit timings alone do not establish NF-4
+in production.
