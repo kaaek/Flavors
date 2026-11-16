@@ -113,7 +113,9 @@ function CampaignProof({ campaignId, creatorName, lastPostingDate, onChanged }: 
         viewer="brand"
         creatorName={creatorName}
       />
+      {/* Keyed by the version under review: a new version gets fresh review controls. */}
       <ProofReviewPanel
+        key={reviews.latestSubmissionId ?? 'none'}
         campaignId={campaignId}
         reviews={reviews}
         creatorName={creatorName}

@@ -66,6 +66,7 @@ function reviews(overrides: Partial<CampaignProofReviews> = {}): CampaignProofRe
       startDate: '2030-01-10',
       lastPostingDate: '2030-01-30',
       contentRequirements: 'Show the new lunch menu and tag the branch.',
+      screenshotsRequired: true,
       deliverables: [{ platform: 'INSTAGRAM', type: 'REEL', count: 2 }],
     },
     availableDecisions: ['APPROVED', 'CORRECTIONS_REQUESTED', 'REJECTED'],
@@ -250,6 +251,7 @@ it('lets the brand check the agreement and approve, then says what approval mean
   const panel = (await screen.findByRole('heading', { name: 'Review proof' })).closest('section')!
   expect(within(panel).getByText('2 × Instagram reel')).toBeInTheDocument()
   expect(within(panel).getByText('Show the new lunch menu and tag the branch.')).toBeInTheDocument()
+  expect(within(panel).getByText('Required with the proof')).toBeInTheDocument()
   expect(within(panel).getByRole('progressbar', { name: /Review by/ })).toBeInTheDocument()
   expect(within(panel).getByText('You can request corrections 2 more times.')).toBeInTheDocument()
 
@@ -452,6 +454,56 @@ it('keeps checking while corrections are requested, without reloading the page f
   expect(onChanged).not.toHaveBeenCalled()
 })
 
+it('offers the review controls again when the creator sends the corrected version', async () => {
+  let stage: 'review' | 'corrections' | 'resent' = 'review'
+  serve({
+    [`GET ${PROOF}`]: () =>
+      stage === 'review'
+        ? proof({ submissions: [version(1)] })
+        : stage === 'corrections'
+          ? proof({
+              campaignStatus: 'CORRECTIONS_REQUESTED',
+              reviewDeadline: null,
+              submissions: [version(1)],
+            })
+          : proof({ submissions: [version(1), version(2)] }),
+    [`GET ${REVIEWS}`]: () =>
+      stage === 'review'
+        ? reviews()
+        : stage === 'corrections'
+          ? reviews({
+              campaignStatus: 'CORRECTIONS_REQUESTED',
+              correctionRoundsUsed: 1,
+              reviewDeadline: null,
+              availableDecisions: [],
+              reviews: [corrections],
+            })
+          : reviews({ correctionRoundsUsed: 1, latestSubmissionId: 2, reviews: [corrections] }),
+    [`POST ${PROOF}/1/review`]: () => {
+      stage = 'corrections'
+      return corrections
+    },
+  })
+  renderSection()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Request corrections' }))
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Request corrections' })).getByRole('button', {
+      name: 'Request corrections',
+    }),
+  )
+  expect(await screen.findByText('Waiting for a new version from Nour Haddad.')).toBeInTheDocument()
+  expect(screen.queryByRole('heading', { name: 'Review proof' })).not.toBeInTheDocument()
+
+  stage = 'resent'
+  await checkForNewProof()
+
+  // The decision on version 1 must not hide the controls for version 2.
+  expect(await screen.findByRole('heading', { name: 'Review proof' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Approve proof' })).toBeEnabled()
+  expect(screen.getByText('You can request corrections 1 more time.')).toBeInTheDocument()
+})
+
 const otherCampaign: Campaign = {
   ...campaign,
   id: 43,
@@ -527,6 +579,32 @@ it('ignores a check about the previous campaign that answers after navigating', 
   expect(screen.getByRole('heading', { name: 'Winter menu launch' })).toBeInTheDocument()
   // The late answer did not make the page reload campaign 42 either.
   expect(requestsTo('GET', '/api/brand/campaigns/42')).toHaveLength(1)
+})
+
+it('does not report a decision that finishes after navigating to another campaign', async () => {
+  const lateDecision = later<ProofReview>()
+  serve({
+    'GET /api/brand/campaigns/42': campaign,
+    [`GET ${PROOF}`]: proof({ submissions: [version(1)] }),
+    [`GET ${REVIEWS}`]: reviews(),
+    [`POST ${PROOF}/1/review`]: () => lateDecision.promise,
+    ...campaign43Routes,
+  })
+  renderPageWithLinkTo43()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve proof' }))
+  fireEvent.click(
+    within(screen.getByRole('group', { name: 'Approve this proof?' })).getByRole('button', {
+      name: 'Approve proof',
+    }),
+  )
+  fireEvent.click(screen.getByRole('link', { name: 'Open the other campaign' }))
+  expect(await screen.findByText(/The creator hasn't sent the proof yet/)).toBeInTheDocument()
+  await act(async () => lateDecision.resolve(review()))
+
+  expect(screen.getByRole('heading', { name: 'Winter menu launch' })).toBeInTheDocument()
+  expect(requestsTo('GET', '/api/brand/campaigns/42')).toHaveLength(1)
+  expect(requestsTo('GET', PROOF)).toHaveLength(1)
 })
 
 it('has no proof section before the campaign is paid', async () => {

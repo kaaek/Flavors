@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 import {
   MAX_CORRECTIONS,
@@ -23,6 +23,9 @@ function messageOf(error: unknown): string {
 /**
  * UC-F6.1: the brand checks the newest version against the agreement and approves it, asks for corrections (at most
  * twice) or rejects it with a reason. Only shown while the backend lists decisions, i.e. before Timer C ends.
+ *
+ * BrandProofSection keys it by the version under review, so its state (the choice, the reason, "decided") belongs to
+ * that one version: a new version, or another campaign, starts with fresh controls.
  */
 export function ProofReviewPanel({
   campaignId,
@@ -42,6 +45,14 @@ export function ProofReviewPanel({
   const [error, setError] = useState<string | null>(null)
   // Hide the buttons as soon as the decision is saved, not only when the reload arrives.
   const [decided, setDecided] = useState(false)
+  // A decision still being saved when the brand leaves must not report back to the page.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   const submissionId = reviews.latestSubmissionId
   if (decided || reviews.availableDecisions.length === 0 || submissionId === null) return null
@@ -69,12 +80,13 @@ export function ProofReviewPanel({
     setError(null)
     try {
       await reviewProof(campaignId, submissionId, { decision: choice, reason: text || null })
+      if (!mounted.current) return
       setDecided(true)
       onDecided()
     } catch (e) {
-      setError(messageOf(e))
+      if (mounted.current) setError(messageOf(e))
     } finally {
-      setBusy(false)
+      if (mounted.current) setBusy(false)
     }
   }
 
@@ -101,6 +113,12 @@ export function ProofReviewPanel({
             <>
               <dt>Content requirements</dt>
               <dd>{agreement.contentRequirements}</dd>
+            </>
+          )}
+          {agreement.screenshotsRequired && (
+            <>
+              <dt>Screenshots</dt>
+              <dd>Required with the proof</dd>
             </>
           )}
           <dt>Posting dates</dt>

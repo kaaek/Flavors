@@ -83,6 +83,7 @@ function reviews(overrides: Partial<CampaignProofReviews> = {}): CampaignProofRe
       startDate: null,
       lastPostingDate: null,
       contentRequirements: null,
+      screenshotsRequired: false,
       deliverables: [],
     },
     availableDecisions: [],

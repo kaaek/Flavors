@@ -23,6 +23,8 @@ export interface ProofReviewAgreement {
   startDate: string | null
   lastPostingDate: string | null
   contentRequirements: string | null
+  /** The proof must include at least one screenshot (FR-F5.1). */
+  screenshotsRequired: boolean
   deliverables: { platform: string; type: string; count: number }[]
 }
 
