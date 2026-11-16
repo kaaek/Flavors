@@ -11,4 +11,7 @@ public interface ProofSubmissionRepository extends JpaRepository<ProofSubmission
     List<ProofSubmission> findByCampaignIdOrderByRoundAsc(Long campaignId);
 
     Optional<ProofSubmission> findByCampaignIdAndStatus(Long campaignId, ProofSubmissionStatus status);
+
+    Optional<ProofSubmission> findFirstByCampaignIdAndStatusOrderByRoundDesc(
+            Long campaignId, ProofSubmissionStatus status);
 }

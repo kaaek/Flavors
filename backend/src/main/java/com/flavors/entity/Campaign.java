@@ -377,4 +377,20 @@ public class Campaign {
     public int getCorrectionRoundsUsed() {
         return correctionRoundsUsed;
     }
+
+    /** A correction request cancels Timer C; the next submission starts a fresh five-day window. */
+    public void requestProofCorrections(Instant now) {
+        if (status != CampaignStatus.PROOF_SUBMITTED || correctionRoundsUsed >= 2) {
+            throw new IllegalStateException("Corrections require submitted proof and an unused correction round.");
+        }
+        correctionRoundsUsed++;
+        status = CampaignStatus.CORRECTIONS_REQUESTED;
+        recordProofReview(now);
+    }
+
+    /** The brand responded. UC-F7.2/UC-F8.1 own completion/dispute transitions after their effects succeed. */
+    public void recordProofReview(Instant now) {
+        proofReviewDeadline = null;
+        updatedAt = now;
+    }
 }
