@@ -10,6 +10,7 @@ import {
   type CounterOffer,
 } from '../api/campaigns'
 import { ApiError } from '../api/client'
+import { OFFER_EDITABLE } from '../api/offers'
 import { isAwaitingPayment, showsEscrow, startCampaignPayment } from '../api/payments'
 import { showsProof } from '../api/proof'
 import { Icon } from '../layout/Icon'
@@ -383,6 +384,19 @@ export function CampaignDetailPage() {
             </>
           )}
         </dl>
+      </section>
+
+      <section className="fl-card fl-section" aria-labelledby="follower-offer-title">
+        <h2 id="follower-offer-title">Follower offer</h2>
+        <p className="fl-hint">
+          The discount the creator&apos;s followers get at your restaurant while the campaign is
+          active.
+        </p>
+        <div>
+          <Link className="fl-btn fl-btn--outline" to={`/brand/campaigns/${campaign.id}/offer`}>
+            {OFFER_EDITABLE.has(campaign.status) ? 'Set up or change the offer' : 'View the offer'}
+          </Link>
+        </div>
       </section>
 
       <div>
