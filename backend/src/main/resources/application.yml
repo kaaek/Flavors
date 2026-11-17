@@ -84,6 +84,9 @@ management:
       show-details: never
 
 flavors:
+  payout:
+    # Independent of collection. Simulation requires explicit opt-in AND an active dev/test profile.
+    mode: ${FLAVORS_PAYOUT_MODE:disabled}
   app:
     base-url: ${FLAVORS_APP_BASE_URL:http://localhost:5173}
   mail:
