@@ -34,6 +34,9 @@ interface Loaded {
   branches: Branch[]
 }
 
+/** One load, marked with the campaign it was for. */
+type Load = { forId: number } & ({ ok: true; data: Loaded } | { ok: false })
+
 /** Everything the brand typed, as text; it becomes numbers and cents only when the request is built. */
 interface Values {
   discount: string
@@ -155,25 +158,36 @@ function toInput(values: Values): { input: OfferInput } | { errors: Record<strin
 export function OfferPage() {
   const { id } = useParams()
   const campaignId = Number(id)
+  // useFetchWith keeps the previous answer while the next one loads. So each answer carries the campaign it was
+  // loaded for, and an answer for another campaign counts as still loading: moving from one campaign's offer to
+  // another's never opens the form with the previous campaign's conditions, so they can't be saved to this one.
   const load = useCallback(
-    () =>
+    (): Promise<Load> =>
       Promise.all([
         getCampaign(campaignId),
         getOffer(campaignId),
         apiFetch<Branch[]>('/api/brand/branches'),
-      ]).then(([campaign, offer, branches]): Loaded => ({ campaign, offer, branches })),
+      ]).then(
+        ([campaign, offer, branches]): Load => ({
+          forId: campaignId,
+          ok: true,
+          data: { campaign, offer, branches },
+        }),
+        (): Load => ({ forId: campaignId, ok: false }),
+      ),
     [campaignId],
   )
-  const result = useFetchWith<Loaded>(load)
+  const result = useFetchWith<Load>(load)
 
-  if (result.status === 'loading') {
+  if (result.status !== 'ready' || result.data.forId !== campaignId) {
     return (
       <div className="fl-card" aria-busy="true" aria-label="Loading offer">
         <div className="fl-skel fl-skel--line" />
       </div>
     )
   }
-  if (result.status === 'error') {
+  const loaded = result.data
+  if (!loaded.ok) {
     return (
       <div className="fl-stack">
         <div className="fl-alert fl-alert--danger" role="alert">
@@ -188,7 +202,7 @@ export function OfferPage() {
       </div>
     )
   }
-  return <OfferForm key={campaignId} {...result.data} />
+  return <OfferForm key={campaignId} {...loaded.data} />
 }
 
 function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
@@ -303,14 +317,17 @@ function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
       )}
 
       {editable ? (
-        <OfferFields
-          values={values}
-          errors={errors}
-          branches={branches}
-          set={set}
-          toggleDay={toggleDay}
-          toggleBranch={toggleBranch}
-        />
+        // Locked while saving: the answer replaces the form's values, so an edit made meanwhile would be lost.
+        <fieldset className="fl-fieldset fl-stack" disabled={busy}>
+          <OfferFields
+            values={values}
+            errors={errors}
+            branches={branches}
+            set={set}
+            toggleDay={toggleDay}
+            toggleBranch={toggleBranch}
+          />
+        </fieldset>
       ) : (
         <OfferSummary offer={offer} branches={branches} />
       )}
