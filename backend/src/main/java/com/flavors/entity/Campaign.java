@@ -388,6 +388,15 @@ public class Campaign {
         recordProofReview(now);
     }
 
+    public void completeAfterPayout(Instant now) {
+        if (status != CampaignStatus.PROOF_SUBMITTED) {
+            throw new IllegalStateException("Only a campaign awaiting payout can complete.");
+        }
+        status = CampaignStatus.COMPLETED;
+        proofReviewDeadline = null;
+        updatedAt = now;
+    }
+
     /** The brand responded. UC-F7.2/UC-F8.1 own completion/dispute transitions after their effects succeed. */
     public void recordProofReview(Instant now) {
         proofReviewDeadline = null;
