@@ -13,6 +13,9 @@ import com.flavors.exception.OfferLockedException;
 import com.flavors.exception.OfferValidationException;
 import com.flavors.service.CampaignService;
 import com.flavors.service.OfferService;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -20,6 +23,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -49,6 +58,9 @@ class OfferServiceImplIT {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    DataSource dataSource;
 
     // TC-F10.1.1
     @Test
@@ -169,6 +181,9 @@ class OfferServiceImplIT {
         assertRefused(brand, campaign, hours("15:00", "12:00"), "validTo");
         assertRefused(brand, campaign, hours("12:00", "12:00"), "validTo");
         assertRefused(brand, campaign, hours("noon", "15:00"), "validFrom");
+        // The page works in hours and minutes, so seconds would be lost on the next save.
+        assertRefused(brand, campaign, hours("12:00:30", "15:00"), "validFrom");
+        assertRefused(brand, campaign, hours("12:00", "15:00:00.5"), "validTo");
         assertRefused(brand, campaign, branches(List.of()), "branchIds");
         assertRefused(brand, campaign, branches(other.branchIds), "branchIds");
         assertRefused(brand, campaign, new OfferRequest(20, TODAY.plusDays(7), null, null, null, null, null, -1L, null,
@@ -187,6 +202,19 @@ class OfferServiceImplIT {
                         "discountPercent", "expiresOn", "validDays", "validTo", "branchIds", "minPurchaseCents",
                         "maxRedemptions", "perPersonLimit"));
         assertThat(offerCount(campaign)).isZero();
+    }
+
+    @Test
+    void hoursWithZeroSecondsAreTheSameWholeMinutes() {
+        Brand brand = brand("Hamra");
+        long campaign = draft(brand, creator());
+
+        OfferResponse saved = service.save(brand.id, campaign, hours("12:00:00", "15:30:00"));
+
+        assertThat(saved.validFrom()).isEqualTo("12:00");
+        assertThat(saved.validTo()).isEqualTo("15:30");
+        assertThat(jdbc.queryForObject("SELECT valid_to::text FROM offer WHERE campaign_id = ?", String.class, campaign))
+                .isEqualTo("15:30:00");
     }
 
     @Test
@@ -231,6 +259,75 @@ class OfferServiceImplIT {
             assertThat(offer.discountPercent()).isEqualTo(22);
             assertThat(offer.editable()).isFalse();
         });
+    }
+
+    @Test
+    void twoFirstSavesAtTheSameMomentMakeOneOffer() throws Exception {
+        Brand brand = brand("Hamra");
+        long campaign = draft(brand, creator());
+
+        // Another request holds the campaign row, so both saves start and queue up behind it at the same time.
+        try (Connection other = dataSource.getConnection()) {
+            other.setAutoCommit(false);
+            execute(other, "SELECT id FROM campaign WHERE id = ? FOR UPDATE", campaign);
+
+            ExecutorService pool = Executors.newFixedThreadPool(2);
+            try {
+                Future<OfferResponse> a = pool.submit(() -> service.save(brand.id, campaign, minimal(20)));
+                Future<OfferResponse> b = pool.submit(() -> service.save(brand.id, campaign, minimal(30)));
+                awaitWaitingForCampaignLock(2);
+                other.commit();
+
+                // The lock lets them through one at a time: the first creates the offer, the second updates it.
+                assertThat(a.get(30, TimeUnit.SECONDS).id()).isEqualTo(b.get(30, TimeUnit.SECONDS).id());
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+
+        assertThat(offerCount(campaign)).isEqualTo(1);
+        assertThat(audit("OFFER_CREATED", campaign)).isEqualTo(1);
+        assertThat(audit("OFFER_UPDATED", campaign)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT discount_percent FROM offer WHERE campaign_id = ?", Integer.class,
+                campaign)).isIn(20, 30);
+    }
+
+    @Test
+    void aChangeSavedWhileThePaymentActivatesTheCampaignIsRefused() throws Exception {
+        Brand brand = brand("Hamra");
+        long creator = creator();
+        long campaign = draft(brand, creator);
+        service.save(brand.id, campaign, minimal(20));
+        campaigns.send(brand.id, campaign, complete(brand, creator));
+        setStatus(campaign, "AWAITING_PAYMENT");
+
+        // The payment holds the campaign row while it activates the campaign (EEC-44 locks the same row).
+        try (Connection payment = dataSource.getConnection()) {
+            payment.setAutoCommit(false);
+            execute(payment, "SELECT id FROM campaign WHERE id = ? FOR UPDATE", campaign);
+
+            ExecutorService pool = Executors.newSingleThreadExecutor();
+            try {
+                Future<OfferResponse> change = pool.submit(() -> service.save(brand.id, campaign, minimal(90)));
+                awaitWaitingForCampaignLock(1);
+                execute(payment, "UPDATE campaign SET status = 'ACTIVE' WHERE id = ?", campaign);
+                payment.commit();
+
+                // The change waited for the payment, then saw the campaign active and was refused.
+                assertThatThrownBy(() -> change.get(30, TimeUnit.SECONDS))
+                        .isInstanceOf(ExecutionException.class)
+                        .hasCauseInstanceOf(OfferLockedException.class);
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+
+        assertThat(service.get(brand.id, campaign)).hasValueSatisfying(offer -> {
+            assertThat(offer.discountPercent()).isEqualTo(20);
+            assertThat(offer.state()).isEqualTo(OfferState.LIVE);
+            assertThat(offer.editable()).isFalse();
+        });
+        assertThat(audit("OFFER_UPDATED", campaign)).isZero();
     }
 
     @Test
@@ -372,6 +469,28 @@ class OfferServiceImplIT {
                                         discount_cents)
                 VALUES (?, ?, ?, ?, ?, ?, 5000, 1000)
                 """, claim, offer, campaign, creator, brand.id, brand.branchIds.get(0));
+    }
+
+    /** Returns once this many statements on the campaign table are blocked waiting for a lock. */
+    private void awaitWaitingForCampaignLock(int statements) throws InterruptedException {
+        for (int attempt = 0; attempt < 1000; attempt++) {
+            Integer waiting = jdbc.queryForObject("""
+                    SELECT count(*) FROM pg_stat_activity
+                    WHERE wait_event_type = 'Lock' AND query ILIKE '%from campaign%'
+                    """, Integer.class);
+            if (waiting != null && waiting >= statements) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        throw new AssertionError("the saves never waited for the campaign lock");
+    }
+
+    private static void execute(Connection connection, String sql, long id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, id);
+            statement.execute();
+        }
     }
 
     private int offerCount(long campaign) {

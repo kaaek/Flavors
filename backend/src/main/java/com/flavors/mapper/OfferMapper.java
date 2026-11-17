@@ -44,6 +44,7 @@ public class OfferMapper {
                 offer.getUpdatedAt());
     }
 
+    /** Hours and minutes lose nothing: the service only stores whole minutes. */
     private static String hours(LocalTime time) {
         return time == null ? null : time.format(HOURS);
     }
