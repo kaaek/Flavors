@@ -332,9 +332,11 @@ Creator and admin history is read-only. Both campaign pages show the decisions; 
 environment variables. See
 [Architecture section 19](Architecture.md#19-campaign-delivery-review-uc-f61-eec-47---built-payment-follow-ups-deferred) for the API and limits.
 
-Payment release/freezing and dispute creation are deferred to UC-F7.2/UC-F8.1. A recorded approval/rejection reports its
-`requiredFollowUp`; it does not mean money has moved or a dispute exists. Timer C candidate detection is implemented,
-but no automatic payout worker is enabled until the payment integration is present.
+EEC-45 Step 3 authorizes release atomically with approval and can recover older approved reviews missing an operation.
+Approval leaves escrow `HELD`; Step 5 freezes escrow atomically with rejection. Step 6 can confirm simulated
+payouts; real payouts and dispute creation remain pending. A recorded approval/rejection reports its
+`requiredFollowUp`; it does not mean money has moved or a dispute exists. Step 4 schedules Timer C authorization,
+but payout execution remains deferred until the payment integration is present.
 
 ### Connecting Instagram (EEC-33, EEC-88)
 
@@ -405,5 +407,41 @@ The paths of the Whish API (`/payment/whish` to create a payment, `/payment/coll
 2. The official Whish API specification. Everything the adapter knows comes from unofficial notes: the paths, the headers,
    the callback format, the limits (reported as 1 to 5,000 USD) and whether USD cards and wallets are both enabled.
 3. The public HTTPS domains that Whish whitelists for the callback and redirect URLs (the deployed backend, e.g. Railway).
-4. An answer for payouts and refunds (EEC-45): Whish has no escrow release or refund API, so these need a manual process or a
-   Whish arrangement.
+4. Separate confirmation of creator payout/transfer, refund, and status-query capabilities. The current collection
+   adapter implements none of these; do not infer them from a Whish account or collection credentials.
+
+### Creator payouts and escrow release (EEC-45: simulation built, real payouts blocked)
+
+As of 17 November 2026, Flavors' Whish virtual account application is pending approval. Whish remains the intended
+provider, but creator transfers, payout APIs, refunds, status queries, automated settlement, and the two-business-day
+payout target have not been confirmed. A virtual account approval will not by itself establish those capabilities.
+
+The contract is [EEC-45-release-payout-design.md](EEC-45-release-payout-design.md), summarized in
+[Architecture section 20](Architecture.md#20-escrow-release-and-creator-payout-uc-f72-eec-45--simulation-built-real-payouts-blocked).
+Approval/Timer C authorize a durable payout operation; escrow becomes `RELEASED` only after creator payment is
+confirmed. Step 5 rejection freezes funds and retains the existing rejection review for EEC-54 in Sprint 3.
+No dispute-opening service or handoff table belongs to this Sprint 2 branch. Step 2 adds V10 payout
+persistence and tests; Step 3 adds atomic approval authorization and explicit legacy-approval recovery.
+Step 4 adds automatic Timer C authorization in batches of at most 100, with one transaction per campaign.
+It runs every minute in `Asia/Beirut`; configure `flavors.escrow.release-deadline-cron` and
+`flavors.escrow.release-deadline-zone` (cron `-` disables it). Escrow stays `HELD` after authorization.
+Step 5 adds rejection freezing to the same review transaction, with idempotent retries and audit.
+Step 6 adds simulated payout execution/reconciliation; dispute creation and actual production payouts remain pending.
+
+Payouts are separate from Whish collection: `FLAVORS_PAYOUT_MODE` defaults to `disabled`. To simulate,
+set it to `simulated` with an active `dev` or `test` profile. Production (`prod`/`production`) refuses
+simulation, including mixed profiles; no real payout adapter or credentials are configured. Simulation
+never sends money to real creators. FR-F7.12 and its two-business-day SLA remain pending external confirmation.
+The payout job handles at most 100 operations per minute; configure `flavors.payout.processing-cron`
+and `flavors.payout.processing-zone` (cron `-` disables it). Unknown outcomes reconcile before retry.
+If the simulator loses its in-memory ledger, unknown operations remain held for inspection rather than
+being paid again. Step 7 adds payout displays; notifications remain deferred.
+
+The existing brand/creator escrow GET responses now include stored fee/net, payout progress and timestamps,
+authorization source, simulation labelling and availability. Both campaign pages show these details without
+claiming receipt before confirmation. Frozen/released/refunded records stay visible, and frozen payments
+explain the Sprint 3 EEC-54 dispute boundary. Visible unfinished payments refresh every 30 seconds and on
+focus; campaign navigation isolates state and ignores late responses. No manual release endpoint is added.
+
+Actual production payouts remain disabled until the account and required capabilities are confirmed and a real
+integration is implemented. Existing `WHISH_MODE` controls collection only. No manual payout API is implemented.
