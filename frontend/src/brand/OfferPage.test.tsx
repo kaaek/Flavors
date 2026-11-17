@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, expect, it, vi } from 'vitest'
 import type { Campaign } from '../api/campaigns'
 import { ApiError, apiFetch } from '../api/client'
@@ -312,4 +312,76 @@ it('says so when the campaign cannot be loaded', async () => {
 
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not load the offer.')
   expect(screen.getByRole('link', { name: 'Back to campaigns' })).toBeInTheDocument()
+})
+
+// Review of EEC-41: the page keeps showing the previous answer while the next campaign loads.
+it("never shows or saves one campaign's offer on another campaign's page", async () => {
+  const user = userEvent.setup()
+  let release: () => void = () => {}
+  const campaign43Ready = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  server({
+    [`GET ${OFFER}`]: () => saved,
+    'GET /api/brand/campaigns/43': () =>
+      campaign43Ready.then(() => ({ ...campaign, id: 43, name: 'Winter menu' })),
+    'GET /api/brand/campaigns/43/offer': () =>
+      campaign43Ready.then(() => ({ ...saved, id: 6, campaignId: 43, discountPercent: 35 })),
+    'PUT /api/brand/campaigns/43/offer': () => ({
+      ...saved,
+      id: 6,
+      campaignId: 43,
+      discountPercent: 35,
+    }),
+  })
+  render(
+    <MemoryRouter initialEntries={['/brand/campaigns/42/offer']}>
+      <Link to="/brand/campaigns/43/offer">Next campaign</Link>
+      <Routes>
+        <Route path="/brand/campaigns/:id/offer" element={<OfferPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  expect(await screen.findByLabelText(/Discount \(%\)/)).toHaveValue('20')
+
+  await user.click(screen.getByRole('link', { name: 'Next campaign' }))
+
+  // While campaign 43 loads, campaign 42's offer is gone: no form at all.
+  expect(screen.queryByLabelText(/Discount \(%\)/)).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Loading offer')).toBeInTheDocument()
+
+  await act(async () => release())
+
+  expect(await screen.findByLabelText(/Discount \(%\)/)).toHaveValue('35')
+  expect(screen.getByText('Winter menu')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Save offer' }))
+  await screen.findByRole('status')
+  const puts = apiFetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')
+  expect(puts.map(([path]) => path)).toEqual(['/api/brand/campaigns/43/offer'])
+  expect(puts[0][1]?.body).toMatchObject({ discountPercent: 35 })
+})
+
+it('locks the fields while the offer is being saved, so no edit is lost', async () => {
+  const user = userEvent.setup()
+  let answer: (offer: Offer) => void = () => {}
+  server({
+    [`PUT ${OFFER}`]: () =>
+      new Promise<Offer>((resolve) => {
+        answer = resolve
+      }),
+  })
+  renderPage()
+
+  await user.type(await screen.findByLabelText(/Discount \(%\)/), '20')
+  change(/Last day it works/, '2030-02-01')
+  await user.click(screen.getByRole('button', { name: 'Save offer' }))
+
+  expect(screen.getByLabelText(/Discount \(%\)/)).toBeDisabled()
+  expect(screen.getByRole('checkbox', { name: 'Mon' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
+
+  await act(async () => answer(saved))
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Offer saved.')
+  expect(screen.getByLabelText(/Discount \(%\)/)).toBeEnabled()
 })
