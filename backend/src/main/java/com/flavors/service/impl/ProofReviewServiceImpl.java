@@ -18,6 +18,7 @@ import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.ProofReviewRepository;
 import com.flavors.repository.ProofSubmissionRepository;
 import com.flavors.service.AuditLogger;
+import com.flavors.service.EscrowReleaseService;
 import com.flavors.service.ProofReviewService;
 import java.time.Clock;
 import java.time.Instant;
@@ -38,22 +39,26 @@ public class ProofReviewServiceImpl implements ProofReviewService {
     private final ProofReviewRepository reviews;
     private final ProofReviewMapper mapper;
     private final AuditLogger audit;
+    private final EscrowReleaseService releases;
     private final Clock clock;
 
     @Autowired
     public ProofReviewServiceImpl(CampaignRepository campaigns, ProofSubmissionRepository submissions,
-                                  ProofReviewRepository reviews, ProofReviewMapper mapper, AuditLogger audit) {
-        this(campaigns, submissions, reviews, mapper, audit, Clock.systemUTC());
+                                  ProofReviewRepository reviews, ProofReviewMapper mapper, AuditLogger audit,
+                                  EscrowReleaseService releases) {
+        this(campaigns, submissions, reviews, mapper, audit, releases, Clock.systemUTC());
     }
 
     ProofReviewServiceImpl(CampaignRepository campaigns, ProofSubmissionRepository submissions,
                            ProofReviewRepository reviews, ProofReviewMapper mapper, AuditLogger audit,
+                           EscrowReleaseService releases,
                            Clock clock) {
         this.campaigns = campaigns;
         this.submissions = submissions;
         this.reviews = reviews;
         this.mapper = mapper;
         this.audit = audit;
+        this.releases = releases;
         this.clock = clock;
     }
 
@@ -77,6 +82,11 @@ public class ProofReviewServiceImpl implements ProofReviewService {
             if (saved.getDecision() != decision || !Objects.equals(saved.getReason(), reason)) {
                 throw new DeliveryProofConflictException("This proof version already has a different decision.");
             }
+            if (saved.getDecision() == ProofReviewDecision.APPROVED) {
+                releases.authorizeApproved(campaignId, submissionId, saved.getId());
+            } else if (saved.getDecision() == ProofReviewDecision.REJECTED) {
+                releases.freezeForRejection(campaignId, submissionId, saved.getId());
+            }
             return mapper.toResponse(saved);
         }
 
@@ -97,13 +107,17 @@ public class ProofReviewServiceImpl implements ProofReviewService {
             }
             campaign.requestProofCorrections(now);
         } else {
-            // Record the response without claiming that payment or dispute side effects already happened.
-            // The review is durable input for UC-F7.2/UC-F8.1; no external call belongs in this transaction.
+            // Clear Timer C. Approval authorizes release; rejection freezes funds. Neither creates a dispute or payout.
             campaign.recordProofReview(now);
         }
         ProofReview saved = reviews.saveAndFlush(new ProofReview(submissionId, decision, reason, brandId, now));
         audit.record("PROOF_" + decision.name(), "proof_review", saved.getId(), Map.of(
                 "campaignId", campaignId, "submissionId", submissionId, "round", submission.getRound()));
+        if (decision == ProofReviewDecision.APPROVED) {
+            releases.authorizeApproved(campaignId, submissionId, saved.getId());
+        } else if (decision == ProofReviewDecision.REJECTED) {
+            releases.freezeForRejection(campaignId, submissionId, saved.getId());
+        }
         return mapper.toResponse(saved);
     }
 

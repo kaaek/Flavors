@@ -62,6 +62,13 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
             select c.id from Campaign c
             where c.status = com.flavors.enums.CampaignStatus.PROOF_SUBMITTED
               and c.proofReviewDeadline <= :now
+              and exists (select e.id from EscrowPayment e where e.campaignId = c.id
+                          and e.status = com.flavors.enums.EscrowStatus.HELD
+                          and e.amountCents = c.agreedPriceCents
+                          and not exists (select o.id from EscrowReleaseOperation o where o.escrowId = e.id))
+              and not exists (select r.id from ProofReview r, ProofSubmission rejected
+                              where r.submissionId = rejected.id and rejected.campaignId = c.id
+                                and r.decision = com.flavors.enums.ProofReviewDecision.REJECTED)
               and exists (select s.id from ProofSubmission s
                           where s.campaignId = c.id
                             and s.status = com.flavors.enums.ProofSubmissionStatus.SUBMITTED

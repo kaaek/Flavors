@@ -80,7 +80,7 @@ class ProofReviewServiceImplIT {
         });
         assertThat(reviews.history(fixture.brandId(), Role.BRAND, fixture.campaignId()).availableDecisions()).isEmpty();
         assertThat(jdbc.queryForObject("SELECT status FROM escrow_payment WHERE campaign_id = ?",
-                String.class, fixture.campaignId())).isEqualTo("HELD");
+                String.class, fixture.campaignId())).isEqualTo("FROZEN");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM dispute WHERE campaign_id = ?",
                 Integer.class, fixture.campaignId())).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action = 'PROOF_REJECTED' AND entity_id = ?",
@@ -111,7 +111,7 @@ class ProofReviewServiceImplIT {
         assertThat(reviewRows.findByCampaignId(third.campaignId())).hasSize(3);
     }
 
-    @Test // TC-F6.1.4: reason/record only; freezing and opening the dispute are explicitly deferred.
+    @Test // TC-F6.1.4: rejection freezes funds; opening the dispute belongs to EEC-54.
     void rejectionRequiresAReasonAndPersistsTheRequiredDisputeFollowUp() {
         Fixture fixture = newFixture();
 
@@ -126,7 +126,7 @@ class ProofReviewServiceImplIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM dispute WHERE campaign_id = ?",
                 Integer.class, fixture.campaignId())).isZero();
         assertThat(jdbc.queryForObject("SELECT status FROM escrow_payment WHERE campaign_id = ?",
-                String.class, fixture.campaignId())).isEqualTo("HELD");
+                String.class, fixture.campaignId())).isEqualTo("FROZEN");
     }
 
     @Test
