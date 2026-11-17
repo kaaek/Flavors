@@ -200,6 +200,13 @@ unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is 
 - `campaign.screenshots_required`: boolean, default false. Part of the terms the brand sets on the campaign form; when
   true, a final delivery proof needs at least one screenshot (FR-F5.1, §18).
 
+**V10 — escrow release operations** (EEC-45, tested by `EscrowReleaseOperationIT`)
+- `escrow_release_operation`: unique escrow/operation identity, proof/review authorization evidence,
+  immutable original/fee/net snapshot, payout state, pinned provider/destination/transaction references,
+  timestamps, worker leases and attempt metadata. Constraints and a trigger protect money, identity,
+  legal transitions and terminal confirmation. Cross-table eligibility is rechecked under the campaign lock.
+  V1–V9 are unchanged. No dispute schema is introduced (see section 20 for the execution model).
+
 ### 4.3 ER diagram
 
 Tables and their foreign keys (columns are listed in §4.2 and in the migrations). `||--o{` reads
@@ -243,6 +250,8 @@ erDiagram
 
     campaign ||--o| escrow_payment : "paid through"
     escrow_payment ||--o{ payment_transaction : "moves money by"
+    escrow_payment ||--o| escrow_release_operation : "authorizes full release through"
+    proof_submission ||--o{ escrow_release_operation : "provides authorization evidence"
     campaign ||--o{ proof_submission : "proven by"
     proof_submission ||--o{ proof_link : contains
     proof_submission ||--o{ proof_file : contains
@@ -272,6 +281,7 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 | `offer_claim` | UC-F10.2 |
 | `redemption`, `scan_failure` | UC-F11.1, F12.1, F13.1, F14.1 |
 | `escrow_payment`, `payment_transaction` | UC-F7.1, F7.2, F23.1, F25.1 |
+| `escrow_release_operation` | UC-F7.2 (EEC-45); simulated execution only until real provider confirmation |
 | `proof_submission`, `proof_link`, `proof_file` | UC-F5.1 |
 | `proof_review` | UC-F6.1 |
 | `dispute`, `dispute_evidence` | UC-F8.1 |
@@ -689,8 +699,9 @@ Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (
   `SUCCEEDED` but not held. The escrow stays `PENDING`, the audit log has `PAYMENT_NOT_HELD`, and the payer is told the payment was
   received but not held (`payment=received`). A PAID answer after expiry is never held and never reported as held. Residual: a brand
   that pays in the last minutes before the deadline can be charged without a campaign until EEC-45 adds refunds.
-- **Escrow is a Flavors ledger state.** Whish is collect-only: no hold, refund or payout API. `HELD` means Flavors has recorded
-  money that Whish collected. Release and refund (EEC-45) need a separate answer (SPIKE-2).
+- **Escrow is a Flavors ledger state.** The current Whish integration is collection-only; it implements no hold, refund or payout API. `HELD` means Flavors has recorded
+  money that Whish collected. Creator payout capability is unconfirmed while the virtual account application is pending.
+  EEC-45's proposed release/payout design is in section 20; account approval alone will not establish payout API access.
 - **Schema:** none added. `escrow_payment` and `payment_transaction` (V5) hold it all: the provider reference is unique,
   so one confirmation matches one payment.
 - **Pages:** brand `/brand/campaigns/:id` shows **Awaiting payment** with the time left (TC-F7.1.5), the Pay button (a new
@@ -864,14 +875,17 @@ payment/dispute stories. V5 already owns `proof_review`, so no new migration is 
 **Deferred integration, not a completed financial workflow:** approval/rejection clears Timer C but leaves the campaign
 `PROOF_SUBMITTED` while the required follow-up is pending. `ProofReviewResponse.requiredFollowUp` is `RELEASE_PAYMENT`,
 `FREEZE_PAYMENT_AND_OPEN_DISPUTE`, or `RESUBMIT_PROOF`. The saved `proof_review` is the durable decision record; it is
-not a processed outbox or a successful payout/dispute. There is no payment-provider call, escrow mutation, dispute row,
-`COMPLETED` transition, or `DISPUTED` transition in this increment. UC-F7.2/UC-F8.1 must provide those effects and their
-idempotent processing before EEC-47 is considered complete end to end.
+not a successful payout/dispute. EEC-45 Step 3 now creates a durable release operation and authorization audit atomically
+with approval (see section 20), and identical approval retries repair legacy missing operations. Step 5
+freezes escrow atomically with rejection. Step 6 can confirm explicitly simulated payouts and complete campaigns.
+There is no real payout adapter or dispute creation/`DISPUTED` transition. Real payout capability and EEC-54
+dispute processing remain pending before this flow is complete end to end with real funds.
 
-`ProofReviewService.findOverdueCampaignIds()` supplies at most 100 unanswered, overdue current submissions for the future
-Timer C worker. It excludes reviewed versions and campaigns in `CORRECTIONS_REQUESTED`, even if an old deadline remains.
-The payment worker must lock and recheck each candidate before releasing funds; this method is only a read snapshot.
-No scheduled auto-release is enabled yet. TC-F6.1.5 and the financial/dispute portions of TC-F6.1.1/TC-F6.1.4 remain pending.
+`ProofReviewService.findOverdueCampaignIds()` supplies at most 100 unanswered, overdue current submissions for the
+Timer C authorization job (section 20). It excludes reviewed versions, existing operations, ineligible escrow,
+historical rejections, and campaigns in `CORRECTIONS_REQUESTED`, even if an old deadline remains.
+Each candidate must be locked and rechecked; this method is only a read snapshot. Step 4 authorizes release
+automatically but does not transfer funds. The financial/dispute portions of TC-F6.1.1/TC-F6.1.4 remain pending.
 
 Tests: `ProofReviewServiceImplTest` and `ProofReviewControllerTest` cover the decision rules, retry behavior, privacy,
 role/CSRF guards, validation and deadline boundaries without Docker. `ProofReviewQueryTest` validates Hibernate query
@@ -942,3 +956,116 @@ Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's ca
   `BrandOfferControllerTest` (roles, CSRF, JSON, raw `100.9` reaching the checks uncut, 204, error bodies); frontend
   `OfferPage.test.tsx` (including moving between two campaigns' offers, the fields locked while saving, no creator yet, and the
   status refreshed on an open page).
+
+## 20. Escrow release and creator payout (UC-F7.2, EEC-45) — simulation built, real payouts blocked
+
+The updated sprint boundary and implementation contract are documented in
+[EEC-45-release-payout-design.md](EEC-45-release-payout-design.md). Step 2 adds V10's durable release
+operation, entity/repository, and persistence tests. Step 3 adds `EscrowReleaseService` / implementation,
+approval authorization in the review transaction, and explicit recovery of legacy approved reviews.
+Step 4 adds automatic deadline authorization; Step 5 freezes escrow after rejection. Step 6 executes
+and reconciles explicitly simulated payouts. Production payouts remain disabled.
+
+- Approval or an unanswered five-day deadline authorizes a durable release operation. Both paths use
+  the same campaign lock, immutable fee/net snapshot, and one-operation-per-escrow identity.
+- `RELEASED` retains its V5 meaning: confirmed creator payment. Authorization and provider acceptance
+  leave escrow `HELD`, with separate payout status; only authoritative confirmation completes payout.
+- EEC-45 is Sprint 2; EEC-54 is Sprint 3. Step 5 records rejection and freezes escrow atomically.
+  The existing persisted rejection review is EEC-54's input. No dispute-opening service, handoff table,
+  dispute migration, evidence, or resolution is added. Dispute creation and the `DISPUTED` campaign
+  transition are deferred to EEC-54; Sprint 2 leaves the rejected campaign `PROOF_SUBMITTED` with frozen funds.
+- Payout submission/status calls run outside database transactions. Unknown outcomes require reconciliation
+  before retry; database idempotency alone cannot guarantee an external transfer occurs only once.
+- Whish virtual account approval is pending. Payout/transfer/refund/status-query capabilities and the
+  two-business-day settlement target are unconfirmed. Collection settings must not enable payouts.
+- Development and tests may explicitly enable the separate simulated payout adapter; production payouts remain disabled.
+  V10 adds `escrow_release_operation` only, with unique escrow/operation keys, immutable fee/net snapshots,
+  source/review checks, provider references, timestamps/leases/counters, and guarded payout-state transitions.
+  It never changes escrow itself. Step 3 uses the campaign lock and unique operation identity to prevent
+  duplicate authorizations; review, authorization and audits commit or roll back together. Recovery scans
+  eligible legacy approvals in keyset batches and rechecks each under the campaign lock in its own transaction.
+  No provider, worker, API change, or freezing orchestration is implemented in Step 3.
+
+Step 4 adds `EscrowReleaseDeadlineJob`, `EscrowReleaseProcessingService` / implementation, and
+`EscrowReleaseService.authorizeOverdue`. The job runs every minute by default in `Asia/Beirut`, using
+`flavors.escrow.release-deadline-cron` / `flavors.escrow.release-deadline-zone` (cron `-` disables it).
+Each invocation handles at most 100 candidates from the existing overdue query. The batch holds no
+transaction; each candidate runs in a separate `REQUIRES_NEW` transaction through the release-service
+proxy. Failure rolls back only that campaign and leaves it discoverable for a later run.
+
+Timer C locks the same campaign row as reviews/submissions, then checks the latest current submitted
+round, deadline <= current time, no current decision or historical rejection, `HELD` escrow with the
+agreed amount, and no existing release. Approval and Timer C share authorization creation, the entity's
+15% fee/net snapshot, and `ESCROW_RELEASE_AUTHORIZED` audit (source `APPROVAL` or `TIMER_C`). Timer C
+atomically clears the completed deadline and stores no brand review. Concurrent scans serialize under
+the campaign lock; unique escrow/operation keys provide the persistence backstop. Corrections cancel
+the old cycle; resubmission retains its fresh five-day window. No payout, escrow transition, freezing,
+dispute, API, or frontend change belongs to Step 4.
+
+`EscrowReleaseTimerCTest`, `EscrowReleaseDeadlineJobTest`, and PostgreSQL `EscrowReleaseTimerCIT`
+cover deadline boundaries, correction/resubmission cycles, repeated and concurrent runs, approval races,
+ineligible escrow, bounded batches, audit rollback, failure isolation, and restart recovery.
+
+Step 5 adds `EscrowReleaseService.freezeForRejection`, invoked by the existing review endpoint for a
+new rejection and an identical retry. The method requires the review transaction (`MANDATORY`),
+reuses the campaign lock, verifies latest/current proof and the owning brand's persisted rejection,
+and refuses any existing release operation. It uses the existing escrow lookup after locking and
+the guarded `EscrowPayment.freeze` transition. Review, deadline clearing, `PROOF_REJECTED` audit,
+escrow `HELD` -> `FROZEN`, and `ESCROW_FROZEN` audit commit or roll back together.
+
+Frozen retries change neither timestamps nor audit; retrying a legacy rejection can repair held
+escrow without duplicating its review. New rejections retain existing endpoint ownership and deadline
+checks. Timer C and rejection serialize on the campaign lock: a committed rejection prevents
+authorization, and a committed expiry closes manual review. Release guards exclude rejected/frozen
+escrow. No payout execution, dispute creation, frontend, API display, or migration change is added.
+The persisted rejection and frozen escrow remain discoverable by EEC-54; campaign stays
+`PROOF_SUBMITTED`. `EscrowFreezingIT` covers rollback on audit/update failures, idempotency, ownership,
+history, and Timer C races; entity/service tests and the existing HTTP test verify freezing too.
+
+Step 6 adds a separate `PayoutProvider` port, `PayoutRequest`/`PayoutResult`, `PayoutConfig`,
+`SimulatedPayoutProvider`, `UnavailablePayoutProvider`, `EscrowPayoutService` / implementation,
+and `EscrowPayoutJob`. Collection settings cannot enable payouts. `FLAVORS_PAYOUT_MODE` defaults to
+`disabled`; explicit `simulated` requires dev/test and is rejected in prod/production, including mixed
+profiles. No real adapter or beneficiary onboarding exists. FR-F7.12 remains pending verified external
+payout capability and confirmation of the two-business-day SLA. Simulation never transfers real money.
+
+The worker selects up to 100 due operations per minute (cron/zone `flavors.payout.processing-cron` /
+`flavors.payout.processing-zone`, default `Asia/Beirut`, cron `-` disables it). It prepares in one short
+transaction, invokes the provider without a transaction, and applies results in another transaction.
+Preparation uses database idempotency then campaign/operation locks, checks eligibility, pins the
+destination/provider and one net `RELEASE` transaction, and persists `UNKNOWN` with a two-minute UUID
+lease before dispatch. The external reference remains the immutable operation key across attempts.
+Fees/net are copied from the stored snapshot, never recalculated.
+
+Pending acknowledgement does not release funds. Unknown/expired-lease work only queries; a query timeout
+or ambiguous missing result never permits resubmission. Backoff is one minute. Only definitive failure
+explicitly safe to retry can dispatch again, using the same logical operation/transaction. Results must
+match the request identity and active lease token. Confirmation atomically marks operation `CONFIRMED`,
+transaction `SUCCEEDED`, escrow `RELEASED` with snapshot amounts/timestamp, campaign `COMPLETED`, and audits.
+Each candidate is isolated; rollback after provider acceptance leaves the durable unknown claim for
+reconciliation. Payout audits and references explicitly identify simulation. No API/frontend change or
+notification is added in Step 6.
+
+The simulator ledger is in memory. A worker interruption can reconcile an accepted simulation while
+the ledger survives; losing that ledger leaves unknown operations held for inspection, without a blind
+retry or fabricated success. Production needs a verified durable provider lookup contract, credentials,
+destination onboarding, and SLA agreement before real payouts can be enabled.
+
+Step 7 extends the existing ownership-checked brand/creator escrow GET responses through `EscrowMapper`.
+It retains the old escrow fields and adds nullable snapshot fee/net, payout status, authorization source,
+authorization/submission/confirmation timestamps, simulation labelling, and a non-sensitive availability
+flag. Read-only repeatable-read transactions give one coherent escrow/operation snapshot. No provider
+reference/destination, operation key, lease, transaction ID, credential, or internal error is returned.
+There is no new public release endpoint or expansion of role/ownership access.
+
+Both campaign detail pages render the shared `EscrowPanel`: held funds without an operation, authorized,
+submitted, unknown/reconciling, failed, confirmed/released, frozen, and refunded states remain distinct.
+Fee/net are stored snapshot values; simulation is explicitly labelled as no real transfer. Review approval
+now says release authorized, and rejection says frozen with dispute handling deferred to Sprint 3 EEC-54.
+`showsEscrow` retains terminal/frozen records. No provider behavior or production enablement changes.
+
+Campaign pages remount on campaign ID changes; the panel also keys state by viewer/campaign. Late answers
+are ignored on unmount or changed refresh dependencies. Visible unfinished escrow refreshes every 30
+seconds and on focus/visibility, without overlapping calls; released/refunded network polling stops.
+Review actions refresh immediately and job-driven escrow status changes refresh the campaign header.
+Errors preserve last-known data with a stale-data warning. The UI never equates authorization with receipt.
