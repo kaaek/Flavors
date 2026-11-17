@@ -28,6 +28,11 @@ import com.flavors.service.AuditLogger;
 import com.flavors.service.IdempotencyService;
 import com.flavors.service.PaymentProvider;
 import com.flavors.service.PaymentService;
+import com.flavors.service.PayoutProvider;
+import com.flavors.mapper.EscrowMapper;
+import com.flavors.repository.EscrowReleaseOperationRepository;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -71,20 +76,25 @@ public class PaymentServiceImpl implements PaymentService {
     private final TransactionOperations tx;
     private final String appBaseUrl;
     private final Clock clock;
+    private final EscrowReleaseOperationRepository releases;
+    private final EscrowMapper escrowMapper;
+    private final PayoutProvider payouts;
 
     @Autowired
     public PaymentServiceImpl(CampaignRepository campaigns, EscrowPaymentRepository escrows,
                               PaymentTransactionRepository transactions, NotificationRepository notifications,
                               AuditLogger auditLogger, IdempotencyService idempotency, PaymentProvider provider,
-                              TransactionOperations tx, @Value("${flavors.app.base-url}") String appBaseUrl) {
+                              TransactionOperations tx, @Value("${flavors.app.base-url}") String appBaseUrl,
+                              EscrowReleaseOperationRepository releases, EscrowMapper escrowMapper, PayoutProvider payouts) {
         this(campaigns, escrows, transactions, notifications, auditLogger, idempotency, provider, tx, appBaseUrl,
-                Clock.systemUTC());
+                Clock.systemUTC(), releases, escrowMapper, payouts);
     }
 
     PaymentServiceImpl(CampaignRepository campaigns, EscrowPaymentRepository escrows,
                        PaymentTransactionRepository transactions, NotificationRepository notifications,
                        AuditLogger auditLogger, IdempotencyService idempotency, PaymentProvider provider,
-                       TransactionOperations tx, String appBaseUrl, Clock clock) {
+                       TransactionOperations tx, String appBaseUrl, Clock clock,
+                       EscrowReleaseOperationRepository releases, EscrowMapper escrowMapper, PayoutProvider payouts) {
         this.campaigns = campaigns;
         this.escrows = escrows;
         this.transactions = transactions;
@@ -95,6 +105,9 @@ public class PaymentServiceImpl implements PaymentService {
         this.tx = tx;
         this.appBaseUrl = stripTrailingSlash(appBaseUrl);
         this.clock = clock;
+        this.releases = releases;
+        this.escrowMapper = escrowMapper;
+        this.payouts = payouts;
     }
 
     @Override
@@ -377,12 +390,14 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public EscrowResponse getEscrowForBrand(long brandId, long campaignId) {
         campaigns.findByIdAndBrandId(campaignId, brandId).orElseThrow(CampaignNotFoundException::new);
         return escrowOf(campaignId);
     }
 
     @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public EscrowResponse getEscrowForCreator(long creatorId, long campaignId) {
         campaigns.findById(campaignId)
                 .filter(c -> Objects.equals(c.getCreatorId(), creatorId))
@@ -394,8 +409,8 @@ public class PaymentServiceImpl implements PaymentService {
     private EscrowResponse escrowOf(long campaignId) {
         EscrowPayment escrow = escrows.findByCampaignId(campaignId)
                 .orElseThrow(() -> new PaymentNotFoundException("No payment has been started for this campaign."));
-        return new EscrowResponse(campaignId, escrow.getStatus(), escrow.getAmountCents(), escrow.getHeldAt(),
-                escrow.getReleasedAt(), escrow.getUpdatedAt());
+        return escrowMapper.toResponse(escrow, releases.findByEscrowId(escrow.getId()).orElse(null),
+                payouts.available(), payouts.simulated());
     }
 
     private void notify(Long userId, Campaign campaign, String type, String message) {
