@@ -325,7 +325,7 @@ it('tells the creator when the last round has started', async () => {
   expect(screen.getByText(/Round 3 of 3/)).toBeInTheDocument()
 })
 
-it('says what an approval means while payment release is not automated', async () => {
+it('shows authorization without claiming the creator has been paid', async () => {
   serve({
     [`GET ${PROOF}`]: proof({ campaignStatus: 'PROOF_SUBMITTED', submissions: [roundOne] }),
     [`GET ${REVIEWS}`]: reviews({
@@ -339,7 +339,7 @@ it('says what an approval means while payment release is not automated', async (
   renderSection()
 
   expect(await screen.findByText(/The brand approved your proof on/)).toBeInTheDocument()
-  expect(screen.getByText(/Releasing it is not automated yet/)).toBeInTheDocument()
+  expect(screen.getByText(/Payment release has been authorized/)).toBeInTheDocument()
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
 })
 
@@ -363,7 +363,7 @@ it('shows a rejection with its reason', async () => {
   const title = await screen.findByText(/The brand rejected your proof on/)
   const alert = title.closest('.fl-alert') as HTMLElement
   expect(within(alert).getByText('The reels were never posted.')).toBeInTheDocument()
-  expect(within(alert).getByText(/Opening a dispute is not available/)).toBeInTheDocument()
+  expect(within(alert).getByText(/Escrow is FROZEN.*Sprint 3 EEC-54/)).toBeInTheDocument()
 })
 
 it('still works when the decisions cannot be loaded', async () => {

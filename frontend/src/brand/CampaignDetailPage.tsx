@@ -3,7 +3,6 @@ import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import {
   approveCounterOffer,
   declineCounterOffer,
-  escrowLabel,
   getBrandCounterOffer,
   getCampaign,
   type Campaign,
@@ -21,6 +20,7 @@ import { timeLeftText } from '../lib/timeLeft'
 import { BrandProofSection } from './BrandProofSection'
 import { CampaignStatusChip } from './CampaignStatusChip'
 import './campaigns.css'
+import { EscrowPanel } from '../payment/EscrowPanel'
 
 const when = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeStyle: 'short' })
 const day = new Intl.DateTimeFormat(LOCALE, { dateStyle: 'medium', timeZone: 'UTC' })
@@ -32,8 +32,11 @@ const typeLabel = (type: string) => type.charAt(0) + type.slice(1).toLowerCase()
 /** A campaign as the brand sent it. Read-only: after Send the terms are what the creator was shown. */
 export function CampaignDetailPage() {
   const { id } = useParams()
+  return <CampaignDetail key={id} campaignId={Number(id)} />
+}
+
+function CampaignDetail({ campaignId }: { campaignId: number }) {
   const location = useLocation()
-  const campaignId = Number(id)
   const load = useCallback(() => getCampaign(campaignId), [campaignId])
   const result = useFetchWith<Campaign>(load)
   const justSent = (location.state as { sent?: boolean } | null)?.sent === true
@@ -79,6 +82,11 @@ export function CampaignDetailPage() {
     }
   }, [campaignId, campaignStatus])
   const [campaignOverride, setCampaignOverride] = useState<Campaign | null>(null)
+  const refreshCampaign = useCallback(() => {
+    void getCampaign(campaignId)
+      .then(setCampaignOverride)
+      .catch(() => undefined)
+  }, [campaignId])
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState<string | null>(null)
   // An override belongs to the campaign it was loaded for: after opening another campaign, or when a late answer
@@ -192,10 +200,13 @@ export function CampaignDetailPage() {
           </p>
         </div>
       </header>
-      {paymentResult === 'held' && (
+      {paymentResult === 'held' && campaign.escrowStatus === 'HELD' && (
         <div className="fl-alert fl-alert--success" role="status">
           <Icon name="check-circle" />
-          <div>Payment received. It is held in escrow and the campaign is active.</div>
+          <div>
+            Payment received from the brand. It is held in escrow; this does not confirm a creator
+            payout.
+          </div>
         </div>
       )}
       {paymentResult === 'received' && (
@@ -216,7 +227,7 @@ export function CampaignDetailPage() {
           </div>
         </div>
       )}
-      {paymentResult === 'pending' && (
+      {paymentResult === 'pending' && campaign.status === 'AWAITING_PAYMENT' && (
         <div className="fl-alert" role="status">
           <div>We have not received the payment confirmation yet. This page updates by itself.</div>
         </div>
@@ -306,11 +317,16 @@ export function CampaignDetailPage() {
           campaignId={campaign.id}
           creatorName={campaign.creator?.displayName ?? null}
           lastPostingDate={campaign.lastPostingDate}
-          onChanged={() =>
-            void getCampaign(campaign.id)
-              .then(setCampaignOverride)
-              .catch(() => undefined)
-          }
+          onChanged={refreshCampaign}
+        />
+      )}
+      {campaign.escrowStatus && showsEscrow(campaign.status, campaign.escrowStatus) && (
+        <EscrowPanel
+          campaignId={campaign.id}
+          viewer="brand"
+          fallbackStatus={campaign.escrowStatus}
+          refreshKey={campaign.updatedAt}
+          onStatusChanged={refreshCampaign}
         />
       )}
       <section className="fl-card fl-section" aria-label="Campaign details">
@@ -374,12 +390,6 @@ export function CampaignDetailPage() {
             <>
               <dt>Accepted</dt>
               <dd>{when.format(new Date(campaign.acceptedAt))}</dd>
-            </>
-          )}
-          {campaign.escrowStatus && showsEscrow(campaign.status, campaign.escrowStatus) && (
-            <>
-              <dt>Escrow</dt>
-              <dd>{escrowLabel[campaign.escrowStatus]}</dd>
             </>
           )}
         </dl>
