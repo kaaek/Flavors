@@ -237,17 +237,26 @@ class OfferServiceImpl implements OfferService {
         return text == null || text.isBlank();
     }
 
-    /** "14:30" (or "14:30:00", what a browser time field may send) as a time; empty means none. */
+    /**
+     * "14:30" as a time; empty means none. Only whole minutes are accepted ("14:30:00" is the same time): the page
+     * shows and sends hours and minutes, so seconds would be lost the next time the offer is saved.
+     */
     private static LocalTime time(String text, String field, Map<String, String> errors) {
         if (blank(text)) {
             return null;
         }
+        LocalTime time;
         try {
-            return LocalTime.parse(text.trim());
+            time = LocalTime.parse(text.trim());
         } catch (DateTimeParseException e) {
             errors.put(field, "Enter a time like 14:30.");
             return null;
         }
+        if (time.getSecond() != 0 || time.getNano() != 0) {
+            errors.put(field, "Use hours and minutes only, like 14:30.");
+            return null;
+        }
+        return time;
     }
 
     private record Checked(short discountPercent, Instant expiresAt, short validDays, LocalTime validFrom,
