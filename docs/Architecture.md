@@ -901,7 +901,8 @@ Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's ca
   `validFrom` and `validTo` (`"14:30"`), `allBranches`, `branchIds`, `minPurchaseCents`, `maxRedemptions`, `perPersonLimit`.
 - **Rules** (`OfferServiceImpl`). Required: a discount from 1 to 100 (EX-F10.1.3) and an expiry that is today or later ("today" in
   `flavors.campaign.zone`, default `Asia/Beirut`). Everything else has a default: every day; all day (both hours empty; one alone is
-  refused, and the end must be after the start, so hours past midnight are not supported yet); all branches (or one or more of the
+  refused, and the end must be after the start, so hours past midnight are not supported yet; whole minutes only, since the page shows
+  hours and minutes and seconds would be lost on the next save); all branches (or one or more of the
   brand's **own** branches, EX-F10.1.2); no minimum bill (0 or more); no maximum (1 or more); **one use per person** when no limit is
   given (EX-F10.1.1; at most 100).
 - **Expiry:** the offer works through the whole expiry day, so `expires_at` = the next midnight in `Asia/Beirut`.
@@ -909,7 +910,9 @@ Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's ca
   like "Invalid campaign". Nothing is saved.
 - **When it can change:** while the campaign is `DRAFT`, `AWAITING_CREATOR_RESPONSE`, `COUNTERED` or `AWAITING_PAYMENT`. After that
   diners may hold QR codes for it, so a change answers **409** "Offer locked". The save locks the campaign row (`findByIdAndBrandIdForUpdate`,
-  the lock the payment takes to activate it), so an offer change and the activation can't overlap.
+  the lock the payment takes to activate it), so an offer change and the activation can't overlap: a change that waited for the
+  activation then sees `ACTIVE` and is refused. The same lock makes two first saves run one after the other, so the second updates the
+  offer instead of inserting a second one.
 - **Optional at send:** a campaign can be sent without an offer. Whether Send should require one is an open question for the team.
 - **Is it live (FR-F10.4)?** Worked out on every read, never stored (`OfferState`), in this order: `ENDED` (the campaign is completed,
   cancelled, removed, rejected, declined or expired), `EXPIRED` (past `expires_at`), `FULL` (redemptions reached the maximum), `LIVE`
@@ -922,7 +925,10 @@ Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's ca
 - **Audit:** `OFFER_CREATED`, `OFFER_UPDATED` (entity `campaign`, with the offer id and discount).
 - **Page:** `/brand/campaigns/:id/offer` (`OfferPage`): discount, last day, days, hours, branches, minimum bill (typed in dollars, sent
   as cents), maximum uses and uses per person, with the server's messages under each field. Read-only once the campaign is active or
-  over, with the live state and how often it was used. Linked from the campaign page and from a saved draft.
+  over, with the live state and how often it was used. Linked from the campaign page and from a saved draft. Each load is marked with
+  its campaign, so moving to another campaign's offer shows "loading" until that campaign's offer arrives, never the previous one;
+  the fields are locked while a save is on its way.
 - **Tests:** `OfferServiceImplIT` (TC-F10.1.1 to TC-F10.1.4, EX-F10.1.1 to EX-F10.1.3, every field rule, saving again, the lock after
-  `ACTIVE`, other brands, and the live states on the real database), `OfferServiceImplTest` (the state for every campaign status, the
-  day bits), `BrandOfferControllerTest` (roles, CSRF, JSON, 204, error bodies); frontend `OfferPage.test.tsx`.
+  `ACTIVE`, two first saves at once, a change during activation, other brands, and the live states on the real database), `OfferServiceImplTest` (the state for every campaign status, the
+  day bits), `BrandOfferControllerTest` (roles, CSRF, JSON, 204, error bodies); frontend `OfferPage.test.tsx` (including moving
+  between two campaigns' offers, and the fields locked while saving).
