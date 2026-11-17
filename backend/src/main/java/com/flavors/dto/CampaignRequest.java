@@ -11,6 +11,7 @@ import java.util.List;
  * <p>The platform and type are text so that an unknown value gets a message next to its row, not a parse error.
  *
  * @param priceOfferedCents the budget: what the brand offers the creator, in cents
+ * @param screenshotsRequired whether the creator's final proof must include a screenshot (FR-F5.1); missing means no
  */
 public record CampaignRequest(
         String name,
@@ -20,7 +21,16 @@ public record CampaignRequest(
         LocalDate startDate,
         LocalDate lastPostingDate,
         List<DeliverableRequest> deliverables,
-        String contentRequirements) {
+        String contentRequirements,
+        Boolean screenshotsRequired) {
+
+    /** A request without the screenshot setting, which then defaults to optional screenshots. */
+    public CampaignRequest(String name, Long creatorId, List<Long> branchIds, Long priceOfferedCents,
+                           LocalDate startDate, LocalDate lastPostingDate, List<DeliverableRequest> deliverables,
+                           String contentRequirements) {
+        this(name, creatorId, branchIds, priceOfferedCents, startDate, lastPostingDate, deliverables,
+                contentRequirements, null);
+    }
 
     public record DeliverableRequest(String platform, String type, Integer count) {
     }

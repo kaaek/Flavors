@@ -21,6 +21,8 @@ public record CampaignResponse(
         LocalDate lastPostingDate,
         List<DeliverableView> deliverables,
         String contentRequirements,
+        /** A final proof must include at least one screenshot (FR-F5.1). */
+        boolean screenshotsRequired,
         Instant sentAt,
         /** Timer A: when the creator's time to answer runs out. */
         Instant responseDeadline,

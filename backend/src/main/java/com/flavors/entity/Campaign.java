@@ -29,8 +29,9 @@ import org.hibernate.annotations.CreationTimestamp;
  * its deliverables ({@code campaign_deliverable}).
  *
  * <p>This class maps the columns the stories so far use: the portfolio reads a few of them, the brand's
- * create-and-send story (EEC-40) writes the draft and sends it, and the creator's answer (EEC-43) moves
- * the status on. The later stories (payment, proof...) add the other columns and methods.
+ * create-and-send story (EEC-40) writes the draft and sends it, the creator's answer (EEC-43) moves
+ * the status on, and delivery proof (EEC-46) records the submission and Timer C. The later stories
+ * (payment release, disputes...) add the other columns and methods.
  */
 @Entity
 public class Campaign {
@@ -80,6 +81,10 @@ public class Campaign {
 
     private String contentRequirements;
 
+    /** Part of the terms: a final proof needs at least one screenshot (FR-F5.1). */
+    @Column(nullable = false)
+    private boolean screenshotsRequired;
+
     /** When the brand sent the request; empty for a draft. */
     private Instant sentAt;
 
@@ -91,6 +96,12 @@ public class Campaign {
 
     /** Timer B: {@link #acceptedAt} + {@link #PAYMENT_WINDOW}. */
     private Instant paymentDeadline;
+
+    /** Timer C: five days after the latest final proof submission. */
+    private Instant proofReviewDeadline;
+
+    @Column(nullable = false)
+    private short correctionRoundsUsed;
 
     @ElementCollection
     @CollectionTable(name = "campaign_branch", joinColumns = @JoinColumn(name = "campaign_id"))
@@ -127,8 +138,8 @@ public class Campaign {
      * the values; a draft may leave all but the name empty.
      */
     public void saveDraft(String name, Long creatorId, Long priceOfferedCents, LocalDate startDate,
-                          LocalDate lastPostingDate, String contentRequirements, Collection<Long> branchIds,
-                          Collection<CampaignDeliverable> deliverables, Instant now) {
+                          LocalDate lastPostingDate, String contentRequirements, boolean screenshotsRequired,
+                          Collection<Long> branchIds, Collection<CampaignDeliverable> deliverables, Instant now) {
         requireDraft();
         this.name = name;
         this.creatorId = creatorId;
@@ -136,6 +147,7 @@ public class Campaign {
         this.startDate = startDate;
         this.lastPostingDate = lastPostingDate;
         this.contentRequirements = contentRequirements;
+        this.screenshotsRequired = screenshotsRequired;
         this.branchIds.retainAll(branchIds);
         this.branchIds.addAll(branchIds);
         this.deliverables.clear();
@@ -311,6 +323,10 @@ public class Campaign {
         return contentRequirements;
     }
 
+    public boolean isScreenshotsRequired() {
+        return screenshotsRequired;
+    }
+
     public Instant getSentAt() {
         return sentAt;
     }
@@ -341,5 +357,40 @@ public class Campaign {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    /** The first version is round 1; each accepted correction request opens one later round. */
+    public int currentProofRound() {
+        return correctionRoundsUsed + 1;
+    }
+
+    public void markProofSubmitted(Instant submittedAt, Instant reviewDeadline) {
+        status = CampaignStatus.PROOF_SUBMITTED;
+        proofReviewDeadline = reviewDeadline;
+        updatedAt = submittedAt;
+    }
+
+    public Instant getProofReviewDeadline() {
+        return proofReviewDeadline;
+    }
+
+    public int getCorrectionRoundsUsed() {
+        return correctionRoundsUsed;
+    }
+
+    /** A correction request cancels Timer C; the next submission starts a fresh five-day window. */
+    public void requestProofCorrections(Instant now) {
+        if (status != CampaignStatus.PROOF_SUBMITTED || correctionRoundsUsed >= 2) {
+            throw new IllegalStateException("Corrections require submitted proof and an unused correction round.");
+        }
+        correctionRoundsUsed++;
+        status = CampaignStatus.CORRECTIONS_REQUESTED;
+        recordProofReview(now);
+    }
+
+    /** The brand responded. UC-F7.2/UC-F8.1 own completion/dispute transitions after their effects succeed. */
+    public void recordProofReview(Instant now) {
+        proofReviewDeadline = null;
+        updatedAt = now;
     }
 }

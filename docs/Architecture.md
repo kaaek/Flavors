@@ -196,6 +196,10 @@ unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is 
   `creator_profile`), created_at. The rules that span tables (the campaign must be COMPLETED and must belong to the
   creator) are enforced by `PortfolioServiceImpl`, not by the database.
 
+**V9 — screenshots required** (built: `V9__campaign_screenshots_required.sql`, EEC-46)
+- `campaign.screenshots_required`: boolean, default false. Part of the terms the brand sets on the campaign form; when
+  true, a final delivery proof needs at least one screenshot (FR-F5.1, §18).
+
 ### 4.3 ER diagram
 
 Tables and their foreign keys (columns are listed in §4.2 and in the migrations). `||--o{` reads
@@ -275,7 +279,9 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 
 Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and a
 read-only `campaign` (EEC-36); `campaign` (now with its price, dates, branches and deliverables), `campaign_deliverable` and
-`notification` (write only) in EEC-40. Later stories add columns and methods to these classes instead of writing second copies.
+`notification` (write only) in EEC-40; `proof_submission`, `proof_link`, `proof_file` (EEC-46, which also lets `campaign`
+record a proof submission and Timer C); `proof_review` (EEC-47 review core). Later stories add columns and methods to these
+classes instead of writing second copies.
 
 ## 5. Security — built
 
@@ -515,7 +521,8 @@ payment deadline and reconciliation (§17). This section covers `SocialRefreshJo
   **Invariant for campaign links:** any future writer that sets `social_post_metric.campaign_id` (EEC-46) must take
   `accounts.lockById` for that account first. `remove()` checks for campaign links and then deletes, in two statements,
   and relies on that lock; without it a link committed in between would be deleted silently.
-- **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
+- **Planned:** FR-F1.8 needs a separate, explicit post-link matching contract. EEC-46 stores proof links but does not guess
+  which Instagram metric row they identify, because the current `PostFigures` contract exposes no permalink.
 
 ## 14. Search (UC-F2.1, plus brand search) — built
 
@@ -561,7 +568,7 @@ brand is "not found" (404), never "forbidden".
 
 - **One body for all of them** (`CampaignRequest`): name, `creatorId`, `branchIds`, `priceOfferedCents` (the budget, integer USD cents),
   `startDate`, `lastPostingDate`, `deliverables` (`platform`, `type`, `count`) and `contentRequirements`. Every field may be missing; the
-  service decides what is required. The follower offer (UC-F10.1) is not part of it: it has its own endpoint (section 18).
+  service decides what is required. The follower offer (UC-F10.1) is not part of it: it has its own endpoint (section 20).
 - **Draft vs send.** A draft needs only a **name**; whatever else it contains must still be sensible (a price above 0, a last posting date
   not before the start, own branches only, an approved creator, deliverables with a known type and a count of 1 or more). **Send** also
   needs a creator, at least one branch, a price, both dates (start today or later, **"today" in `flavors.campaign.zone`, default
@@ -589,7 +596,7 @@ brand is "not found" (404), never "forbidden".
   `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
   and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
   `CreatorSearchPage.test.tsx`.
-- The follower offer is in section 18, payment in section 17.
+- The follower offer is in section 20, payment in section 17.
 
 ## 16. Respond to a campaign request (UC-F4.1) — built
 
@@ -702,7 +709,6 @@ Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (
   configurable (`flavors.whish.create-path`, `status-path`). See the README for what the merchant account must provide.
   Amount and currency must be verified once the official Whish spec is available: the status check does not compare them today.
 
-
 ## EEC-35 — Brand view of a creator's verified portfolio
 
 A logged-in **BRAND** opens `/brand/creators/:creatorId/portfolio` from the creator search results.
@@ -725,7 +731,161 @@ campaigns, tracked redemptions, and reviews. The browser never receives JPA enti
 - **Tests:** frontend `CreatorPortfolioPage.test.tsx`; backend `CreatorPortfolioControllerTest`,
   `PortfolioViewServiceImplIT` and `RoiTest`.
 
-## 18. Follower offer (UC-F10.1) — built
+## 18. Campaign delivery proof (UC-F5.1, EEC-46) - built
+
+The creator can prepare one draft for the campaign's current round, replace its links/screenshots, and submit it once.
+The campaign must be `ACTIVE`, or `CORRECTIONS_REQUESTED` for a later round. Submitting changes it to `PROOF_SUBMITTED`
+and sets Timer C to five days from the submission. A proof holds at most 10 links. Screenshots are optional unless the
+brand ticked **Ask for screenshots with the proof** on the campaign form (`campaign.screenshots_required`, V9, frozen with
+the other terms when the campaign is sent); then a final submission needs at least one (FR-F5.1). There may be at most
+five, each at most 5 MiB; the declared content type must match a PNG, JPEG, GIF or WebP signature, and the file must be
+a complete, undamaged image of at most 25 megapixels (see image checks below). SVG is deliberately refused.
+
+| Method and path | Who | What |
+|---|---|---|
+| `GET /api/creator/campaigns/{campaignId}/proof` | assigned CREATOR | All submitted versions plus her current draft |
+| `PUT /api/creator/campaigns/{campaignId}/proof/draft` | assigned CREATOR | Save multipart `proof` JSON and optional `files`; null fields keep existing values and empty lists clear them |
+| `POST /api/creator/campaigns/{campaignId}/proof/submit` | assigned CREATOR | Validate and freeze the current round as a submitted version; returns 201 |
+| `GET /api/brand/campaigns/{campaignId}/proof` | owning BRAND | Submitted versions only; never the draft |
+| `GET /api/admin/campaigns/{campaignId}/proof` | ADMIN | Submitted versions only |
+| `GET /api/proof-files/{fileId}` | authorized CREATOR, BRAND or ADMIN | Proxy one private screenshot after ownership/state checks |
+
+- **Who sees what:** a creator sees a campaign's proof only once it is sent to her: like her campaign pages (§16), a
+  campaign still in `DRAFT` that already names her answers 404 on every creator proof endpoint (read, save, submit,
+  screenshot download), exactly like someone else's campaign or an unknown id (NF-1).
+- Draft saves and final submission take the campaign row lock (`CampaignRepository.findByIdForUpdate`), the same lock the
+  request answers and payments use, so they run one after the other. Database partial unique indexes still enforce one
+  draft and one submitted version per round if two app instances receive the same operation.
+- A final submission requires at least one absolute HTTP(S) link, and every row must be one: a blank row next to a valid
+  link is refused, not dropped (EX-F5.1.2). Drafts may be incomplete. Every submitted row is immutable through this API
+  and later correction rounds create new rows, so earlier versions are retained.
+- **Image checks** (`ProofImageIntegrity`, after the signature check). A valid signature says nothing about the rest of
+  the file, so: PNG chunks are walked to `IEND` with every CRC checked, then the image is decoded; JPEG is decoded and
+  any decoder warning (a missing end marker, a short data segment) counts as damage; GIF blocks are walked to the trailer
+  and the first frame is decoded; WebP has no JDK decoder, so its RIFF size, every chunk length and the VP8/VP8L/VP8X
+  header are checked, and the data the header announces must follow it (a VP8 frame's first partition and token data,
+  VP8L image data, the image inside each animation frame), so a header-only file is refused. Damage that still decodes
+  cleanly cannot be seen (JPEG has no checksums, and WebP data is not
+  decoded). Resource limits: the size is read from the header and refused above 25 megapixels before any decoding;
+  decoding subsamples to at most 1024 pixels per side, skips metadata (compressed text chunks are never inflated),
+  reads from memory (no temporary files), and at most two uploads are decoded at a time.
+- `DeliveryProofMapper` converts the proof rows into `DeliveryProofResponse` (the mapper rule in §3); the service only
+  decides which versions each role may see.
+- `PROOF_DRAFT_SAVED` and `PROOF_SUBMITTED` are written through the append-only audit log in the same transaction.
+- Screenshot metadata is transactional PostgreSQL data. Bytes use `ProofFileStorage`: filesystem under the `dev` and test
+  profiles, and a private S3-compatible Railway Bucket elsewhere. New objects are removed after a database rollback; replaced
+  draft objects are removed only after commit. An unknown commit outcome keeps the objects to avoid losing evidence.
+  Submitted objects have no delete endpoint.
+- API responses expose an authenticated download URL, never the storage key. Downloads use `Cache-Control: no-store`,
+  `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`.
+- **Pages:** both campaign pages show the proof from `ACTIVE` on (`showsProof` in `api/proof.ts`), as their own components
+  so the pages only gain one block each. The creator's `CreatorProofSection` edits the round's draft: up to 10 link rows
+  and a dropzone for screenshots, checked in the browser first (type, 5 MB, at most 5). A screenshot is saved as soon as
+  it is uploaded, as the design's dropzone says; every save also sends the links on screen, so nothing typed is lost.
+  **Send proof** asks for a confirmation inline, like the admin's reject form, then shows Timer C (`ReviewTimer`,
+  redrawn every minute until it ends). Before that it
+  refuses an empty or invalid row and marks it, and asks for a screenshot when the campaign requires one. A correction
+  round starts from the last version's links (screenshots are uploaded again). The brand's `BrandProofSection` is
+  read-only and checks for a new version every 30 seconds while one can arrive (`ACTIVE`, `CORRECTIONS_REQUESTED`), so
+  a sent version shows within a minute without a reload (FR-F5.5); when the status changes the page reloads its header.
+  Both list the sent rounds newest first with `ProofRounds`; only the newest starts open. `apiFetch` sends a `FormData`
+  body unchanged so the browser sets the multipart boundary.
+- **One campaign at a time:** both sections are keyed by the campaign id, so opening another campaign (same route,
+  new id) starts them from scratch, and an answer that arrives after leaving (a save, a send, a check) is ignored
+  instead of being shown on, or reported to, the next campaign. The brand page also drops a `campaignOverride` that
+  belongs to another campaign.
+- Tests: `DeliveryProofControllerTest`, `DeliveryProofServiceImplTest` (including required and optional screenshots),
+  `ProofImageValidatorTest` (real images of each type; cut off anywhere, damaged chunks, damaged data with valid
+  checksums, broken WebP headers, header-only WebP files, too many pixels, the 25-megapixel edge),
+  `FileSystemProofFileStorageTest`, `S3ProofFileStorageTest`, and `DeliveryProofServiceImplIT` (draft privacy, final
+  submission/Timer C, invalid and blank links, required screenshots, version retention, ownership, transactional
+  object cleanup, concurrent submission, limits and content validation, a cut-off screenshot leaves nothing stored);
+  `BrandCampaignControllerTest` and `CampaignServiceImplIT` for the campaign setting; `CreatorProofVisibilityIT` (a
+  draft naming the creator answers on every creator proof and review endpoint exactly like an unknown campaign).
+  Frontend `CreatorProofSection.test.tsx` (blank rows, required screenshots, a clean form and ignored late answers
+  after switching campaigns), `BrandProofSection.test.tsx` (the 30-second check, navigating between campaigns, a late
+  check), `CampaignFormPage.test.tsx` (the checkbox), `ReviewTimer.test.tsx` (the countdown moves while the page is
+  open), `client.test.ts` (FormData) and `timeLeft.test.ts`.
+  `CampaignPayment.test.tsx` and `CreatorCampaignDetailPage.test.tsx` stub the proof section, since they test payment
+  and the request answer only.
+
+## 19. Campaign delivery review (UC-F6.1, EEC-47) - built, payment follow-ups deferred
+
+This increment depends on EEC-46. It implements review decisions and correction rounds, backend and pages, not the
+payment/dispute stories. V5 already owns `proof_review`, so no new migration is required.
+
+| Method and path | Who | What |
+|---|---|---|
+| `POST /api/brand/campaigns/{campaignId}/proof/{submissionId}/review` | owning BRAND | JSON `{decision, reason}`; decision is `APPROVED`, `CORRECTIONS_REQUESTED` or `REJECTED`; returns 200 including on an identical retry |
+| `GET /api/brand/campaigns/{campaignId}/proof/reviews` | owning BRAND | Agreement (dates, content requirements, screenshots required, platform/type/count), decision history and available decisions for the latest final submission |
+| `GET /api/creator/campaigns/{campaignId}/proof/reviews` | assigned CREATOR | Read-only agreement/history, including correction/rejection reasons |
+| `GET /api/admin/campaigns/{campaignId}/proof/reviews` | ADMIN | Read-only agreement/history |
+
+- Proof links/images remain at the EEC-46 endpoints. The brand checks them manually against the agreement; this API
+  does not claim to verify posts on an external platform. The agreement is read from the `Campaign` entity (dates,
+  content requirements, the screenshot setting, deliverables) and converted by `ProofReviewMapper.toAgreement`, like
+  every other response (the mapper rule in §3); this story does not edit campaign terms.
+- The decision loads the campaign with `CampaignRepository.findByIdAndBrandIdForUpdate`, which filters by the owning brand,
+  so another brand cannot lock the campaign. It is the same row lock as EEC-46 and the request answers, and a new decision
+  is accepted only on the latest submitted version while its campaign is `PROOF_SUBMITTED` and the current time is
+  strictly before Timer C.
+- A correction request increments `correction_rounds_used`, sets `CORRECTIONS_REQUESTED`, and clears the old deadline.
+  EEC-46 then accepts a new final submission and starts a fresh five-day deadline. After two correction requests, only
+  approve/reject remain available. Every review and submitted version is retained.
+- A rejection requires a non-blank reason. Reasons are trimmed and limited to 2000 characters. Correction reasons are
+  optional under the current acceptance criteria. Missing decisions and oversized reasons return field errors (400);
+  inaccessible proofs return 404; a stale/expired/contradictory decision returns 409.
+- One review per submission is enforced by V5's unique constraint. Identical retries return the original row, even after
+  its deadline or a later round, without repeating the audit or consuming another correction round. A different decision
+  or reason for the same submission is refused. Audit actions (`PROOF_APPROVED`, `PROOF_CORRECTIONS_REQUESTED`,
+  `PROOF_REJECTED`) commit with the review and campaign change.
+- Decision timestamps are normalized to PostgreSQL microseconds before persistence, so an identical retry returns the
+  same timestamp. The deciding user's id stays in the database and audit log; review responses do not expose it.
+- **Pages:** the brand's `BrandProofSection` also loads the reviews. `ProofReviewPanel` shows only while the backend lists
+  decisions: Timer C, the agreement to check against, and Approve / Request corrections / Reject, each confirmed
+  inline (a rejection needs a reason; a correction note is optional). After a decision the section and the page header
+  reload. Both sides show the decision on the newest version with `ProofOutcome`, matched against the versions on screen
+  so a version sent a moment ago never shows an older decision, and `ProofRounds` marks each round with its decision and
+  reason. Because the campaign stays `PROOF_SUBMITTED` after approve/reject, `ProofOutcome` says what happened and that
+  release or a dispute is not available yet, instead of relying on the status chip. If the creator's reviews can't be
+  loaded, the proof form still works without them.
+- **Kept current:** with reviews, the brand's view also changes from outside the page: a decision made in another tab
+  or session can ask for corrections, which leads to a new version. So `BrandProofSection` checks every 30 seconds while
+  the campaign is `ACTIVE`, `PROOF_SUBMITTED` or `CORRECTIONS_REQUESTED` (not only while a version can arrive, as in
+  §18), and stops once nothing can change (`COMPLETED`, `DISPUTED` and the other end states).
+- **Creators:** the reviews endpoint follows the same rule as the proof (§18): a campaign still in `DRAFT` answers 404
+  to the creator it names, so its agreement is not shown before it is sent.
+- **Per version, per campaign:** `BrandProofSection` keys `ProofReviewPanel` by the version under review, so its
+  state (the choice, the reason, "decided") belongs to that version: when the creator sends a corrected version, the
+  controls come back for it. The section itself is keyed by the campaign (§18). Its reloads (the 30-second check from
+  §18, and the one after a decision) are numbered and only the newest answer is shown, so an older answer that arrives
+  late can't replace a newer one. A decision that finishes after the brand has left is not reported to the page.
+
+**Deferred integration, not a completed financial workflow:** approval/rejection clears Timer C but leaves the campaign
+`PROOF_SUBMITTED` while the required follow-up is pending. `ProofReviewResponse.requiredFollowUp` is `RELEASE_PAYMENT`,
+`FREEZE_PAYMENT_AND_OPEN_DISPUTE`, or `RESUBMIT_PROOF`. The saved `proof_review` is the durable decision record; it is
+not a processed outbox or a successful payout/dispute. There is no payment-provider call, escrow mutation, dispute row,
+`COMPLETED` transition, or `DISPUTED` transition in this increment. UC-F7.2/UC-F8.1 must provide those effects and their
+idempotent processing before EEC-47 is considered complete end to end.
+
+`ProofReviewService.findOverdueCampaignIds()` supplies at most 100 unanswered, overdue current submissions for the future
+Timer C worker. It excludes reviewed versions and campaigns in `CORRECTIONS_REQUESTED`, even if an old deadline remains.
+The payment worker must lock and recheck each candidate before releasing funds; this method is only a read snapshot.
+No scheduled auto-release is enabled yet. TC-F6.1.5 and the financial/dispute portions of TC-F6.1.1/TC-F6.1.4 remain pending.
+
+Tests: `ProofReviewServiceImplTest` and `ProofReviewControllerTest` cover the decision rules, retry behavior, privacy,
+role/CSRF guards, validation and deadline boundaries without Docker. `ProofReviewQueryTest` validates Hibernate query
+translation without a database. `ProofReviewServiceImplIT` covers PostgreSQL mappings,
+persisted decisions/audit, the complete correction/resubmission cycle, concurrent decisions, agreement reads (including
+the screenshot setting), overdue filtering, and approval and rejection each recorded within five seconds (FR-F6.6).
+`ProofReviewApiIT` times both decisions through the whole HTTP stack (security, JSON, controller, PostgreSQL). CI must
+run the integration suite; test timings alone do not establish NF-4 in production. Frontend: `BrandProofSection.test.tsx`
+(agreement, each decision and its confirmation, reason rules, the last round, an expired review time, fresh controls
+for a corrected version, a decision that finishes after navigating, an open page kept current while corrections are
+requested in another session and the creator resends) and `CreatorProofSection.test.tsx` (correction
+reason and rounds left, approval and rejection notes, missing reviews).
+
+## 20. Follower offer (UC-F10.1) — built
 
 The brand sets up the discount the creator's followers get at the restaurant (EEC-41). There is **one offer per campaign**
 (`offer.campaign_id` is unique, V4), linked to the campaign and, through it, to the creator.

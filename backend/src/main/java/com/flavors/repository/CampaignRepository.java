@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -35,7 +36,8 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
     /**
      * The campaign row, locked until the transaction ends (UC-F4.1). Every answer to a request (accept, reject,
      * counter, approve, decline) and the expiry job load it this way, so two of them on the same campaign run one
-     * after the other, and the second one sees the first one's result and refuses.
+     * after the other, and the second one sees the first one's result and refuses. Delivery-proof drafts and
+     * submissions (EEC-46) take the same lock.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Campaign c where c.id = :id")
@@ -51,4 +53,21 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
             + "order by c.responseDeadline")
     List<Long> findOverdueResponseIds(@Param("statuses") Collection<CampaignStatus> statuses,
                                       @Param("now") Instant now);
+
+    /**
+     * Timer C: campaigns whose latest proof is still unanswered after its deadline, oldest first. Only genuinely
+     * unanswered current submissions qualify; a correction request stops the old timer.
+     */
+    @Query("""
+            select c.id from Campaign c
+            where c.status = com.flavors.enums.CampaignStatus.PROOF_SUBMITTED
+              and c.proofReviewDeadline <= :now
+              and exists (select s.id from ProofSubmission s
+                          where s.campaignId = c.id
+                            and s.status = com.flavors.enums.ProofSubmissionStatus.SUBMITTED
+                            and s.round = c.correctionRoundsUsed + 1
+                            and not exists (select r.id from ProofReview r where r.submissionId = s.id))
+            order by c.proofReviewDeadline asc, c.id asc
+            """)
+    List<Long> findOverdueProofCampaignIds(@Param("now") Instant now, Pageable pageable);
 }

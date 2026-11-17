@@ -1,0 +1,511 @@
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
+import { ApiError } from '../api/client'
+import {
+  PROOF_LIMITS,
+  getCreatorProof,
+  saveProofDraft,
+  submitProof,
+  submittedVersions,
+  type DeliveryProof,
+  type ProofDraftChange,
+} from '../api/proof'
+import { getCreatorProofReviews } from '../api/proofReviews'
+import { Icon } from '../layout/Icon'
+import { useFetchWith } from '../layout/useFetch'
+import { LOCALE } from '../lib/locale'
+import { ProofOutcome } from '../proof/ProofOutcome'
+import { ProofRounds } from '../proof/ProofRounds'
+import { ReviewTimer } from '../proof/ReviewTimer'
+import { formatDay, formatWhen } from '../proof/dates'
+import '../proof/proof.css'
+
+/** The first version plus at most two correction rounds (V5 proof_submission.round). */
+const MAX_ROUNDS = 3
+
+const savedTime = new Intl.DateTimeFormat(LOCALE, { timeStyle: 'short' })
+
+function messageOf(error: unknown): string {
+  if (error instanceof ApiError) return error.message
+  return 'Could not reach the server. Please try again.'
+}
+
+/** The same rule the backend applies to a final link, so the creator sees the problem before sending. */
+function isWebLink(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname !== ''
+  } catch {
+    return false
+  }
+}
+
+/** For a draft, which may be incomplete: empty rows are simply not saved. */
+const cleanLinks = (rows: string[]) => rows.map((row) => row.trim()).filter((row) => row !== '')
+
+const rowNames = (rows: number[]) =>
+  rows.length === 1
+    ? `Link ${rows[0]}`
+    : `Links ${rows.slice(0, -1).join(', ')} and ${rows[rows.length - 1]}`
+
+/**
+ * Why the rows can't be sent, with the rows to fix (numbered from 1). An empty row is refused, not dropped
+ * (EX-F5.1.2): the creator may have meant to paste a link there.
+ */
+function linkProblem(rows: string[]): { message: string; rows: number[] } | null {
+  const trimmed = rows.map((row) => row.trim())
+  const numbersWhere = (test: (row: string) => boolean) =>
+    trimmed.flatMap((row, index) => (test(row) ? [index + 1] : []))
+  const empty = numbersWhere((row) => row === '')
+  if (empty.length === rows.length) {
+    return { message: 'Add at least one link to your posts before sending.', rows: empty }
+  }
+  if (empty.length > 0) {
+    const one = empty.length === 1
+    return {
+      message: `${rowNames(empty)} ${one ? 'is' : 'are'} empty. Fill ${one ? 'it' : 'them'} in or remove ${one ? 'it' : 'them'}.`,
+      rows: empty,
+    }
+  }
+  const invalid = numbersWhere((row) => !isWebLink(row))
+  if (invalid.length > 0) {
+    return {
+      message: `${rowNames(invalid)} ${invalid.length === 1 ? "isn't a" : "aren't"} full web address${invalid.length === 1 ? '' : 'es'}. Every link must start with https://`,
+      rows: invalid,
+    }
+  }
+  return null
+}
+
+/** Checked in the browser first; the backend checks the real file signature again. */
+function problemWith(files: File[], alreadyThere: number): string | null {
+  const room = PROOF_LIMITS.files - alreadyThere
+  if (files.length > room) {
+    return room === 0
+      ? `A proof can have at most ${PROOF_LIMITS.files} screenshots. Remove one to add another.`
+      : `A proof can have at most ${PROOF_LIMITS.files} screenshots. You can add ${room} more.`
+  }
+  if (
+    files.some(
+      (file) => file.type !== '' && !(PROOF_LIMITS.types as readonly string[]).includes(file.type),
+    )
+  ) {
+    return 'Screenshots must be PNG, JPEG, GIF or WebP images.'
+  }
+  if (files.some((file) => file.size > PROOF_LIMITS.fileBytes)) {
+    return 'Each screenshot must be 5 MB or smaller.'
+  }
+  return null
+}
+
+/** The rows the form starts with: the draft's links, or for a correction round the last version's, to edit. */
+function startingLinks(proof: DeliveryProof): string[] {
+  const draft = proof.submissions.find((submission) => submission.status === 'DRAFT')
+  const latest = submittedVersions(proof)[0]
+  const links = draft
+    ? draft.links
+    : proof.campaignStatus === 'CORRECTIONS_REQUESTED' && latest
+      ? latest.links
+      : []
+  return links.length > 0 ? links : ['']
+}
+
+interface Props {
+  campaignId: number
+  lastPostingDate: string | null
+  onSubmitted: () => void
+}
+
+/**
+ * UC-F5.1 for the creator: prepare one draft per round (links, and screenshots when the campaign asks for them or
+ * the creator wants to add them), send it once, and see every sent version. Shown on the campaign page from the
+ * moment the campaign is ACTIVE.
+ *
+ * Keyed by the campaign, so opening another campaign starts from a clean form: nothing typed, saved or being
+ * confirmed for one campaign can show on another.
+ */
+export function CreatorProofSection(props: Props) {
+  return <CampaignProofForm key={props.campaignId} {...props} />
+}
+
+function CampaignProofForm({ campaignId, lastPostingDate, onSubmitted }: Props) {
+  const load = useCallback(() => getCreatorProof(campaignId), [campaignId])
+  const result = useFetchWith<DeliveryProof>(load)
+  // The brand's decisions (EEC-47). If they can't be loaded the form still works; it just shows no decisions.
+  const loadReviews = useCallback(() => getCreatorProofReviews(campaignId), [campaignId])
+  const reviewsResult = useFetchWith(loadReviews)
+
+  const [updated, setUpdated] = useState<DeliveryProof | null>(null)
+  // null until the creator edits or saves; until then the rows come from the loaded proof.
+  const [editedLinks, setEditedLinks] = useState<string[] | null>(null)
+  const [dirty, setDirty] = useState(false)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // The link rows the last Send refused (numbered from 1), marked until they are edited.
+  const [badRows, setBadRows] = useState<number[]>([])
+  const [confirming, setConfirming] = useState(false)
+  // A save or send still running when the creator leaves (or opens another campaign) must not touch the page.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  if (result.status === 'loading') {
+    return (
+      <div className="fl-card" aria-busy="true" aria-label="Loading delivery proof">
+        <div className="fl-skel fl-skel--line" />
+      </div>
+    )
+  }
+  if (result.status === 'error') {
+    return (
+      <div className="fl-alert fl-alert--danger" role="alert">
+        <Icon name="alert" />
+        <div>Could not load your delivery proof. Please reload the page.</div>
+      </div>
+    )
+  }
+
+  const proof = updated ?? result.data
+  const status = proof.campaignStatus
+  const editable = status === 'ACTIVE' || status === 'CORRECTIONS_REQUESTED'
+  const draft = proof.submissions.find((submission) => submission.status === 'DRAFT')
+  const versions = submittedVersions(proof)
+  const latest = versions[0]
+  const round = draft?.round ?? (latest?.round ?? 0) + 1
+  const links = editedLinks ?? startingLinks(proof)
+  const files = draft?.files ?? []
+  const reviews = reviewsResult.status === 'ready' ? reviewsResult.data : null
+  const outcome = reviews && (
+    <ProofOutcome
+      reviews={reviews.reviews}
+      latestVersionId={latest?.id ?? null}
+      campaignStatus={status}
+      correctionRoundsUsed={reviews.correctionRoundsUsed}
+      viewer="creator"
+    />
+  )
+
+  function editLinks(next: string[]) {
+    setEditedLinks(next)
+    setDirty(true)
+    setBadRows([])
+  }
+
+  async function save(change: ProofDraftChange, newFiles: File[] = []) {
+    const shown = links
+    setBusy(true)
+    setError(null)
+    try {
+      const saved = await saveProofDraft(campaignId, change, newFiles)
+      if (!mounted.current) return
+      setUpdated(saved)
+      setEditedLinks(shown)
+      setDirty(false)
+      setSavedAt(new Date())
+    } catch (e) {
+      if (mounted.current) setError(messageOf(e))
+    } finally {
+      if (mounted.current) setBusy(false)
+    }
+  }
+
+  function addFiles(list: FileList | null) {
+    const picked = list ? Array.from(list) : []
+    if (picked.length === 0) return
+    const problem = problemWith(picked, files.length)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    // Every save sends the links on screen too, so "saved as soon as you upload" never drops typed links.
+    void save({ links: cleanLinks(links) }, picked)
+  }
+
+  function onDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault()
+    if (!busy) addFiles(event.dataTransfer.files)
+  }
+
+  function startSending() {
+    const problem = linkProblem(links)
+    if (problem) {
+      setError(problem.message)
+      setBadRows(problem.rows)
+      return
+    }
+    if (proof.screenshotsRequired && files.length === 0) {
+      setError('This campaign asks for at least one screenshot. Add one before sending.')
+      return
+    }
+    setError(null)
+    setConfirming(true)
+  }
+
+  async function send() {
+    setBusy(true)
+    setError(null)
+    try {
+      // startSending refused empty rows, so every row on screen is sent.
+      const sent = await submitProof(campaignId, { links: links.map((row) => row.trim()) })
+      if (!mounted.current) return
+      setUpdated(sent)
+      setEditedLinks(null)
+      setDirty(false)
+      setConfirming(false)
+      onSubmitted()
+    } catch (e) {
+      if (!mounted.current) return
+      setError(messageOf(e))
+      setConfirming(false)
+    } finally {
+      if (mounted.current) setBusy(false)
+    }
+  }
+
+  const saveState = dirty
+    ? 'Unsaved changes'
+    : savedAt
+      ? `Draft saved ${savedTime.format(savedAt)}`
+      : draft
+        ? 'Draft saved'
+        : null
+
+  if (!editable) {
+    return (
+      <>
+        {outcome}
+        <section className="fl-card fl-section fl-stack" aria-labelledby="proof-title">
+          <h2 id="proof-title">Delivery proof</h2>
+          {status === 'PROOF_SUBMITTED' && latest && proof.reviewDeadline && (
+            <>
+              <p className="fl-muted">
+                Sent on {formatWhen(latest.submittedAt)}. The brand reviews it by{' '}
+                {formatWhen(proof.reviewDeadline)}.
+              </p>
+              <ReviewTimer deadline={proof.reviewDeadline} label="Brand review of proof" />
+            </>
+          )}
+          {versions.length > 0 ? (
+            <ProofRounds versions={versions} openLatest reviews={reviews?.reviews} />
+          ) : (
+            <p className="fl-muted">No proof was sent for this campaign.</p>
+          )}
+        </section>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {outcome}
+      <section className="fl-card fl-section fl-stack" aria-labelledby="proof-title">
+        <div className="fl-row fl-row--between">
+          <h2 id="proof-title">Delivery proof</h2>
+          <span className="fl-hint">
+            Round {round} of {MAX_ROUNDS}
+            {saveState && ` · ${saveState}`}
+          </span>
+        </div>
+        {status === 'ACTIVE' && (
+          <p className="fl-hint">
+            Post by {formatDay(lastPostingDate)}, then add the links to your posts. The brand sees
+            nothing until you send it.
+          </p>
+        )}
+        {/* In a correction round the brand's decision above says what to change; this covers a failed load. */}
+        {status === 'CORRECTIONS_REQUESTED' && !reviews && (
+          <p className="fl-hint">Send a new version with the changes the brand asked for.</p>
+        )}
+
+        <fieldset className="fl-field fl-fieldset">
+          <legend className="fl-label">Links to your posts</legend>
+          <ul className="fl-prooflinks">
+            {links.map((link, index) => (
+              <li
+                key={index}
+                className={`fl-linkrow${badRows.includes(index + 1) ? ' is-invalid' : ''}`}
+              >
+                <input
+                  className="fl-input"
+                  type="url"
+                  inputMode="url"
+                  aria-label={`Link ${index + 1}`}
+                  aria-invalid={badRows.includes(index + 1) || undefined}
+                  placeholder="https://www.instagram.com/reel/…"
+                  value={link}
+                  disabled={busy}
+                  onChange={(event) =>
+                    editLinks(links.map((row, i) => (i === index ? event.target.value : row)))
+                  }
+                />
+                <button
+                  className="fl-iconbtn"
+                  type="button"
+                  aria-label={`Remove link ${index + 1}`}
+                  disabled={busy || (links.length === 1 && link === '')}
+                  onClick={() =>
+                    editLinks(links.length === 1 ? [''] : links.filter((_, i) => i !== index))
+                  }
+                >
+                  <Icon name="x" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div>
+            <button
+              className="fl-btn fl-btn--ghost fl-btn--sm"
+              type="button"
+              disabled={busy || links.length >= PROOF_LIMITS.links}
+              onClick={() => editLinks([...links, ''])}
+            >
+              <Icon name="plus" /> Add link
+            </button>
+          </div>
+          <span className="fl-hint">
+            Up to {PROOF_LIMITS.links} links. Use the full link, starting with https://
+          </span>
+        </fieldset>
+
+        <div className="fl-stack">
+          <span className="fl-label">
+            Screenshots{' '}
+            <small>{proof.screenshotsRequired ? '(at least one required)' : '(optional)'}</small>
+          </span>
+          <label
+            className="fl-dropzone"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={onDrop}
+          >
+            <Icon name="upload" />
+            <span>
+              <b>Choose files</b> or drop screenshots here
+            </span>
+            <span className="fl-hint">
+              PNG, JPEG, GIF or WebP, up to 5 MB each, at most {PROOF_LIMITS.files}. Saved as soon
+              as you upload.
+            </span>
+            <input
+              className="fl-sr-only"
+              type="file"
+              multiple
+              accept={PROOF_LIMITS.types.join(',')}
+              aria-label="Add screenshots"
+              disabled={busy || files.length >= PROOF_LIMITS.files}
+              onChange={(event) => {
+                addFiles(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </label>
+          {files.length > 0 && (
+            <ul className="fl-shots" aria-label="Uploaded screenshots">
+              {files.map((file, index) => (
+                <li key={file.id} className="fl-shot">
+                  <img src={file.downloadUrl} alt={`Screenshot ${index + 1}`} />
+                  <button
+                    className="fl-iconbtn"
+                    type="button"
+                    aria-label={`Remove screenshot ${index + 1}`}
+                    disabled={busy}
+                    onClick={() =>
+                      void save({
+                        links: cleanLinks(links),
+                        retainedFileIds: files.filter((f) => f.id !== file.id).map((f) => f.id),
+                      })
+                    }
+                  >
+                    <Icon name="x" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {error && (
+          <div className="fl-alert fl-alert--danger" role="alert">
+            <Icon name="alert" />
+            <div>{error}</div>
+          </div>
+        )}
+
+        {confirming ? (
+          <div className="fl-confirm" role="group" aria-labelledby="proof-confirm-title">
+            <h3 id="proof-confirm-title">Send your proof?</h3>
+            <p>The brand gets 5 days to review it. You can't edit this version after sending.</p>
+            <div className="fl-summary">
+              <div>
+                <span>Links</span>
+                <span>{cleanLinks(links).length}</span>
+              </div>
+              <div>
+                <span>Screenshots</span>
+                <span>{files.length}</span>
+              </div>
+              <div>
+                <span>Round</span>
+                <span>
+                  {round} of {MAX_ROUNDS}
+                </span>
+              </div>
+            </div>
+            <div className="fl-actions">
+              <button
+                className="fl-btn fl-btn--ghost"
+                type="button"
+                disabled={busy}
+                onClick={() => setConfirming(false)}
+              >
+                Back
+              </button>
+              <button
+                className="fl-btn fl-btn--primary"
+                type="button"
+                disabled={busy}
+                onClick={() => void send()}
+              >
+                {busy ? 'Sending…' : 'Send proof'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="fl-actions">
+              <button
+                className="fl-btn fl-btn--outline"
+                type="button"
+                disabled={busy}
+                onClick={() => void save({ links: cleanLinks(links) })}
+              >
+                Save draft
+              </button>
+              <button
+                className="fl-btn fl-btn--primary"
+                type="button"
+                disabled={busy}
+                onClick={startSending}
+              >
+                Send proof
+              </button>
+            </div>
+            <p className="fl-hint">
+              Once sent, this version can't be edited. The brand then has 5 days to review it.
+            </p>
+          </>
+        )}
+      </section>
+
+      {versions.length > 0 && (
+        <section className="fl-card fl-section fl-stack" aria-labelledby="proof-history-title">
+          <h2 id="proof-history-title">Proof history</h2>
+          <ProofRounds versions={versions} openLatest={false} reviews={reviews?.reviews} />
+        </section>
+      )}
+    </>
+  )
+}

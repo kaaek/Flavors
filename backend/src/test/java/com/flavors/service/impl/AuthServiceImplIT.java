@@ -59,6 +59,27 @@ class AuthServiceImplIT {
                 Integer.class, email)).isEqualTo(1);
     }
 
+
+    @Test
+    void unknownEmailIsGenericAndAudited() {
+        String email = uniqueEmail();
+
+        // Confirm that this email has never been registered.
+        assertThat(users.findByEmailIgnoreCase(email)).isEmpty();
+
+        // Login must fail normally, not with UnexpectedRollbackException.
+        assertThatThrownBy(() -> authService.authenticate(email, "any-password"))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("The email or password is incorrect.");
+
+        // The failed login must still be recorded in the database.
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM audit_log WHERE action = 'LOGIN_FAILED' AND details->>'email' = ?",
+                Integer.class, email))
+                .isEqualTo(1);
+    }
+
+
     @Test
     void suspendedAccountCannotLogIn() {
         String email = uniqueEmail();

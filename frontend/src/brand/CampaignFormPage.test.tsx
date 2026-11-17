@@ -33,6 +33,7 @@ const sentCampaign: Campaign = {
   lastPostingDate: '2030-01-30',
   deliverables: [{ platform: 'INSTAGRAM', type: 'REEL', count: 2 }],
   contentRequirements: null,
+  screenshotsRequired: false,
   sentAt: '2030-01-01T10:00:00Z',
   responseDeadline: '2030-01-04T10:00:00Z',
   agreedPriceCents: null,
@@ -146,6 +147,7 @@ it('sends a complete campaign and shows it as awaiting the creator with the 3-da
     lastPostingDate: '2030-01-30',
     deliverables: [{ platform: 'INSTAGRAM', type: 'REEL', count: 2 }],
     contentRequirements: null,
+    screenshotsRequired: false,
   })
   expect(
     await screen.findByText(/Sent to Nour Haddad\. She has 3 days to respond/),
@@ -278,6 +280,37 @@ it('reopens a draft filled in, and sends it with the edited details', async () =
     branchIds: [11, 12],
   })
   await waitFor(() => expect(screen.getByText('Awaiting creator response')).toBeInTheDocument())
+})
+
+// FR-F5.1
+it('lets the brand ask for screenshots with the proof, and shows it in the sent terms', async () => {
+  const user = userEvent.setup()
+  let current = draftCampaign
+  server({
+    'GET /api/brand/campaigns/42': () => current,
+    'POST /api/brand/campaigns/42/send': () =>
+      (current = { ...sentCampaign, screenshotsRequired: true }),
+  })
+  renderAt('/brand/campaigns/42/edit')
+
+  const ask = await screen.findByRole('checkbox', { name: /Ask for screenshots with the proof/ })
+  expect(ask).not.toBeChecked()
+  await user.click(ask)
+  await user.click(screen.getByRole('button', { name: 'Send to creator' }))
+
+  expect(bodyOf('POST', '/api/brand/campaigns/42/send')).toMatchObject({
+    screenshotsRequired: true,
+  })
+  expect(await screen.findByText('Required with the proof')).toBeInTheDocument()
+})
+
+it('reopens a draft with the screenshot choice it was saved with', async () => {
+  server({ 'GET /api/brand/campaigns/42': () => ({ ...draftCampaign, screenshotsRequired: true }) })
+  renderAt('/brand/campaigns/42/edit')
+
+  expect(
+    await screen.findByRole('checkbox', { name: /Ask for screenshots with the proof/ }),
+  ).toBeChecked()
 })
 
 it('saves changes to a draft in place with PUT', async () => {

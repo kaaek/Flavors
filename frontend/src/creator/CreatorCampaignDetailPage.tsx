@@ -20,7 +20,9 @@ import { formatUSD } from '../lib/money'
 import { parseUSDToCents } from '../lib/moneyInput'
 import { timeLeftText } from '../lib/timeLeft'
 import { isAwaitingPayment, showsEscrow } from '../api/payments'
+import { showsProof } from '../api/proof'
 import { CampaignStatusChip } from '../brand/CampaignStatusChip'
+import { CreatorProofSection } from './CreatorProofSection'
 import '../brand/campaigns.css'
 
 interface DeliverableRow {
@@ -266,6 +268,12 @@ export function CreatorCampaignDetailPage() {
               <dd>{campaign.contentRequirements}</dd>
             </>
           )}
+          {campaign.screenshotsRequired && (
+            <>
+              <dt>Screenshots</dt>
+              <dd>Required with the proof</dd>
+            </>
+          )}
 
           {campaign.sentAt && (
             <>
@@ -303,6 +311,14 @@ export function CreatorCampaignDetailPage() {
           )}
         </dl>
       </section>
+
+      {showsProof(campaign.status) && (
+        <CreatorProofSection
+          campaignId={campaign.id}
+          lastPostingDate={campaign.lastPostingDate}
+          onSubmitted={() => setStatusOverride('PROOF_SUBMITTED')}
+        />
+      )}
 
       {campaign.status === 'AWAITING_PAYMENT' && (
         <section className="fl-card fl-section">

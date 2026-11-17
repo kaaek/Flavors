@@ -49,6 +49,7 @@ interface Values {
   lastPostingDate: string
   rows: Row[]
   content: string
+  screenshots: boolean
 }
 
 const MAX_NAME = 150
@@ -78,6 +79,7 @@ function fromCampaign(campaign: Campaign): Values {
     lastPostingDate: campaign.lastPostingDate ?? '',
     rows: campaign.deliverables.map((d) => newRow({ ...d, count: String(d.count) })),
     content: campaign.contentRequirements ?? '',
+    screenshots: campaign.screenshotsRequired,
   }
 }
 
@@ -103,6 +105,7 @@ function toInput(values: Values): { input: CampaignInput } | { priceError: strin
         }
       }),
       contentRequirements: values.content.trim() === '' ? null : values.content,
+      screenshotsRequired: values.screenshots,
     },
   }
 }
@@ -116,6 +119,7 @@ const emptyValues = (): Values => ({
   lastPostingDate: '',
   rows: [newRow()],
   content: '',
+  screenshots: false,
 })
 
 const plural = (n: number) => (n === 1 ? '1 field needs' : `${n} fields need`)
@@ -569,6 +573,18 @@ function CampaignForm({
             onChange={(event) => set({ content: event.target.value })}
           />
         </Field>
+        <label className="fl-check">
+          <input
+            type="checkbox"
+            checked={values.screenshots}
+            onChange={(event) => set({ screenshots: event.target.checked })}
+          />
+          <span className="fl-check__box"></span>
+          <span>
+            Ask for screenshots with the proof{' '}
+            <span className="fl-hint">· the creator can't send the proof without at least one</span>
+          </span>
+        </label>
       </section>
 
       {campaignId !== null && (

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { timeLeftText } from './timeLeft'
+import { durationLeft, timeLeftText } from './timeLeft'
 
 const now = Date.parse('2030-01-03T10:00:00Z')
 
@@ -25,4 +25,9 @@ it('still counts the last minute before the deadline as time left', () => {
 
 it('has no text without a deadline', () => {
   expect(timeLeftText(null, now)).toBeNull()
+})
+
+it('gives the bare duration for other timers, and null once the deadline has passed', () => {
+  expect(durationLeft('2030-01-08T10:00:00Z', now)).toBe('5 days')
+  expect(durationLeft('2030-01-03T10:00:00Z', now)).toBeNull()
 })
