@@ -232,7 +232,62 @@ class EscrowPayoutIT {
         assertThat(provider.submits.get()).isEqualTo(1);
         assertThat(provider.queries.get()).isEqualTo(3);
     }
+    @Test
+    void reconciliationStopsAfterTenQueries() {
+        Fixture f = fixture();
+        provider.mode = Mode.UNKNOWN;
 
+        payouts.processOperation(f.operation());
+
+        for (int i = 0; i < 10; i++) {
+            due(f);
+            assertThat(payouts.processOperation(f.operation())).isTrue();
+        }
+
+        due(f);
+        assertThat(payouts.processOperation(f.operation())).isFalse();
+
+        assertThat(provider.submits.get()).isEqualTo(1);
+        assertThat(provider.queries.get()).isEqualTo(10);
+        assertThat(operations.findById(f.operation()).orElseThrow()
+                .getQueryAttempts()).isEqualTo(10);
+        assertThat(state(f)).isEqualTo("UNKNOWN");
+        assertHeld(f);
+    }
+
+    @Test
+    void payoutPreparationDoesNotCreateIdempotencyRows() {
+        Fixture f = fixture();
+
+        payouts.processOperation(f.operation());
+
+        Integer count = jdbc.queryForObject(
+                "SELECT count(*) FROM idempotency_key "
+                        + "WHERE scope = 'payout-prepare'",
+                Integer.class);
+
+        assertThat(count).isZero();
+        assertConfirmed(f);
+    }
+    @Test
+    void submittedPayoutStopsAfterTenQueries() {
+        Fixture f = fixture();
+        provider.mode = Mode.PENDING;
+
+        payouts.processOperation(f.operation());
+        assertThat(state(f)).isEqualTo("SUBMITTED");
+
+        jdbc.update(
+                "UPDATE escrow_release_operation SET query_attempts = 10 WHERE id = ?",
+                f.operation());
+        due(f);
+
+        assertThat(payouts.processOperation(f.operation())).isFalse();
+        assertThat(provider.queries.get()).isZero();
+        assertThat(provider.submits.get()).isEqualTo(1);
+        assertThat(state(f)).isEqualTo("SUBMITTED");
+        assertHeld(f);
+    }
     @Test
     void interruptionAfterProviderAcceptanceRecoversUsingTheDurableUnknownOperation() {
         Fixture f = fixture();

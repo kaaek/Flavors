@@ -20,7 +20,7 @@ class EscrowPayoutServiceImplTest {
     private final EscrowPayoutServiceImpl service = spy(new EscrowPayoutServiceImpl(mock(CampaignRepository.class),
             mock(EscrowPaymentRepository.class), operations, mock(PaymentTransactionRepository.class),
             mock(ProofSubmissionRepository.class), mock(ProofReviewRepository.class), mock(AuditLogger.class),
-            mock(IdempotencyService.class), provider, mock(TransactionOperations.class), Clock.fixed(NOW, ZoneOffset.UTC)));
+            provider, mock(TransactionOperations.class), Clock.fixed(NOW, ZoneOffset.UTC)));
 
     @Test
     void unavailableProviderDoesNotClaimOrModifyAuthorizations() {
