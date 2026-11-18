@@ -406,3 +406,17 @@ a working Whish adapter: production activation requires the confirmed capability
 reviewed implementation. A manual fallback would need a separately approved operator workflow and
 verifiable transfer evidence; it is not enabled by this design. Do not advertise FR-F7.12 as delivered
 until actual creator settlement within the agreed service window has been established.
+## Manual Payout Investigation
+
+Payouts that exceed 10 reconciliation attempts or fail
+without permission to retry require manual investigation.
+
+Operations can be identified using this read-only query:
+
+```sql
+SELECT id, escrow_id, operation_key, status,
+       query_attempts, dispatch_attempts,
+       payout_provider, provider_ref, last_error_code
+FROM escrow_release_operation
+WHERE (status IN ('UNKNOWN', 'SUBMITTED') AND query_attempts >= 10)
+   OR (status = 'FAILED' AND retryable = false);

@@ -22,7 +22,6 @@ import com.flavors.repository.ProofReviewRepository;
 import com.flavors.repository.ProofSubmissionRepository;
 import com.flavors.service.AuditLogger;
 import com.flavors.service.EscrowPayoutService;
-import com.flavors.service.IdempotencyService;
 import com.flavors.service.PayoutProvider;
 import java.time.Clock;
 import java.time.Duration;
@@ -45,6 +44,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class EscrowPayoutServiceImpl implements EscrowPayoutService {
     private static final Logger LOGGER = LoggerFactory.getLogger(EscrowPayoutServiceImpl.class);
     private static final Duration LEASE = Duration.ofMinutes(2);
+    private static final int MAX_RECONCILIATION_QUERIES = 10;
     private static final Duration BACKOFF = Duration.ofMinutes(1);
     private final CampaignRepository campaigns;
     private final EscrowPaymentRepository escrows;
@@ -53,7 +53,6 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
     private final ProofSubmissionRepository submissions;
     private final ProofReviewRepository reviews;
     private final AuditLogger audit;
-    private final IdempotencyService idempotency;
     private final PayoutProvider provider;
     private final TransactionOperations tx;
     private final Clock clock;
@@ -62,18 +61,18 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
     public EscrowPayoutServiceImpl(CampaignRepository campaigns, EscrowPaymentRepository escrows,
             EscrowReleaseOperationRepository operations, PaymentTransactionRepository transactions,
             ProofSubmissionRepository submissions, ProofReviewRepository reviews, AuditLogger audit,
-            IdempotencyService idempotency, PayoutProvider provider, TransactionOperations tx) {
-        this(campaigns, escrows, operations, transactions, submissions, reviews, audit, idempotency, provider,
+            PayoutProvider provider, TransactionOperations tx) {
+        this(campaigns, escrows, operations, transactions, submissions, reviews, audit, provider,
                 tx, Clock.systemUTC());
     }
 
     EscrowPayoutServiceImpl(CampaignRepository campaigns, EscrowPaymentRepository escrows,
             EscrowReleaseOperationRepository operations, PaymentTransactionRepository transactions,
             ProofSubmissionRepository submissions, ProofReviewRepository reviews, AuditLogger audit,
-            IdempotencyService idempotency, PayoutProvider provider, TransactionOperations tx, Clock clock) {
+            PayoutProvider provider, TransactionOperations tx, Clock clock) {
         this.campaigns = campaigns; this.escrows = escrows; this.operations = operations;
         this.transactions = transactions; this.submissions = submissions; this.reviews = reviews;
-        this.audit = audit; this.idempotency = idempotency; this.provider = provider; this.tx = tx; this.clock = clock;
+        this.audit = audit; this.provider = provider; this.tx = tx; this.clock = clock;
     }
 
     /** Serializable database preparation receipt, never a permission to replay provider dispatch. */
@@ -105,14 +104,9 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
         var escrow = escrows.findById(snapshot.getEscrowId()).orElseThrow();
         var campaignSnapshot = campaigns.findById(escrow.getCampaignId()).orElseThrow();
         UUID token = UUID.randomUUID();
-        // Idempotency row -> campaign -> operation. The receipt is unique to this lease attempt;
-        // the external idempotency key ALWAYS stays the immutable operation key.
-        String fingerprint = snapshot.getOperationKey() + "|" + snapshot.getOriginalAmountCents() + "|"
-                + snapshot.getFeeCents() + "|" + snapshot.getCreatorNetCents() + "|"
-                + snapshot.getCurrency() + "|" + provider.name() + "|simulated-creator:" + campaignSnapshot.getCreatorId();
-        Preparation claim = tx.execute(s -> idempotency.execute("payout-prepare",
-                snapshot.getOperationKey() + ":" + token, fingerprint,
-                () -> prepare(escrow.getCampaignId(), snapshot.getEscrowId(), operationId, token), Preparation.class));
+        // Database locks and lease token prevent duplicate preparation.
+        // The provider uses the stable operation key.
+        Preparation claim = tx.execute(s ->prepare(escrow.getCampaignId(), snapshot.getEscrowId(), operationId, token));
         if (claim == null) return false;
         // Never replay a cached preparation as an external action. Verify its live lease after commit.
         if (!Boolean.TRUE.equals(tx.execute(s -> ownsClaim(claim)))) return false;
@@ -127,8 +121,17 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
             result = PayoutResult.unknown(claim.request()); // Timeouts/errors cannot prove a transfer failed.
         }
         PayoutResult received = result;
-        return Boolean.TRUE.equals(tx.execute(s -> apply(claim, received)));
-    }
+        boolean applied = Boolean.TRUE.equals(tx.execute(s -> apply(claim, received)));
+        if (applied) {var current = operations.findById(operationId).orElseThrow();
+            if (current.getStatus() == PayoutStatus.FAILED && !current.isRetryable()) {
+                LOGGER.warn("Payout operation {} requires manual review: non-retryable failure.", operationId);
+            } else if ((current.getStatus() == PayoutStatus.UNKNOWN || current.getStatus() == PayoutStatus.SUBMITTED)
+            && current.getQueryAttempts() >= MAX_RECONCILIATION_QUERIES) {
+                LOGGER.warn("Payout operation {} reached the reconciliation limit; manual review required.", operationId);
+            }
+        }
+        return applied;
+        }
 
     private Preparation prepare(long campaignId, long escrowId, long operationId, UUID token) {
         Campaign campaign = campaigns.findByIdForUpdate(campaignId).orElseThrow();
@@ -140,6 +143,10 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
                 || (operation.getLeaseUntil() != null && operation.getLeaseUntil().isAfter(now))
                 || (operation.getNextAttemptAt() != null && operation.getNextAttemptAt().isAfter(now))
                 || (operation.getPayoutProvider() != null && !operation.getPayoutProvider().equals(provider.name()))) {
+            return null;
+        }
+        if ((operation.getStatus() == PayoutStatus.UNKNOWN|| operation.getStatus() == PayoutStatus.SUBMITTED)
+        && operation.getQueryAttempts() >= MAX_RECONCILIATION_QUERIES) {
             return null;
         }
         boolean dispatch = operation.getStatus() == PayoutStatus.AUTHORIZED

@@ -25,7 +25,7 @@ public interface EscrowReleaseOperationRepository extends JpaRepository<EscrowRe
               and e.status = com.flavors.enums.EscrowStatus.HELD
               and c.status = com.flavors.enums.CampaignStatus.PROOF_SUBMITTED
               and (o.status in (com.flavors.enums.PayoutStatus.AUTHORIZED, com.flavors.enums.PayoutStatus.UNKNOWN,
-                                com.flavors.enums.PayoutStatus.SUBMITTED)
+                                com.flavors.enums.PayoutStatus.SUBMITTED) and o.queryAttempts < 10
                    or (o.status = com.flavors.enums.PayoutStatus.FAILED and o.retryable = true))
               and (o.nextAttemptAt is null or o.nextAttemptAt <= :now)
               and (o.leaseUntil is null or o.leaseUntil <= :now)
