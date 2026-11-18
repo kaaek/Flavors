@@ -2,7 +2,8 @@ package com.flavors.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import com.flavors.exception.ReviewNotAllowedException;
+import com.flavors.service.CampaignReviewService;
 import com.flavors.TestcontainersConfiguration;
 import com.flavors.dto.CreatorPortfolioResponse;
 import com.flavors.entity.AppUser;
@@ -37,6 +38,9 @@ class PortfolioViewServiceImplIT {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    CampaignReviewService campaignReviews;
 
     private long newCreator(boolean approved) {
         long id = users.save(new AppUser(UUID.randomUUID() + "@test.local", "{noop}not-a-real-hash", Role.CREATOR)).getId();
@@ -226,4 +230,36 @@ class PortfolioViewServiceImplIT {
         assertThatThrownBy(() -> service.view(pending)).isInstanceOf(CreatorNotFoundException.class);
         assertThatThrownBy(() -> service.view(-1)).isInstanceOf(CreatorNotFoundException.class);
     }
+
+    @Test
+    void submittingReviewUpdatesCreatorPortfolio() {
+        long creator = newCreator(true);
+        long brand = newBrand();
+        long campaign = newCampaign(brand, creator, "COMPLETED", 20000);
+
+        campaignReviews.submit(brand, campaign, (short) 4, "Great work!");
+
+        CreatorPortfolioResponse portfolio = service.view(creator);
+
+        assertThat(portfolio.reviewCount()).isEqualTo(1);
+        assertThat(portfolio.averageRating()).isEqualByComparingTo("4.0");
+        assertThat(portfolio.reviews().get(0).rating()).isEqualTo((short) 4);
+        assertThat(portfolio.reviews().get(0).text()).isEqualTo("Great work!");
+    }
+
+    @Test
+    void campaignCannotBeReviewedTwice() {
+        long creator = newCreator(true);
+        long brand = newBrand();
+        long campaign = newCampaign(brand, creator, "COMPLETED", 20000);
+
+        campaignReviews.submit(brand, campaign, (short) 5, "Excellent!");
+
+        assertThatThrownBy(() ->
+            campaignReviews.submit(brand, campaign, (short) 3, "Another review"))
+            .isInstanceOf(ReviewNotAllowedException.class);
+
+        assertThat(service.view(creator).reviewCount()).isEqualTo(1);
+    }
+
 }

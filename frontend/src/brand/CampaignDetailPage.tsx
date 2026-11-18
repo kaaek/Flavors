@@ -19,6 +19,7 @@ import { formatUSD } from '../lib/money'
 import { redirectTo } from '../lib/redirect'
 import { timeLeftText } from '../lib/timeLeft'
 import { BrandProofSection } from './BrandProofSection'
+import { CampaignReviewForm } from './CampaignReviewForm'
 import { CampaignStatusChip } from './CampaignStatusChip'
 import './campaigns.css'
 
@@ -311,6 +312,12 @@ export function CampaignDetailPage() {
               .then(setCampaignOverride)
               .catch(() => undefined)
           }
+        />
+      )}
+      {campaign.status === 'COMPLETED' && (
+        <CampaignReviewForm
+          key={campaign.id}
+          campaignId={campaign.id}
         />
       )}
       <section className="fl-card fl-section" aria-label="Campaign details">

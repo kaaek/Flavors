@@ -11,8 +11,8 @@ import java.time.Instant;
  * A brand's review of a creator after a completed campaign (table {@code review}, V3; UC-F1.4).
  * One review per campaign. Reviews can't be edited after submission.
  *
- * <p>This class only reads, for the creator's portfolio (UC-F1.1). The story that writes reviews
- * (EEC-38) adds the constructor and the rules for creating one here.
+ * Reviews are created after an eligible campaign is completed and displayed
+ * on the creator's portfolio.
  */
 @Entity
 public class Review {
@@ -35,6 +35,24 @@ public class Review {
 
     /** For JPA only. */
     protected Review() {
+    }
+    public Review(Long campaignId, short rating, String text, Instant createdAt) {
+        if (campaignId == null || campaignId <= 0) {
+            throw new IllegalArgumentException("Invalid campaign ID");
+        }
+
+        if (rating < 1 || rating > 5) {
+            throw new IllegalArgumentException("Rating must be between 1 and 5");
+        }
+
+        if (createdAt == null) {
+            throw new IllegalArgumentException("Creation time is required");
+        }
+
+        this.campaignId = campaignId;
+        this.rating = rating;
+        this.text = text;
+        this.createdAt = createdAt;
     }
 
     public Long getId() {

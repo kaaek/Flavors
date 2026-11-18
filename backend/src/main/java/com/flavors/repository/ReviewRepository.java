@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.Optional;
 
 public interface ReviewRepository extends JpaRepository<Review, Long> {
 
@@ -15,4 +16,6 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
             order by r.createdAt desc
             """)
     List<Review> findAllForCreator(@Param("creatorId") Long creatorId);
+    boolean existsByCampaignId(Long campaignId);
+    Optional<Review> findByCampaignId(Long campaignId);
 }
