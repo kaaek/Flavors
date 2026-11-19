@@ -248,7 +248,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public Optional<PaymentResult> reconcile(String reference) {
-        Optional<PaymentTransaction> known = transactions.findByProviderRef(reference);
+        Optional<PaymentTransaction> known =
+        transactions.findByProviderRefAndType(
+                reference, PaymentTransactionType.CHARGE);
         if (known.isEmpty()) {
             return Optional.empty();
         }
@@ -264,13 +266,17 @@ public class PaymentServiceImpl implements PaymentService {
 
     /** Runs inside a transaction, under the campaign lock. */
     private Optional<PaymentResult> applyStatus(String reference, ProviderPaymentStatus status) {
-        Optional<Long> campaignId = transactions.findCampaignIdByProviderRef(reference);
+        Optional<Long> campaignId =
+        transactions.findChargeCampaignIdByProviderRef(reference);
         if (campaignId.isEmpty()) {
             return Optional.empty();
         }
         Campaign campaign = campaigns.findByIdForUpdate(campaignId.get()).orElseThrow(CampaignNotFoundException::new);
         // Read after the lock: a concurrent answer that committed first is visible now.
-        PaymentTransaction payment = transactions.findByProviderRef(reference).orElseThrow(PaymentNotFoundException::new);
+        PaymentTransaction payment = transactions
+        .findByProviderRefAndType(
+                reference, PaymentTransactionType.CHARGE)
+        .orElseThrow(PaymentNotFoundException::new);
 
         if (status == ProviderPaymentStatus.PENDING) {
             return Optional.of(resultOf(campaign.getId(), payment));
@@ -315,10 +321,14 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private Optional<PaymentResult> resultFor(String reference) {
-        return transactions.findCampaignIdByProviderRef(reference).flatMap(campaignId ->
-                transactions.findByProviderRef(reference)
-                        .map(p -> resultOf(campaignId, p)));
+        return transactions
+                .findChargeCampaignIdByProviderRef(reference)
+                .flatMap(campaignId ->
+                        transactions.findByProviderRefAndType(
+                                reference, PaymentTransactionType.CHARGE)
+                                .map(payment -> resultOf(campaignId, payment)));
     }
+
 
     /** Held only when the escrow is held: a payment recorded after Timer B is SUCCEEDED but not held. */
     private PaymentResult resultOf(Long campaignId, PaymentTransaction payment) {

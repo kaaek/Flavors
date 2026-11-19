@@ -63,6 +63,7 @@ class EscrowPayoutIT {
         volatile Mode mode = Mode.NORMAL;
         volatile boolean enabled = true;
         volatile boolean queryTimeout;
+        volatile boolean queryNotFound;
         volatile CountDownLatch entered;
         volatile CountDownLatch resume;
         volatile PayoutRequest lastRequest;
@@ -103,7 +104,15 @@ class EscrowPayoutIT {
         @Override public PayoutResult query(PayoutRequest request, String reference) {
             checkOutsideTransaction();
             queries.incrementAndGet();
-            if (queryTimeout) throw new IllegalStateException("query timeout");
+
+            if (queryTimeout) {
+                throw new IllegalStateException("query timeout");
+            }
+
+            if (queryNotFound) {
+                return PayoutResult.notFound(request);
+            }
+
             return super.query(request, reference);
         }
 
@@ -118,6 +127,7 @@ class EscrowPayoutIT {
     void resetProvider() {
         provider.submits.set(0); provider.queries.set(0); provider.enabled = true;
         provider.mode = Mode.NORMAL; provider.queryTimeout = false;
+        provider.queryNotFound = false;
         provider.entered = null; provider.resume = null; provider.inspectCommittedClaim = null;
     }
 
@@ -232,28 +242,100 @@ class EscrowPayoutIT {
         assertThat(provider.submits.get()).isEqualTo(1);
         assertThat(provider.queries.get()).isEqualTo(3);
     }
+
     @Test
-    void reconciliationStopsAfterTenQueries() {
+    void authoritativeNotFoundAllowsSafeRedispatchWithSameOperationKey() {
+        Fixture f = fixture();
+
+        // Simulate a crash before the initial submission reaches the provider.
+        provider.mode = Mode.UNKNOWN;
+        assertThat(payouts.processOperation(f.operation())).isTrue();
+
+        String originalKey = provider.lastRequest.operationKey();
+
+        assertThat(state(f)).isEqualTo("UNKNOWN");
+        assertHeld(f);
+
+        // Provider definitively reports no transfer for the operation key.
+        provider.queryNotFound = true;
+        due(f);
+
+        assertThat(payouts.processOperation(f.operation())).isTrue();
+
+        var operation = operations.findById(f.operation()).orElseThrow();
+
+        assertThat(operation.getStatus())
+                .isEqualTo(com.flavors.enums.PayoutStatus.FAILED);
+        assertThat(operation.isRetryable()).isTrue();
+
+        // Redispatch is permitted using the original idempotency key.
+        provider.queryNotFound = false;
+        provider.mode = Mode.NORMAL;
+        due(f);
+
+        assertThat(payouts.processOperation(f.operation())).isTrue();
+
+        assertThat(provider.lastRequest.operationKey())
+                .isEqualTo(originalKey);
+
+        assertThat(provider.submits.get()).isEqualTo(2);
+        assertThat(provider.queries.get()).isEqualTo(1);
+
+        assertConfirmed(f);
+    }
+
+    @Test
+    void notFoundWithExistingProviderReferenceNeverRedispatches() {
+        Fixture f = fixture();
+
+        provider.mode = Mode.PENDING;
+        assertThat(payouts.processOperation(f.operation())).isTrue();
+
+        assertThat(state(f)).isEqualTo("SUBMITTED");
+
+        var original = operations.findById(f.operation()).orElseThrow();
+        assertThat(original.getProviderRef()).isNotNull();
+
+        provider.queryNotFound = true;
+        due(f);
+
+        assertThat(payouts.processOperation(f.operation())).isTrue();
+
+        var operation = operations.findById(f.operation()).orElseThrow();
+
+        assertThat(operation.getStatus())
+                .isEqualTo(com.flavors.enums.PayoutStatus.UNKNOWN);
+        assertThat(operation.isRetryable()).isFalse();
+        assertThat(operation.getNeedsReviewAt()).isNotNull();
+
+        assertThat(provider.submits.get()).isEqualTo(1);
+        assertThat(provider.queries.get()).isEqualTo(1);
+
+        assertHeld(f);
+    }
+    @Test
+    void reconciliationContinuesAfterTenQueriesAndEscalates() {
         Fixture f = fixture();
         provider.mode = Mode.UNKNOWN;
 
         payouts.processOperation(f.operation());
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 11; i++) {
             due(f);
             assertThat(payouts.processOperation(f.operation())).isTrue();
         }
 
-        due(f);
-        assertThat(payouts.processOperation(f.operation())).isFalse();
+        var operation = operations.findById(f.operation()).orElseThrow();
 
         assertThat(provider.submits.get()).isEqualTo(1);
-        assertThat(provider.queries.get()).isEqualTo(10);
-        assertThat(operations.findById(f.operation()).orElseThrow()
-                .getQueryAttempts()).isEqualTo(10);
+        assertThat(provider.queries.get()).isEqualTo(11);
+        assertThat(operation.getQueryAttempts()).isEqualTo(11);
+        assertThat(operation.getNeedsReviewAt()).isNotNull();
+        assertThat(audits(f, "PAYOUT_NEEDS_REVIEW")).isEqualTo(1);
         assertThat(state(f)).isEqualTo("UNKNOWN");
         assertHeld(f);
     }
+
 
     @Test
     void payoutPreparationDoesNotCreateIdempotencyRows() {
@@ -270,24 +352,27 @@ class EscrowPayoutIT {
         assertConfirmed(f);
     }
     @Test
-    void submittedPayoutStopsAfterTenQueries() {
+    void submittedPayoutContinuesReconciliationAfterTenQueries() {
         Fixture f = fixture();
         provider.mode = Mode.PENDING;
 
         payouts.processOperation(f.operation());
+
         assertThat(state(f)).isEqualTo("SUBMITTED");
 
         jdbc.update(
                 "UPDATE escrow_release_operation SET query_attempts = 10 WHERE id = ?",
                 f.operation());
+
         due(f);
 
-        assertThat(payouts.processOperation(f.operation())).isFalse();
-        assertThat(provider.queries.get()).isZero();
+        assertThat(payouts.processOperation(f.operation())).isTrue();
+
+        assertThat(provider.queries.get()).isEqualTo(1);
         assertThat(provider.submits.get()).isEqualTo(1);
-        assertThat(state(f)).isEqualTo("SUBMITTED");
-        assertHeld(f);
+        assertConfirmed(f);
     }
+
     @Test
     void interruptionAfterProviderAcceptanceRecoversUsingTheDurableUnknownOperation() {
         Fixture f = fixture();

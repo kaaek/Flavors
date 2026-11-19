@@ -1,5 +1,8 @@
 package com.flavors.service.impl;
 
+import com.flavors.dto.CurrentUser;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import com.flavors.dto.PayoutRequest;
 import com.flavors.dto.PayoutResult;
 import com.flavors.entity.Campaign;
@@ -44,8 +47,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class EscrowPayoutServiceImpl implements EscrowPayoutService {
     private static final Logger LOGGER = LoggerFactory.getLogger(EscrowPayoutServiceImpl.class);
     private static final Duration LEASE = Duration.ofMinutes(2);
-    private static final int MAX_RECONCILIATION_QUERIES = 10;
-    private static final Duration BACKOFF = Duration.ofMinutes(1);
+    private static final int REVIEW_THRESHOLD = 10;
+    private static final Duration MAX_BACKOFF = Duration.ofHours(1);
     private final CampaignRepository campaigns;
     private final EscrowPaymentRepository escrows;
     private final EscrowReleaseOperationRepository operations;
@@ -75,10 +78,11 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
         this.audit = audit; this.provider = provider; this.tx = tx; this.clock = clock;
     }
 
-    /** Serializable database preparation receipt, never a permission to replay provider dispatch. */
+    /** Records a payout claim prepared under a database lock.
+ * The lease must be verified before contacting the provider.
+ */
     public record Preparation(long campaignId, long escrowId, long operationId, UUID leaseToken,
-                              boolean dispatch, PayoutRequest request, String providerRef) {}
-
+                            boolean dispatch, PayoutRequest request, String providerRef) {}
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public int processPendingPayouts() {
@@ -102,7 +106,6 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
         var snapshot = operations.findById(operationId).orElse(null);
         if (snapshot == null || snapshot.getStatus() == PayoutStatus.CONFIRMED) return false;
         var escrow = escrows.findById(snapshot.getEscrowId()).orElseThrow();
-        var campaignSnapshot = campaigns.findById(escrow.getCampaignId()).orElseThrow();
         UUID token = UUID.randomUUID();
         // Database locks and lease token prevent duplicate preparation.
         // The provider uses the stable operation key.
@@ -122,14 +125,6 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
         }
         PayoutResult received = result;
         boolean applied = Boolean.TRUE.equals(tx.execute(s -> apply(claim, received)));
-        if (applied) {var current = operations.findById(operationId).orElseThrow();
-            if (current.getStatus() == PayoutStatus.FAILED && !current.isRetryable()) {
-                LOGGER.warn("Payout operation {} requires manual review: non-retryable failure.", operationId);
-            } else if ((current.getStatus() == PayoutStatus.UNKNOWN || current.getStatus() == PayoutStatus.SUBMITTED)
-            && current.getQueryAttempts() >= MAX_RECONCILIATION_QUERIES) {
-                LOGGER.warn("Payout operation {} reached the reconciliation limit; manual review required.", operationId);
-            }
-        }
         return applied;
         }
 
@@ -143,10 +138,6 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
                 || (operation.getLeaseUntil() != null && operation.getLeaseUntil().isAfter(now))
                 || (operation.getNextAttemptAt() != null && operation.getNextAttemptAt().isAfter(now))
                 || (operation.getPayoutProvider() != null && !operation.getPayoutProvider().equals(provider.name()))) {
-            return null;
-        }
-        if ((operation.getStatus() == PayoutStatus.UNKNOWN|| operation.getStatus() == PayoutStatus.SUBMITTED)
-        && operation.getQueryAttempts() >= MAX_RECONCILIATION_QUERIES) {
             return null;
         }
         boolean dispatch = operation.getStatus() == PayoutStatus.AUTHORIZED
@@ -196,6 +187,11 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
         var payment = transactions.findById(operation.getPaymentTransactionId()).orElseThrow();
         validatePayment(payment, operation);
         if (result == null || !claim.request().equals(result.identity())) result = PayoutResult.unknown(claim.request());
+        // Count reconciliation calls after the provider invocation,
+        // not when the database lease was prepared.
+        if (!claim.dispatch()) {
+            operation.recordQuery(now);
+        }
         switch (result.outcome()) {
             case CONFIRMED -> {
                 operation.confirm(result.providerRef(), now);
@@ -210,15 +206,88 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
             case PENDING -> {
                 operation.recordSubmitted(result.providerRef(), now);
                 payment.recordPayoutReference(result.providerRef());
-                operation.scheduleNextAttempt(now.plus(BACKOFF));
+                operation.scheduleNextAttempt(now.plus(reconciliationBackoff(operation.getQueryAttempts())));
             }
-            case UNKNOWN -> operation.recordUnknown("PROVIDER_OUTCOME_UNKNOWN", now.plus(BACKOFF), now);
+            case UNKNOWN -> operation.recordUnknown("PROVIDER_OUTCOME_UNKNOWN",now.plus(reconciliationBackoff(operation.getQueryAttempts())),now);
+            case NOT_FOUND -> {
+                if (!claim.dispatch() && operation.getProviderRef() == null) {
+                    // The provider confirmed no transfer exists.
+                    // Allow retry using the original operation key.
+                    operation.recordFailed(
+                            "PROVIDER_NOT_FOUND",
+                            true,
+                            now.plus(Duration.ofMinutes(1)),
+                            now);
+
+                    payment.fail();
+
+                    audit.record(
+                            "PAYOUT_NOT_FOUND_RETRY_SCHEDULED",
+                            "escrow_release_operation",
+                            operation.getId(),
+                            details(campaign.getId(), operation));
+                } else {
+                    // A payout with an existing provider reference
+                    // must not automatically be dispatched again.
+                    operation.recordUnknown(
+                            "PROVIDER_NOT_FOUND_UNEXPECTED",
+                            now.plus(reconciliationBackoff(
+                                    operation.getQueryAttempts())),
+                            now);
+
+                    operation.markNeedsReview(now);
+
+                    audit.record(
+                            "PAYOUT_NEEDS_REVIEW",
+                            "escrow_release_operation",
+                            operation.getId(),
+                            details(campaign.getId(), operation));
+                }
+            }
             case FAILED -> {
                 operation.recordFailed("PROVIDER_DEFINITIVE_FAILURE", result.safeToRetry(),
-                        result.safeToRetry() ? now.plus(BACKOFF) : null, now);
+                        result.safeToRetry() ? now.plus(Duration.ofMinutes(1)) : null, now);
                 payment.fail();
             }
         }
+
+        if (operation.getStatus() == PayoutStatus.FAILED
+                && !operation.isRetryable()
+                && operation.getNeedsReviewAt() == null) {
+
+            operation.markNeedsReview(now);
+
+            audit.record(
+                    "PAYOUT_NEEDS_REVIEW",
+                    "escrow_release_operation",
+                    operation.getId(),
+                    details(campaign.getId(), operation));
+
+            LOGGER.warn(
+                    "Payout operation {} requires manual review: definitive failure.",
+                    operation.getId());
+        }
+
+
+        if ((operation.getStatus() == PayoutStatus.UNKNOWN
+                || operation.getStatus() == PayoutStatus.SUBMITTED)
+                && operation.getQueryAttempts() >= REVIEW_THRESHOLD
+                && operation.getNeedsReviewAt() == null) {
+
+            operation.markNeedsReview(now);
+
+            audit.record(
+                    "PAYOUT_NEEDS_REVIEW",
+                    "escrow_release_operation",
+                    operation.getId(),
+                    details(campaign.getId(), operation));
+
+            LOGGER.warn(
+                    "Payout operation {} requires manual review after {} reconciliation attempts.",
+                    operation.getId(),
+                    operation.getQueryAttempts());
+        }
+
         if (operation.getStatus() != PayoutStatus.CONFIRMED) {
             audit.record("PAYOUT_" + operation.getStatus().name(), "escrow_release_operation", operation.getId(),
                     details(campaign.getId(), operation));
@@ -264,6 +333,74 @@ public class EscrowPayoutServiceImpl implements EscrowPayoutService {
         return Map.of("campaignId", campaignId, "operationId", operation.getId(), "escrowId", operation.getEscrowId(),
                 "amountCents", operation.getOriginalAmountCents(), "feeCents", operation.getFeeCents(),
                 "creatorNetCents", operation.getCreatorNetCents(), "simulated", provider.simulated());
+    }
+
+    private Duration reconciliationBackoff(int attempts) {
+        int exponent = Math.min(Math.max(attempts - 1, 0), 6);
+        long minutes = Math.min(1L << exponent, MAX_BACKOFF.toMinutes());
+        return Duration.ofMinutes(minutes);
+    }
+
+    /**
+     * Records administrator evidence for an escalated payout.
+     * Does not confirm a transfer, release escrow, or issue a refund.
+     */
+    @Transactional
+    public void recordManualReviewEvidence(
+            long operationId,
+            String evidenceReference,
+            String finding) {
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof CurrentUser)
+                || authentication.getAuthorities().stream()
+                        .noneMatch(authority ->
+                                "ROLE_ADMIN".equals(authority.getAuthority()))) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Administrator access is required.");
+        }
+
+        if (evidenceReference == null || evidenceReference.isBlank()
+                || finding == null || finding.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Evidence reference and finding are required.");
+        }
+
+        EscrowReleaseOperation snapshot =
+                operations.findById(operationId).orElseThrow();
+
+        EscrowPayment escrow =
+                escrows.findById(snapshot.getEscrowId()).orElseThrow();
+
+        Campaign campaign =
+                campaigns.findByIdForUpdate(escrow.getCampaignId()).orElseThrow();
+
+        EscrowReleaseOperation operation =
+                operations.findByEscrowIdForUpdate(escrow.getId()).orElseThrow();
+
+        if (!Objects.equals(operation.getId(), operationId)
+                || operation.getNeedsReviewAt() == null
+                || operation.getStatus() == PayoutStatus.CONFIRMED
+                || escrow.getStatus() != EscrowStatus.HELD) {
+            throw new IllegalStateException(
+                    "This payout is not eligible for manual review.");
+        }
+
+        audit.record(
+                "PAYOUT_MANUAL_REVIEW_EVIDENCE",
+                "escrow_release_operation",
+                operation.getId(),
+                Map.of(
+                        "campaignId", campaign.getId(),
+                        "operationId", operation.getId(),
+                        "escrowId", escrow.getId(),
+                        "evidenceReference", evidenceReference,
+                        "finding", finding
+                )
+        );
     }
 
     private Instant now() { return clock.instant().truncatedTo(ChronoUnit.MICROS); }

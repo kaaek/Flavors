@@ -76,6 +76,120 @@ class EscrowReleaseOperationTest {
         assertThat(retryable.getCreatorNetCents()).isEqualTo(17000);
     }
 
+    @Test
+    void definitiveNotFoundAllowsRetryWithSameOperationKey() {
+        var operation = operation(20000);
+
+        String originalKey = operation.getOperationKey();
+        long originalNet = operation.getCreatorNetCents();
+
+        // The payout was prepared but its outcome is unknown.
+        dispatch(operation, NOW);
+
+        assertThat(operation.getStatus())
+                .isEqualTo(PayoutStatus.UNKNOWN);
+
+        // The provider has authoritatively confirmed no payout exists.
+        operation.recordFailed(
+                "PROVIDER_NOT_FOUND",
+                true,
+                NOW.plusSeconds(60),
+                NOW);
+
+        assertThat(operation.getStatus())
+                .isEqualTo(PayoutStatus.FAILED);
+        assertThat(operation.isRetryable()).isTrue();
+
+        // Retry after the scheduled delay.
+        dispatch(operation, NOW.plusSeconds(60));
+
+        assertThat(operation.getStatus())
+                .isEqualTo(PayoutStatus.UNKNOWN);
+        assertThat(operation.getDispatchAttempts()).isEqualTo(2);
+        assertThat(operation.getOperationKey()).isEqualTo(originalKey);
+        assertThat(operation.getCreatorNetCents()).isEqualTo(originalNet);
+    }
+
+    @Test
+    void preparingQueryDoesNotIncrementQueryAttempts() {
+        var operation = operation(20000);
+
+        dispatch(operation, NOW);
+
+        operation.beginQuery(
+                UUID.randomUUID(),
+                NOW.plusSeconds(120),
+                NOW.plusSeconds(60));
+
+        // Preparation alone must not count as a provider query.
+        assertThat(operation.getQueryAttempts()).isZero();
+
+        // Record the query only after the provider call was attempted.
+        operation.recordQuery(NOW.plusSeconds(60));
+
+        assertThat(operation.getQueryAttempts()).isEqualTo(1);
+    }
+
+    @Test
+    void payoutRemainsReconciliableAfterTenQueries() {
+        var operation = operation(20000);
+
+        dispatch(operation, NOW);
+
+        // Simulate ten unsuccessful reconciliation attempts.
+        for (int i = 1; i <= 10; i++) {
+            Instant attemptTime = NOW.plusSeconds(i * 60L);
+
+            operation.beginQuery(
+                    UUID.randomUUID(),
+                    attemptTime.plusSeconds(30),
+                    attemptTime);
+
+            operation.recordQuery(attemptTime);
+
+            operation.recordUnknown(
+                    "PROVIDER_OUTCOME_UNKNOWN",
+                    attemptTime.plusSeconds(60),
+                    attemptTime);
+        }
+
+        assertThat(operation.getQueryAttempts()).isEqualTo(10);
+        assertThat(operation.getStatus()).isEqualTo(PayoutStatus.UNKNOWN);
+
+        // Escalate without ending reconciliation.
+        Instant escalationTime = NOW.plusSeconds(600);
+        operation.markNeedsReview(escalationTime);
+
+        assertThat(operation.getNeedsReviewAt())
+                .isEqualTo(escalationTime);
+
+        // An eleventh query must still be allowed.
+        Instant nextAttempt = NOW.plusSeconds(660);
+
+        operation.beginQuery(
+                UUID.randomUUID(),
+                nextAttempt.plusSeconds(30),
+                nextAttempt);
+
+        operation.recordQuery(nextAttempt);
+
+        operation.recordUnknown(
+                "PROVIDER_OUTCOME_UNKNOWN",
+                nextAttempt.plusSeconds(60),
+                nextAttempt);
+
+        assertThat(operation.getQueryAttempts()).isEqualTo(11);
+        assertThat(operation.getStatus()).isEqualTo(PayoutStatus.UNKNOWN);
+
+        // The original escalation timestamp is preserved.
+        assertThat(operation.getNeedsReviewAt())
+                .isEqualTo(escalationTime);
+
+        // Payout identity remains unchanged.
+        assertThat(operation.getOperationKey())
+                .isEqualTo("escrow-release:1");
+    }
+
     private static EscrowReleaseOperation operation(long amount) {
         return new EscrowReleaseOperation(1, 2, null, ReleaseAuthorizationSource.TIMER_C, amount, NOW);
     }

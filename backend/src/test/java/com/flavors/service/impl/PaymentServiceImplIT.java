@@ -2,7 +2,10 @@ package com.flavors.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import com.flavors.entity.PaymentTransaction;
+import com.flavors.enums.PaymentTransactionType;
+import com.flavors.enums.PaymentTransactionStatus;
+import com.flavors.repository.PaymentTransactionRepository;
 import com.flavors.TestcontainersConfiguration;
 import com.flavors.dto.EscrowResponse;
 import com.flavors.dto.PaymentResult;
@@ -51,6 +54,7 @@ class PaymentServiceImplIT {
     @Autowired AppUserRepository users;
     @Autowired CreatorProfileRepository profiles;
     @Autowired JdbcTemplate jdbc;
+    @Autowired PaymentTransactionRepository transactions;
 
     private long newCreator() {
         long id = users.save(new AppUser(UUID.randomUUID() + "@test.local", "{noop}not-a-real-hash", Role.CREATOR)).getId();
@@ -467,4 +471,54 @@ class PaymentServiceImplIT {
     void anUnknownPaymentReferenceIsIgnored() {
         assertThat(payments.reconcile(UUID.randomUUID().toString())).isEmpty();
     }
+
+    @Test
+    void publicReconciliationCannotProcessPayoutReference() {
+        long brand = newBrand();
+        long creator = newCreator();
+        long campaign = newAcceptedCampaign(brand, creator);
+
+        // Create a legitimate escrow and charge attempt.
+        pay(brand, campaign);
+
+        Long escrowId = jdbc.queryForObject("""
+                SELECT id FROM escrow_payment
+                WHERE campaign_id = ?
+                """, Long.class, campaign);
+
+        // Create a separate RELEASE transaction with a provider reference.
+        String payoutReference = "simulated:escrow-release:"
+                + UUID.randomUUID();
+
+        PaymentTransaction payout = transactions.saveAndFlush(
+                new PaymentTransaction(
+                        escrowId,
+                        PaymentTransactionType.RELEASE,
+                        55_250L,
+                        payoutReference,
+                        "test-payout-" + UUID.randomUUID()
+                )
+        );
+
+        // Public charge reconciliation must not recognize RELEASE references.
+        assertThat(payments.reconcile(payoutReference)).isEmpty();
+
+        // The payout transaction must remain untouched.
+        PaymentTransaction unchanged =
+                transactions.findById(payout.getId()).orElseThrow();
+
+        assertThat(unchanged.getType())
+                .isEqualTo(PaymentTransactionType.RELEASE);
+
+        assertThat(unchanged.getStatus())
+                .isEqualTo(PaymentTransactionStatus.PENDING);
+
+        assertThat(unchanged.getProviderRef())
+                .isEqualTo(payoutReference);
+
+        // The campaign must remain awaiting payment.
+        assertThat(statusOf(campaign))
+                .isEqualTo("AWAITING_PAYMENT");
+    }
+
 }

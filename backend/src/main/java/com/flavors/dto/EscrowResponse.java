@@ -21,12 +21,13 @@ public record EscrowResponse(
         Instant submittedAt,
         Instant confirmedAt,
         Boolean simulated,
-        boolean payoutAvailable) {
+        boolean payoutAvailable,
+        boolean payoutNeedsReview) {
 
     /** Source compatibility for callers constructing the previous escrow-only response. */
     public EscrowResponse(Long campaignId, EscrowStatus status, long amountCents, Instant heldAt,
                           Instant releasedAt, Instant updatedAt) {
         this(campaignId, status, amountCents, heldAt, releasedAt, updatedAt,
-                null, null, null, null, null, null, null, null, false);
+                null, null, null, null, null, null, null, null, false, false);
     }
 }
