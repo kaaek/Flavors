@@ -77,6 +77,7 @@ public class EscrowReleaseOperation {
     private Instant confirmedAt;
     private Instant lastAttemptAt;
     private Instant nextAttemptAt;
+    private Instant needsReviewAt;
 
     @Column(nullable = false)
     private int dispatchAttempts;
@@ -169,14 +170,25 @@ public class EscrowReleaseOperation {
     }
 
     /** Acquire a query lease without ever turning UNKNOWN back into dispatchable authorization. */
+
+    /**
+     * Acquire a lease for reconciliation.
+     * Do not increment queryAttempts until the provider call is attempted.
+     */
     public void beginQuery(UUID token, Instant until, Instant now) {
+        requirePending();
+        requireTime(now);
+
         if (token == null || until == null || !until.isAfter(now)) {
-            throw new IllegalArgumentException("Reconciliation requires an unexpired lease.");
+            throw new IllegalArgumentException(
+                    "Reconciliation requires an unexpired lease.");
         }
-        recordQuery(now);
+
         leaseToken = token;
         leaseUntil = until;
+        updatedAt = now;
     }
+
 
     public void scheduleNextAttempt(Instant next) {
         if (status == PayoutStatus.CONFIRMED || next == null || next.isBefore(updatedAt)) {
@@ -184,6 +196,29 @@ public class EscrowReleaseOperation {
         }
         nextAttemptAt = next;
     }
+
+
+    /**
+     * Mark an unresolved payout for manual review.
+     * Preserve the original escalation timestamp.
+     */
+    public void markNeedsReview(Instant now) {
+        requireTime(now);
+
+        if (status != PayoutStatus.UNKNOWN
+                && status != PayoutStatus.SUBMITTED
+                && !(status == PayoutStatus.FAILED && !retryable)) {
+            throw new IllegalStateException(
+                    "Only unresolved payouts can require manual review.");
+        }
+
+        if (needsReviewAt == null) {
+            needsReviewAt = now;
+            updatedAt = now;
+        }
+    }
+
+
 
     public void recordSubmitted(String reference, Instant now) {
         requirePending();
@@ -243,6 +278,7 @@ public class EscrowReleaseOperation {
         }
         confirmedAt = now;
         status = PayoutStatus.CONFIRMED;
+        needsReviewAt = null;
         retryable = false;
         nextAttemptAt = null;
         lastErrorCode = null;
@@ -391,5 +427,8 @@ public class EscrowReleaseOperation {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+    public Instant getNeedsReviewAt() {
+        return needsReviewAt;
     }
 }

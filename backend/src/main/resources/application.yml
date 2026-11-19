@@ -4,6 +4,11 @@ spring:
   application:
     name: flavors
 
+  task:
+    scheduling:
+      pool:
+        size: 2
+
   # Built from the variables Railway's Postgres service exposes (PGHOST, PGPORT, ...),
   # so staging and production need no renaming. There are deliberately no defaults here:
   # a missing variable fails startup instead of silently connecting somewhere else.

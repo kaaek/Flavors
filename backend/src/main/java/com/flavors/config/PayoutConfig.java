@@ -1,3 +1,4 @@
+
 package com.flavors.config;
 
 import com.flavors.service.PayoutProvider;
@@ -10,16 +11,38 @@ import org.springframework.core.env.Profiles;
 
 @Configuration(proxyBeanMethods = false)
 public class PayoutConfig {
+
     @Bean
     public PayoutProvider payoutProvider(Environment environment) {
-        String mode = environment.getProperty("flavors.payout.mode", "disabled");
-        if ("disabled".equals(mode)) return new UnavailablePayoutProvider();
-        if (!"simulated".equals(mode)) throw new IllegalStateException("No verified real payout adapter is available.");
-        // A production profile wins even if dev/test is also active.
-        if (environment.acceptsProfiles(Profiles.of("prod", "production"))
-                || !environment.acceptsProfiles(Profiles.of("dev", "test"))) {
-            throw new IllegalStateException("Simulated payouts require dev/test and are forbidden in production.");
+        String mode = environment.getProperty(
+                "flavors.payout.mode", "disabled");
+
+        // Payouts remain disabled unless explicitly enabled.
+        if ("disabled".equals(mode)) {
+            return new UnavailablePayoutProvider();
         }
+
+        // No real payout adapter has been implemented yet.
+        if (!"simulated".equals(mode)) {
+            throw new IllegalStateException(
+                    "No verified real payout adapter is available.");
+        }
+
+        // Simulation is forbidden in production, even if
+        // another allowed profile is also active.
+        if (environment.acceptsProfiles(
+                Profiles.of("prod", "production"))) {
+            throw new IllegalStateException(
+                    "Simulated payouts are forbidden in production.");
+        }
+
+        // Simulation is only allowed in dev, test, or staging.
+        if (!environment.acceptsProfiles(
+                Profiles.of("dev", "test", "staging"))) {
+            throw new IllegalStateException(
+                    "Simulated payouts require dev, test, or staging.");
+        }
+
         return new SimulatedPayoutProvider();
     }
 }

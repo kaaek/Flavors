@@ -20,6 +20,9 @@ public class EscrowMapper {
                 operation == null ? null : operation.getAuthorizationSource(),
                 operation == null ? null : operation.getAuthorizedAt(),
                 operation == null ? null : operation.getSubmittedAt(),
-                operation == null ? null : operation.getConfirmedAt(), simulated, payoutAvailable);
+                operation == null ? null : operation.getConfirmedAt(),
+                simulated,
+                payoutAvailable,
+                operation != null && operation.getNeedsReviewAt() != null);
     }
 }

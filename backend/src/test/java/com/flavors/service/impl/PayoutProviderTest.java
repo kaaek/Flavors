@@ -28,7 +28,7 @@ class PayoutProviderTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"prod", "production", "prod,dev", "production,test", "staging"})
+    @ValueSource(strings = {"prod", "production", "prod,dev", "production,test", "prod,staging"})
     void simulationCannotStartOutsideDevelopmentOrTesting(String profiles) {
         new ApplicationContextRunner().withUserConfiguration(PayoutConfig.class)
                 .withPropertyValues("spring.profiles.active=" + profiles, "flavors.payout.mode=simulated")
@@ -36,7 +36,7 @@ class PayoutProviderTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"dev", "test"})
+    @ValueSource(strings = {"dev", "test", "staging"})
     void explicitSimulationIsAllowedInDevelopmentAndTests(String profile) {
         new ApplicationContextRunner().withUserConfiguration(PayoutConfig.class)
                 .withPropertyValues("spring.profiles.active=" + profile, "flavors.payout.mode=simulated")

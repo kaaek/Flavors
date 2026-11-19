@@ -40,4 +40,30 @@ class EscrowPayoutServiceImplTest {
         assertThat(service.processPendingPayouts()).isEqualTo(1);
         verify(service).processOperation(3L);
     }
+
+    @Test
+    void escalatedPayoutCanStillBeProcessed() {
+        long operationId = 42L;
+
+        when(provider.available()).thenReturn(true);
+
+        // Simulate the repository returning an operation that
+        // has already exceeded the reconciliation threshold.
+        when(operations.findDuePayoutIds(
+                NOW, PageRequest.of(0, 100)))
+                .thenReturn(List.of(operationId));
+
+        // Focus this test on the scheduler's behavior.
+        doReturn(true).when(service)
+                .processOperation(operationId);
+
+        int processed = service.processPendingPayouts();
+
+        assertThat(processed).isEqualTo(1);
+
+        verify(service).processOperation(operationId);
+        verify(operations).findDuePayoutIds(
+                NOW, PageRequest.of(0, 100));
+    }
+
 }
