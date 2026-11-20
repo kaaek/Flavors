@@ -87,10 +87,8 @@ it('shows frozen escrow status without payout details', async () => {
   })
   render(panel())
   expect(
-  await screen.findByText(
-    'Escrow is frozen. Funds are held pending dispute resolution.'
-  )
-).toBeInTheDocument()
+    await screen.findByText('Escrow is frozen. Funds are held pending dispute resolution.'),
+  ).toBeInTheDocument()
   expect(screen.queryByText('Flavors fee (15%)')).not.toBeInTheDocument()
 })
 
@@ -164,18 +162,12 @@ it('shows manual review warning instead of normal pending status', async () => {
 
   const warning = await screen.findByRole('alert')
 
-  expect(warning).toHaveTextContent(
-    'Payout requires manual review.'
-  )
+  expect(warning).toHaveTextContent('Payout requires manual review.')
 
-  expect(warning).toHaveTextContent(
-    'Our team is checking its status.'
-  )
+  expect(warning).toHaveTextContent('Our team is checking its status.')
 
   expect(
-    screen.queryByText(
-      'Payout outcome is being checked with the provider.'
-    )
+    screen.queryByText('Payout outcome is being checked with the provider.'),
   ).not.toBeInTheDocument()
 
   expect(screen.getByText('$200.03')).toBeInTheDocument()
