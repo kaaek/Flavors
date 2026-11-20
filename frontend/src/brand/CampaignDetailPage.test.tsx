@@ -5,13 +5,11 @@ import type { Campaign } from '../api/campaigns'
 import { apiFetch } from '../api/client'
 import { CampaignDetailPage } from './CampaignDetailPage'
 
-
 vi.mock('./CampaignReviewForm', () => ({
   CampaignReviewForm: ({ campaignId }: { campaignId: number }) => (
     <div data-testid="campaign-review-form">{campaignId}</div>
   ),
 }))
-
 
 vi.mock('../api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/client')>()),

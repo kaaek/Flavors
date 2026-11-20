@@ -17,13 +17,10 @@ export function submitCampaignReview(
   campaignId: number,
   request: CampaignReviewRequest,
 ): Promise<CampaignReviewResponse> {
-  return apiFetch<CampaignReviewResponse>(
-    `/api/brand/campaigns/${campaignId}/review`,
-    {
-      method: 'POST',
-      body: request,
-    },
-  )
+  return apiFetch<CampaignReviewResponse>(`/api/brand/campaigns/${campaignId}/review`, {
+    method: 'POST',
+    body: request,
+  })
 }
 export async function getCampaignReview(
   campaignId: number,

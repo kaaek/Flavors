@@ -315,10 +315,7 @@ export function CampaignDetailPage() {
         />
       )}
       {campaign.status === 'COMPLETED' && (
-        <CampaignReviewForm
-          key={campaign.id}
-          campaignId={campaign.id}
-        />
+        <CampaignReviewForm key={campaign.id} campaignId={campaign.id} />
       )}
       <section className="fl-card fl-section" aria-label="Campaign details">
         <dl className="fl-kv">

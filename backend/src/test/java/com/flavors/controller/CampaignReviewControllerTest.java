@@ -2,6 +2,8 @@
 package com.flavors.controller;
 
 import com.flavors.config.SecurityConfig;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.flavors.dto.CurrentUser;
 import com.flavors.entity.Review;
 import com.flavors.enums.Role;
@@ -164,4 +166,21 @@ class CampaignReviewControllerTest {
 
         verifyNoInteractions(service);
     }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"4.5", "0", "6", "70000", "\"abc\""})
+        void invalidRatingsReturn400WithFieldError(String rating) throws Exception {
+        mvc.perform(post("/api/brand/campaigns/10/review")
+                        .with(user(brand))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rating\":" + rating + ",\"text\":\"Good\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.errors.rating")
+                        .value("Rating must be a whole number between 1 and 5"));
+
+        verifyNoInteractions(service);
+        }
+
 }

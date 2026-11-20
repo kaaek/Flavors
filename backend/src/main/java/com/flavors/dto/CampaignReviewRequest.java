@@ -1,7 +1,8 @@
+
 package com.flavors.dto;
 
 public record CampaignReviewRequest(
-        Short rating,
+        Object rating,
         String text
 ) {
 }
