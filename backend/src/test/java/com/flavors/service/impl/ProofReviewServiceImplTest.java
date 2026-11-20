@@ -31,6 +31,7 @@ import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.ProofReviewRepository;
 import com.flavors.repository.ProofSubmissionRepository;
 import com.flavors.service.AuditLogger;
+import com.flavors.service.EscrowReleaseService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -55,9 +56,10 @@ class ProofReviewServiceImplTest {
     private final ProofSubmissionRepository submissions = mock(ProofSubmissionRepository.class);
     private final ProofReviewRepository reviews = mock(ProofReviewRepository.class);
     private final AuditLogger audit = mock(AuditLogger.class);
+    private final EscrowReleaseService releases = mock(EscrowReleaseService.class);
     private final List<ProofReview> saved = new ArrayList<>();
     private final ProofReviewServiceImpl service = new ProofReviewServiceImpl(campaigns, submissions, reviews,
-            new ProofReviewMapper(), audit, Clock.fixed(NOW, ZoneOffset.UTC));
+            new ProofReviewMapper(), audit, releases, Clock.fixed(NOW, ZoneOffset.UTC));
     private Campaign campaign;
     private ProofSubmission submission;
 
@@ -98,6 +100,7 @@ class ProofReviewServiceImplTest {
         assertThat(campaign.getProofReviewDeadline()).isNull();
         verify(audit).record("PROOF_APPROVED", "proof_review", 100L,
                 java.util.Map.of("campaignId", 42L, "submissionId", 5L, "round", 1));
+        verify(releases).authorizeApproved(42, 5, 100);
     }
 
     @Test
@@ -166,6 +169,7 @@ class ProofReviewServiceImplTest {
         assertThat(result.requiredFollowUp()).isEqualTo(ProofReviewFollowUp.FREEZE_PAYMENT_AND_OPEN_DISPUTE);
         assertThat(campaign.getStatus()).isEqualTo(CampaignStatus.PROOF_SUBMITTED);
         assertThat(campaign.getProofReviewDeadline()).isNull();
+        verify(releases).freezeForRejection(42, 5, 100);
     }
 
     @ParameterizedTest
@@ -180,6 +184,11 @@ class ProofReviewServiceImplTest {
                 .isEqualTo(decision == ProofReviewDecision.CORRECTIONS_REQUESTED ? 1 : 0);
         verify(reviews, times(1)).saveAndFlush(any());
         verify(audit, times(1)).record(any(), any(), any(), any());
+        if (decision == ProofReviewDecision.REJECTED) {
+            verify(releases, times(2)).freezeForRejection(42, 5, 100);
+        } else {
+            verify(releases, never()).freezeForRejection(anyLong(), anyLong(), anyLong());
+        }
     }
 
     @Test
@@ -208,7 +217,7 @@ class ProofReviewServiceImplTest {
     void decisionAndCampaignUpdateUsePostgresMicrosecondPrecision() {
         Clock preciseClock = Clock.fixed(Instant.parse("2026-11-07T08:00:00.123456789Z"), ZoneOffset.UTC);
         var preciseService = new ProofReviewServiceImpl(campaigns, submissions, reviews,
-                new ProofReviewMapper(), audit, preciseClock);
+                new ProofReviewMapper(), audit, releases, preciseClock);
 
         var result = preciseService.review(9, 42, 5, request(ProofReviewDecision.APPROVED, null));
 

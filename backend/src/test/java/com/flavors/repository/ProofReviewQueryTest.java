@@ -39,6 +39,8 @@ class ProofReviewQueryTest {
                 .addAnnotatedClass(CampaignDeliverable.class)
                 .addAnnotatedClass(ProofSubmission.class)
                 .addAnnotatedClass(ProofReview.class)
+                .addAnnotatedClass(com.flavors.entity.EscrowPayment.class)
+                .addAnnotatedClass(com.flavors.entity.EscrowReleaseOperation.class)
                 .buildMetadata().buildSessionFactory();
              var session = factory.openSession()) {
             assertThatCode(() -> session.createQuery(overdue, Long.class).setParameter("now", Instant.now()))

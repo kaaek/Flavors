@@ -4,7 +4,6 @@ import {
   acceptCreatorCampaign,
   rejectCreatorCampaign,
   submitCreatorCounterOffer,
-  escrowLabel,
   getCreatorCampaign,
   PLATFORMS,
   DELIVERABLE_TYPES,
@@ -24,6 +23,7 @@ import { showsProof } from '../api/proof'
 import { CampaignStatusChip } from '../brand/CampaignStatusChip'
 import { CreatorProofSection } from './CreatorProofSection'
 import '../brand/campaigns.css'
+import { EscrowPanel } from '../payment/EscrowPanel'
 
 interface DeliverableRow {
   platform: Platform
@@ -53,8 +53,10 @@ function messageOf(error: unknown): string {
 /** Full details and response actions for a campaign request received by the creator. */
 export function CreatorCampaignDetailPage() {
   const { id } = useParams()
-  const campaignId = Number(id)
+  return <CreatorCampaignDetail key={id} campaignId={Number(id)} />
+}
 
+function CreatorCampaignDetail({ campaignId }: { campaignId: number }) {
   const load = useCallback(() => getCreatorCampaign(campaignId), [campaignId])
   const result = useFetchWith<Campaign>(load)
 
@@ -69,6 +71,14 @@ export function CreatorCampaignDetailPage() {
 
   // The brand's payment shows up here without a reload: checked every 30 seconds while it is pending.
   const [refreshed, setRefreshed] = useState<Campaign | null>(null)
+  const refreshCampaign = useCallback(() => {
+    void getCreatorCampaign(campaignId)
+      .then((fresh) => {
+        setRefreshed(fresh)
+        setStatusOverride(null)
+      })
+      .catch(() => undefined)
+  }, [campaignId])
   const current = refreshed ?? (result.status === 'ready' ? result.data : null)
   const awaitingPayment = current ? isAwaitingPayment(statusOverride ?? current.status) : false
   useEffect(() => {
@@ -302,16 +312,18 @@ export function CreatorCampaignDetailPage() {
               <dd>{when.format(new Date(campaign.acceptedAt))}</dd>
             </>
           )}
-
-          {campaign.escrowStatus && showsEscrow(campaign.status, campaign.escrowStatus) && (
-            <>
-              <dt>Escrow</dt>
-              <dd>{escrowLabel[campaign.escrowStatus]}</dd>
-            </>
-          )}
         </dl>
       </section>
 
+      {campaign.escrowStatus && showsEscrow(campaign.status, campaign.escrowStatus) && (
+        <EscrowPanel
+          campaignId={campaign.id}
+          viewer="creator"
+          fallbackStatus={campaign.escrowStatus}
+          refreshKey={campaign.updatedAt}
+          onStatusChanged={refreshCampaign}
+        />
+      )}
       {showsProof(campaign.status) && (
         <CreatorProofSection
           campaignId={campaign.id}

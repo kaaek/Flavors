@@ -91,6 +91,28 @@ public class EscrowPayment {
         this.updatedAt = now;
     }
 
+    /** Freezing reserves the held balance for later dispute handling; no money moves. */
+    public void freeze(Instant now) {
+        if (status != EscrowStatus.HELD) {
+            throw new IllegalStateException("Only held escrow can be frozen.");
+        }
+        updatedAt = Objects.requireNonNull(now);
+        status = EscrowStatus.FROZEN;
+    }
+
+    /** Called only with an authoritative payout confirmation and the stored fee/net snapshot. */
+    public void release(long fee, long net, Instant now) {
+        if (status != EscrowStatus.HELD || fee < 0 || net < 0 || Math.addExact(fee, net) != getAmountCents()
+                || refundedCents != 0) {
+            throw new IllegalStateException("Release requires the complete held balance.");
+        }
+        releasedAt = Objects.requireNonNull(now);
+        updatedAt = now;
+        feeCents = fee;
+        creatorNetCents = net;
+        status = EscrowStatus.RELEASED;
+    }
+
     public Long getId() {
         return id;
     }

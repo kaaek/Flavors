@@ -4,9 +4,8 @@ import { Icon } from '../layout/Icon'
 import { formatWhen } from './dates'
 
 /**
- * What the brand decided on the newest version shown, as the creator or the brand reads it (EEC-47). After an approval
- * or a rejection the campaign stays "Proof submitted" until payment release and disputes exist (UC-F7.2/F8.1), so this
- * says what happened instead of relying on the status chip, and promises nothing those stories have not built.
+ * The brand's decision on the newest version shown. Actual escrow and payout progress is read separately
+ * by the payment panel; approval alone never claims that the creator received money.
  */
 export function ProofOutcome({
   reviews,
@@ -62,7 +61,9 @@ export function ProofOutcome({
           <b>
             {brand} approved {yourProof} on {when}
           </b>
-          <span>The payment stays held in escrow. Releasing it is not automated yet.</span>
+          <span>
+            Payment release has been authorized. Check payment and payout details for confirmation.
+          </span>
         </div>
       </div>
     )
@@ -77,7 +78,8 @@ export function ProofOutcome({
         </b>
         {review.reason && <p className="fl-quote">{review.reason}</p>}
         <span>
-          The payment stays held in escrow. Opening a dispute is not available in Flavors yet.
+          Escrow is FROZEN and payment is blocked. Dispute handling will be available through the
+          Sprint 3 EEC-54 workflow.
         </span>
       </div>
     </div>

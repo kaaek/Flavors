@@ -14,6 +14,8 @@ vi.mock('../api/client', async (importOriginal) => ({
 }))
 
 const apiFetchMock = vi.mocked(apiFetch)
+// Payment polling is covered independently; these tests count the proof section's refresh timer.
+vi.mock('../payment/EscrowPanel', () => ({ EscrowPanel: () => null }))
 
 const PROOF = '/api/brand/campaigns/42/proof'
 const REVIEWS = '/api/brand/campaigns/42/proof/reviews'
@@ -268,7 +270,7 @@ it('lets the brand check the agreement and approve, then says what approval mean
   fireEvent.click(within(confirm).getByRole('button', { name: 'Approve proof' }))
 
   expect(await screen.findByText(/You approved the proof on/)).toBeInTheDocument()
-  expect(screen.getByText(/Releasing it is not automated yet/)).toBeInTheDocument()
+  expect(screen.getByText(/Payment release has been authorized/)).toBeInTheDocument()
   expect(screen.queryByRole('heading', { name: 'Review proof' })).not.toBeInTheDocument()
   expect(requestsTo('POST', `${PROOF}/1/review`)[0].body).toEqual({
     decision: 'APPROVED',

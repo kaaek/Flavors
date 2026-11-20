@@ -67,6 +67,8 @@ class ProofReviewApiIT {
 
         assertThat(jdbc.queryForObject("SELECT decision FROM proof_review WHERE submission_id = ?", String.class,
                 fixture.submissionId())).isEqualTo(decision.name());
+        assertThat(jdbc.queryForObject("SELECT status FROM escrow_payment WHERE campaign_id = ?", String.class,
+                fixture.campaignId())).isEqualTo(decision == ProofReviewDecision.REJECTED ? "FROZEN" : "HELD");
         assertTimeout(Duration.ofSeconds(5), () -> mvc.perform(get("/api/brand/campaigns/{campaignId}/proof/reviews",
                         fixture.campaignId()).with(user(fixture.brand())))
                 .andExpect(status().isOk())

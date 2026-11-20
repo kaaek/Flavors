@@ -14,6 +14,9 @@ import org.springframework.data.repository.query.Param;
 public interface PaymentTransactionRepository extends JpaRepository<PaymentTransaction, Long> {
 
     Optional<PaymentTransaction> findByProviderRef(String providerRef);
+    Optional<PaymentTransaction> findByProviderRefAndType(
+        String providerRef,
+        PaymentTransactionType type);
 
     List<PaymentTransaction> findByEscrowIdAndTypeAndStatusOrderByIdDesc(Long escrowId, PaymentTransactionType type,
                                                                          PaymentTransactionStatus status);
@@ -22,6 +25,15 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     @Query("select e.campaignId from EscrowPayment e, PaymentTransaction t "
             + "where t.escrowId = e.id and t.providerRef = :reference")
     Optional<Long> findCampaignIdByProviderRef(@Param("reference") String reference);
+    @Query("""
+                select e.campaignId
+                from EscrowPayment e, PaymentTransaction t
+                where t.escrowId = e.id
+                and t.providerRef = :reference
+                and t.type = com.flavors.enums.PaymentTransactionType.CHARGE
+                """)
+        Optional<Long> findChargeCampaignIdByProviderRef(
+                @Param("reference") String reference);
 
     /** Payments still PENDING on campaigns that are waiting for payment, created before {@code before}. */
     @Query("select t.providerRef from PaymentTransaction t, EscrowPayment e, Campaign c "
