@@ -9,6 +9,7 @@ import com.flavors.TestcontainersConfiguration;
 import com.flavors.dto.CurrentUser;
 import com.flavors.enums.Role;
 import java.util.List;
+import org.springframework.test.annotation.DirtiesContext;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -26,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CampaignReviewConcurrencyIT {
 
     @Autowired
