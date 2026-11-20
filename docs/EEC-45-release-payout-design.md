@@ -170,10 +170,10 @@ Interfaces and planned extensions (implementations belong under `service/impl/`;
   `authorizeOverdue(campaignId)`, and `freezeForRejection(campaignId, submissionId, reviewId)`.
   Approval and freezing join the review transaction; Timer C uses an independent transaction.
   Each locks/rechecks the campaign; no persistence entity crosses the service boundary.
-- `EscrowReleaseProcessingService`: bounded `recoverReviewFollowUps()`, `authorizeOverdueBatch()`,
-  and `processPendingPayouts()`. Approval and Timer C call the same authorization rules. Recovery
-  will handle both old approved reviews and old rejected reviews that have not yet been processed.
-  Only `authorizeOverdueBatch()` is implemented on this processing service in Step 4.
+- `EscrowReleaseProcessingService` handles bounded Timer C authorization batches through
+  `authorizeOverdueBatch()`. Legacy approval recovery is handled separately by
+  `EscrowReleaseService.recoverApprovedReviews()`. Payout reconciliation is handled by
+  `EscrowPayoutService.processPendingPayouts()`.
 - `PayoutProvider`: `name()`, `submit(PayoutRequest)`, and `query(PayoutLookup)` returning typed
   `PayoutResult` outcomes: `PENDING`, `CONFIRMED`, `FAILED`, `UNKNOWN`. Requests carry operation key,
   destination reference, integer cents, and currency. Results distinguish provider acknowledgement
@@ -227,16 +227,15 @@ that no transfer occurred, or under a provider-guaranteed idempotent resubmissio
 must never be mapped to a definitive failure just because a query timed out or returned an ambiguous
 not-found answer. If that contract cannot be implemented, stop automatic submission and escalate.
 
-Reuse `IdempotencyService.execute` for database-only worker preparation, with a fingerprint of the
-immutable operation identity, destination, amount, and currency. Its result is a preparation receipt,
-not payment confirmation. Keep a single lock order: idempotency row (when used), campaign, operation.
-Review transactions already own the campaign lock, so they rely on the operation's natural unique key
-and must not acquire an idempotency row in reverse order. Replayed preparation receipts must be
-checked against current lease/status before any network action. Provider idempotency remains required.
+Payout worker preparation uses the campaign and operation database locks,
+a durable lease token, and a stable operation key. It does not use
+IdempotencyService.execute. Before contacting the provider, the worker
+verifies that its current lease is still valid. Provider-side deduplication
+using the operation key remains required to prevent duplicate payouts.
 
 Jobs process bounded batches with a transaction per campaign and fair retry scheduling so one blocked
 operation cannot starve later ones. All writes use service transactions and the existing audit logger.
-No provider invocation runs inside `IdempotencyService.execute` or a review transaction.
+No payout provider invocation runs inside a database transaction.
 
 ### Step 6 execution and reconciliation
 
@@ -407,6 +406,34 @@ reviewed implementation. A manual fallback would need a separately approved oper
 verifiable transfer evidence; it is not enabled by this design. Do not advertise FR-F7.12 as delivered
 until actual creator settlement within the agreed service window has been established.
 ## Manual Payout Investigation
+
+
+### Manual resolution procedure
+
+Operations requiring review are identified by `needs_review_at`.
+
+1. An administrator identifies the affected payout operation.
+2. The administrator investigates the transfer using the provider's
+   operation key and provider reference.
+3. The administrator records the investigation reference and findings
+   through `POST /api/admin/payouts/{operationId}/review-evidence`.
+   The existing audit logger records the administrator's identity.
+4. If the provider authoritatively confirms the payout, reconcile
+   the existing operation using the provider result. Only confirmed
+   payout processing may release escrow and complete the campaign.
+5. If the provider confirms that no transfer occurred, record the
+   evidence. A refund must not be issued until a verified refund
+   capability and safe refund workflow are available.
+6. If the provider outcome remains uncertain, keep escrow HELD,
+   continue reconciliation, and retain the manual-review flag.
+
+Never manually change payout status or escrow balances through SQL.
+Never redispatch an uncertain payout or assume a timeout means failure.
+
+Real-money refund execution and administrative resolution of
+non-retryable FAILED payouts remain blocked on verified provider
+capabilities and must not be represented as implemented.
+
 
 Payouts that exceed 10 reconciliation attempts or fail
 without permission to retry require manual investigation.

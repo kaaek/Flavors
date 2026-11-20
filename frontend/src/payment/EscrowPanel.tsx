@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react'
 import { escrowLabel, type EscrowStatus } from '../api/campaigns'
 import { getEscrow, type Escrow } from '../api/payments'
@@ -31,30 +32,60 @@ function CampaignEscrow({
     let cancelled = false
     let loading = false
     let terminal = false
+
     async function refresh() {
-      if (cancelled || loading || terminal || document.visibilityState === 'hidden') return
+      if (
+        cancelled ||
+        loading ||
+        terminal ||
+        document.visibilityState === 'hidden'
+      ) {
+        return
+      }
+
       loading = true
+
       try {
         const fresh = await getEscrow(viewer, campaignId)
+
         if (cancelled) return
-        if (fresh?.campaignId !== campaignId || !Object.hasOwn(escrowLabel, fresh.status)) {
+
+        if (
+          fresh?.campaignId !== campaignId ||
+          !Object.hasOwn(escrowLabel, fresh.status)
+        ) {
           throw new Error('Unexpected escrow response')
         }
+
         setEscrow(fresh)
         setError(false)
-        terminal = fresh.status === 'RELEASED' || fresh.status === 'REFUNDED'
-        if (fresh.status !== fallbackStatus) onStatusChanged?.()
+
+        // No automatic polling for frozen or terminal escrow.
+        terminal =
+          fresh.status === 'FROZEN' ||
+          fresh.status === 'RELEASED' ||
+          fresh.status === 'REFUNDED'
+
+        if (fresh.status !== fallbackStatus) {
+          onStatusChanged?.()
+        }
       } catch {
-        if (!cancelled) setError(true)
+        if (!cancelled) {
+          setError(true)
+        }
       } finally {
         loading = false
       }
     }
+
     void refresh()
+
     const timer = window.setInterval(() => void refresh(), 30_000)
     const wake = () => void refresh()
+
     window.addEventListener('focus', wake)
     document.addEventListener('visibilitychange', wake)
+
     return () => {
       cancelled = true
       window.clearInterval(timer)
@@ -64,62 +95,104 @@ function CampaignEscrow({
   }, [campaignId, viewer, fallbackStatus, refreshKey, onStatusChanged])
 
   const status = escrow?.status ?? fallbackStatus
-  const confirmed = escrow?.payoutStatus === 'CONFIRMED' && status === 'RELEASED'
-  const progress =
-    status === 'FROZEN'
-      ? 'Escrow is FROZEN. Payment is blocked. Dispute handling will be available through the Sprint 3 EEC-54 workflow.'
-      : status === 'REFUNDED'
-        ? 'Escrow refunded.'
-        : escrow?.payoutStatus === 'AUTHORIZED'
-          ? 'Release authorized — payout pending.'
-          : escrow?.payoutStatus === 'SUBMITTED'
-            ? 'Payout submitted — awaiting confirmation.'
-            : escrow?.payoutStatus === 'UNKNOWN'
-              ? 'Payout outcome unknown — awaiting reconciliation.'
-              : escrow?.payoutStatus === 'FAILED'
-                ? 'Payout failed. Funds remain held; operational follow-up is required.'
-                : confirmed
-                  ? escrow.simulated
-                    ? 'Simulated payout confirmed — escrow released.'
-                    : 'Payout confirmed — escrow released.'
-                  : status === 'HELD'
-                    ? 'Funds held in escrow. No release operation is recorded yet.'
-                    : status === 'PENDING'
-                      ? 'Awaiting collection confirmation.'
-                      : 'Escrow released.'
+
+  const confirmed =
+    escrow?.payoutStatus === 'CONFIRMED' &&
+    status === 'RELEASED'
+
+  function getProgressMessage(): string {
+    if (status === 'FROZEN') {
+      return 'Escrow is frozen. Funds are held pending dispute resolution.'
+    }
+
+    if (status === 'REFUNDED') {
+      return 'Escrow refunded.'
+    }
+
+    if (confirmed) {
+      return escrow?.simulated
+        ? 'Simulated payout confirmed — escrow released.'
+        : 'Payout confirmed — escrow released.'
+    }
+
+    // Escalation takes priority over normal payout status messages.
+    if (escrow?.payoutNeedsReview) {
+      return 'Payout requires manual review. Our team is checking its status. Funds remain held until the outcome is verified.'
+    }
+
+    if (escrow?.payoutStatus === 'AUTHORIZED') {
+      return 'Release authorized — payout pending.'
+    }
+
+    if (escrow?.payoutStatus === 'SUBMITTED') {
+      return 'Payout submitted — awaiting provider confirmation.'
+    }
+
+    if (escrow?.payoutStatus === 'UNKNOWN') {
+      return 'Payout outcome is being checked with the provider.'
+    }
+
+    if (escrow?.payoutStatus === 'FAILED') {
+      return 'Payout failed. Funds remain held while the payout status is reviewed.'
+    }
+
+    if (status === 'HELD') {
+      return 'Funds held in escrow. No release operation is recorded yet.'
+    }
+
+    if (status === 'PENDING') {
+      return 'Awaiting collection confirmation.'
+    }
+
+    return 'Escrow released.'
+  }
+
+  const progress = getProgressMessage()
 
   return (
-    <section className="fl-card fl-section fl-stack" aria-label="Payment and payout">
+    <section
+      className="fl-card fl-section fl-stack"
+      aria-label="Payment and payout"
+    >
       <h2 className="fl-card__title">Payment and payout</h2>
+
       <dl className="fl-kv">
         <dt>Escrow</dt>
         <dd>{escrowLabel[status]}</dd>
+
         {escrow && (
           <>
             <dt>Original campaign payment</dt>
             <dd>{formatUSD(escrow.amountCents)}</dd>
           </>
         )}
-        {escrow?.payoutStatus && escrow.feeCents !== null && escrow.creatorNetCents !== null && (
-          <>
-            <dt>Flavors fee (15%)</dt>
-            <dd>{formatUSD(escrow.feeCents)}</dd>
-            <dt>Creator net amount (85%)</dt>
-            <dd>{formatUSD(escrow.creatorNetCents)}</dd>
-          </>
-        )}
+
+        {escrow?.payoutStatus &&
+          escrow.feeCents !== null &&
+          escrow.creatorNetCents !== null && (
+            <>
+              <dt>Flavors fee</dt>
+              <dd>{formatUSD(escrow.feeCents)}</dd>
+
+              <dt>Creator net amount</dt>
+              <dd>{formatUSD(escrow.creatorNetCents)}</dd>
+            </>
+          )}
+
         {escrow?.authorizedAt && (
           <>
             <dt>Release authorized</dt>
             <dd>{formatWhen(escrow.authorizedAt)}</dd>
           </>
         )}
+
         {escrow?.submittedAt && (
           <>
             <dt>Payout submitted</dt>
             <dd>{formatWhen(escrow.submittedAt)}</dd>
           </>
         )}
+
         {confirmed && escrow.confirmedAt && (
           <>
             <dt>Payout confirmed</dt>
@@ -127,19 +200,40 @@ function CampaignEscrow({
           </>
         )}
       </dl>
-      {escrow ? <p role="status">{progress}</p> : !error && <p>Loading payout details…</p>}
+
+      {escrow ? (
+        <p role={escrow.payoutNeedsReview ? 'alert' : 'status'}>
+          {progress}
+        </p>
+      ) : (
+        !error && <p>Loading payout details…</p>
+      )}
+
       {escrow?.authorizationSource === 'TIMER_C' && (
-        <p>Release was authorized automatically after the five-day proof-review window expired.</p>
+        <p>
+          Release was authorized automatically after the five-day
+          proof-review window expired.
+        </p>
       )}
+
       {escrow?.simulated && (
-        <p className="fl-hint">Simulation only — no real money is transferred to the creator.</p>
+        <p className="fl-hint">
+          Simulation only — no real money is transferred to the creator.
+        </p>
       )}
-      {status === 'HELD' && escrow?.payoutStatus && !escrow.payoutAvailable && (
-        <p>Payout execution is currently unavailable. Funds remain held.</p>
-      )}
+
+      {status === 'HELD' &&
+        escrow?.payoutStatus &&
+        !escrow.payoutAvailable && (
+          <p>
+            Payout execution is currently unavailable. Funds remain held.
+          </p>
+        )}
+
       {error && (
         <p role="alert">
-          Could not refresh payout details. Displayed information may be out of date.
+          Could not refresh payout details. Displayed information may
+          be out of date.
         </p>
       )}
     </section>
