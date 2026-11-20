@@ -5,6 +5,12 @@ import type { Campaign } from '../api/campaigns'
 import { apiFetch } from '../api/client'
 import { CampaignDetailPage } from './CampaignDetailPage'
 
+vi.mock('./CampaignReviewForm', () => ({
+  CampaignReviewForm: ({ campaignId }: { campaignId: number }) => (
+    <div data-testid="campaign-review-form">{campaignId}</div>
+  ),
+}))
+
 vi.mock('../api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/client')>()),
   apiFetch: vi.fn(),
@@ -73,3 +79,29 @@ it('does not show agreed price, payment deadline or accepted rows before the cre
   expect(screen.queryByText('Pay by')).not.toBeInTheDocument()
   expect(screen.queryByText('Accepted')).not.toBeInTheDocument()
 })
+
+it('does not offer reviews for active campaigns', async () => {
+  apiFetchMock.mockResolvedValue({
+    ...campaign,
+    status: 'ACTIVE',
+  })
+
+  renderPage()
+
+  expect(await screen.findByText('Summer menu launch')).toBeInTheDocument()
+  expect(screen.queryByTestId('campaign-review-form')).not.toBeInTheDocument()
+})
+
+it('offers reviews for completed campaigns', async () => {
+  apiFetchMock.mockResolvedValue({
+    ...campaign,
+    status: 'COMPLETED',
+  })
+
+  renderPage()
+
+  expect(await screen.findByTestId('campaign-review-form')).toHaveTextContent('42')
+})
+vi.mock('./BrandProofSection', () => ({
+  BrandProofSection: () => <div data-testid="brand-proof-section" />,
+}))
