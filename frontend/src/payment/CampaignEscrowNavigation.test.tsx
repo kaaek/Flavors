@@ -51,6 +51,7 @@ const escrow = (id: number): Escrow => ({
   confirmedAt: null,
   simulated: null,
   payoutAvailable: false,
+  payoutNeedsReview: false,
 })
 beforeEach(() => {
   api.mockReset()

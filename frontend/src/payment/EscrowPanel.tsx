@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react'
 import { escrowLabel, type EscrowStatus } from '../api/campaigns'
 import { getEscrow, type Escrow } from '../api/payments'
@@ -34,12 +33,7 @@ function CampaignEscrow({
     let terminal = false
 
     async function refresh() {
-      if (
-        cancelled ||
-        loading ||
-        terminal ||
-        document.visibilityState === 'hidden'
-      ) {
+      if (cancelled || loading || terminal || document.visibilityState === 'hidden') {
         return
       }
 
@@ -50,10 +44,7 @@ function CampaignEscrow({
 
         if (cancelled) return
 
-        if (
-          fresh?.campaignId !== campaignId ||
-          !Object.hasOwn(escrowLabel, fresh.status)
-        ) {
+        if (fresh?.campaignId !== campaignId || !Object.hasOwn(escrowLabel, fresh.status)) {
           throw new Error('Unexpected escrow response')
         }
 
@@ -62,9 +53,7 @@ function CampaignEscrow({
 
         // No automatic polling for frozen or terminal escrow.
         terminal =
-          fresh.status === 'FROZEN' ||
-          fresh.status === 'RELEASED' ||
-          fresh.status === 'REFUNDED'
+          fresh.status === 'FROZEN' || fresh.status === 'RELEASED' || fresh.status === 'REFUNDED'
 
         if (fresh.status !== fallbackStatus) {
           onStatusChanged?.()
@@ -96,9 +85,7 @@ function CampaignEscrow({
 
   const status = escrow?.status ?? fallbackStatus
 
-  const confirmed =
-    escrow?.payoutStatus === 'CONFIRMED' &&
-    status === 'RELEASED'
+  const confirmed = escrow?.payoutStatus === 'CONFIRMED' && status === 'RELEASED'
 
   function getProgressMessage(): string {
     if (status === 'FROZEN') {
@@ -143,17 +130,13 @@ function CampaignEscrow({
     if (status === 'PENDING') {
       return 'Awaiting collection confirmation.'
     }
-
     return 'Escrow released.'
   }
 
   const progress = getProgressMessage()
 
   return (
-    <section
-      className="fl-card fl-section fl-stack"
-      aria-label="Payment and payout"
-    >
+    <section className="fl-card fl-section fl-stack" aria-label="Payment and payout">
       <h2 className="fl-card__title">Payment and payout</h2>
 
       <dl className="fl-kv">
@@ -167,17 +150,15 @@ function CampaignEscrow({
           </>
         )}
 
-        {escrow?.payoutStatus &&
-          escrow.feeCents !== null &&
-          escrow.creatorNetCents !== null && (
-            <>
-              <dt>Flavors fee</dt>
-              <dd>{formatUSD(escrow.feeCents)}</dd>
+        {escrow?.payoutStatus && escrow.feeCents !== null && escrow.creatorNetCents !== null && (
+          <>
+            <dt>Flavors fee</dt>
+            <dd>{formatUSD(escrow.feeCents)}</dd>
 
-              <dt>Creator net amount</dt>
-              <dd>{formatUSD(escrow.creatorNetCents)}</dd>
-            </>
-          )}
+            <dt>Creator net amount</dt>
+            <dd>{formatUSD(escrow.creatorNetCents)}</dd>
+          </>
+        )}
 
         {escrow?.authorizedAt && (
           <>
@@ -202,38 +183,26 @@ function CampaignEscrow({
       </dl>
 
       {escrow ? (
-        <p role={escrow.payoutNeedsReview ? 'alert' : 'status'}>
-          {progress}
-        </p>
+        <p role={escrow.payoutNeedsReview ? 'alert' : 'status'}>{progress}</p>
       ) : (
         !error && <p>Loading payout details…</p>
       )}
 
       {escrow?.authorizationSource === 'TIMER_C' && (
-        <p>
-          Release was authorized automatically after the five-day
-          proof-review window expired.
-        </p>
+        <p>Release was authorized automatically after the five-day proof-review window expired.</p>
       )}
 
       {escrow?.simulated && (
-        <p className="fl-hint">
-          Simulation only — no real money is transferred to the creator.
-        </p>
+        <p className="fl-hint">Simulation only — no real money is transferred to the creator.</p>
       )}
 
-      {status === 'HELD' &&
-        escrow?.payoutStatus &&
-        !escrow.payoutAvailable && (
-          <p>
-            Payout execution is currently unavailable. Funds remain held.
-          </p>
-        )}
+      {status === 'HELD' && escrow?.payoutStatus && !escrow.payoutAvailable && (
+        <p>Payout execution is currently unavailable. Funds remain held.</p>
+      )}
 
       {error && (
         <p role="alert">
-          Could not refresh payout details. Displayed information may
-          be out of date.
+          Could not refresh payout details. Displayed information may be out of date.
         </p>
       )}
     </section>
