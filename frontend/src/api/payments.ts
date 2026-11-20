@@ -25,6 +25,7 @@ export interface Escrow {
   confirmedAt: string | null
   simulated: boolean | null
   payoutAvailable: boolean
+  payoutNeedsReview: boolean
 }
 
 export const getEscrow = (viewer: 'brand' | 'creator', campaignId: number) =>

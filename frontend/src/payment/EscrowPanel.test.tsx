@@ -24,6 +24,7 @@ const base: Escrow = {
   confirmedAt: null,
   simulated: null,
   payoutAvailable: true,
+  payoutNeedsReview: false,
 }
 let tick: () => void
 beforeEach(() => {
@@ -44,9 +45,9 @@ const panel = (id = 42) => (
 
 it.each<[PayoutStatus, string]>([
   ['AUTHORIZED', 'Release authorized — payout pending.'],
-  ['SUBMITTED', 'Payout submitted — awaiting confirmation.'],
-  ['UNKNOWN', 'Payout outcome unknown — awaiting reconciliation.'],
-  ['FAILED', 'Payout failed. Funds remain held; operational follow-up is required.'],
+  ['SUBMITTED', 'Payout submitted — awaiting provider confirmation.'],
+  ['UNKNOWN', 'Payout outcome is being checked with the provider.'],
+  ['FAILED', 'Payout failed. Funds remain held while the payout status is reviewed.'],
 ])('shows %s with stored fee/net and no premature success', async (payoutStatus, message) => {
   load.mockResolvedValue({ ...base, payoutStatus })
   render(panel())
@@ -76,7 +77,7 @@ it('labels simulated confirmation and stops terminal polling', async () => {
   expect(load).toHaveBeenCalledTimes(1)
 })
 
-it('shows a frozen rejection and the deferred Sprint 3 workflow', async () => {
+it('shows frozen escrow status without payout details', async () => {
   load.mockResolvedValue({
     ...base,
     status: 'FROZEN',
@@ -85,7 +86,11 @@ it('shows a frozen rejection and the deferred Sprint 3 workflow', async () => {
     creatorNetCents: null,
   })
   render(panel())
-  expect(await screen.findByText(/Escrow is FROZEN.*Sprint 3 EEC-54/)).toBeInTheDocument()
+  expect(
+  await screen.findByText(
+    'Escrow is frozen. Funds are held pending dispute resolution.'
+  )
+).toBeInTheDocument()
   expect(screen.queryByText('Flavors fee (15%)')).not.toBeInTheDocument()
 })
 
@@ -146,4 +151,33 @@ it('keeps released, frozen and refunded escrow visible without showing unpaid ex
   expect(showsEscrow('COMPLETED', 'REFUNDED')).toBe(true)
   expect(showsEscrow('EXPIRED', 'PENDING')).toBe(false)
   expect(showsEscrow('ACTIVE', null)).toBe(false)
+})
+
+it('shows manual review warning instead of normal pending status', async () => {
+  load.mockResolvedValue({
+    ...base,
+    payoutStatus: 'UNKNOWN',
+    payoutNeedsReview: true,
+  })
+
+  render(panel())
+
+  const warning = await screen.findByRole('alert')
+
+  expect(warning).toHaveTextContent(
+    'Payout requires manual review.'
+  )
+
+  expect(warning).toHaveTextContent(
+    'Our team is checking its status.'
+  )
+
+  expect(
+    screen.queryByText(
+      'Payout outcome is being checked with the provider.'
+    )
+  ).not.toBeInTheDocument()
+
+  expect(screen.getByText('$200.03')).toBeInTheDocument()
+  expect(screen.getByText('$170.03')).toBeInTheDocument()
 })
