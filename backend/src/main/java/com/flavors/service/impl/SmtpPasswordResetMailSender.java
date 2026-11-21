@@ -2,11 +2,13 @@ package com.flavors.service.impl;
 
 import com.flavors.service.PasswordResetMailSender;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
+@ConditionalOnProperty(prefix = "flavors.mail", name = "provider", havingValue = "smtp", matchIfMissing = true)
 public class SmtpPasswordResetMailSender implements PasswordResetMailSender {
 
     private final JavaMailSender mailSender;

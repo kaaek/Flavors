@@ -88,8 +88,10 @@ cd frontend && npm install && npm run dev                 # app on http://localh
 To create the admin account on startup, also set `FLAVORS_SEED_ADMIN_ENABLED=true`, `FLAVORS_ADMIN_EMAIL` and
 `FLAVORS_ADMIN_PASSWORD` for the backend.
 
-Password-reset email uses SMTP. For local testing, run an SMTP catcher on port 1025 or set the `MAIL_*`
-variables below to another server.
+Password-reset email defaults to SMTP for local development (an SMTP catcher at port 1025 or configured
+`MAIL_*` variables). Railway Hobby staging uses Resend over HTTPS: set `FLAVORS_MAIL_PROVIDER=resend`,
+`RESEND_API_KEY`, `FLAVORS_MAIL_FROM` (verified sender) and `FLAVORS_APP_BASE_URL` (HTTPS staging URL).
+The public password-reset response remains generic to avoid revealing whether an email is registered.
 
 To try the production image: `docker build -t flavors .`, then run it with the `PG*` variables pointing at a database.
 
@@ -259,7 +261,9 @@ Nothing here is in git because it is account configuration and secrets.
    | `FLAVORS_SEED_ADMIN_ENABLED` | `true` (can be switched off after the first start) |
    | `FLAVORS_ADMIN_EMAIL`, `FLAVORS_ADMIN_PASSWORD` | the first admin's login; use a strong password |
    | `FLAVORS_APP_BASE_URL` | the public app URL used in password-reset links |
-   | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | the SMTP server used for password-reset email |
+   | `FLAVORS_MAIL_PROVIDER` | `resend` for Railway Hobby staging; defaults to `smtp` for local development |
+   | `RESEND_API_KEY` | Resend API credential; secret, staging only |
+   | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | SMTP settings for local development (not used with Resend) |
    | `FLAVORS_MAIL_FROM` | the From address for password-reset email |
    | `SPRING_PROFILES_ACTIVE` | `prod` on the production environment: it loads `application-prod.yml`, which switches the Swagger docs off. Leave it unset (or `staging`) on staging, where the docs stay on |
 
@@ -297,7 +301,9 @@ On Railway, the variables are set per environment (staging, production).
 | `FLAVORS_SEED_ADMIN_ENABLED` | Create the admin account on startup if it doesn't exist | `false` |
 | `FLAVORS_ADMIN_EMAIL` | Email of the seeded admin (required when seeding is enabled) | `admin@flavors.local` |
 | `FLAVORS_ADMIN_PASSWORD` | Password of the seeded admin (required when seeding is enabled) | (never commit) |
-| `FLAVORS_APP_BASE_URL` | Public base URL used in password-reset links | `http://localhost:5173` |
+| `FLAVORS_APP_BASE_URL` | Public base URL used in password-reset links (HTTPS staging frontend URL when using Resend) | `http://localhost:5173` |
+| `FLAVORS_MAIL_PROVIDER` | Mail transport: `smtp` locally or `resend` over HTTPS | `smtp` |
+| `RESEND_API_KEY` | Resend HTTPS API credential (never commit) | (empty) |
 | `MAIL_HOST` | SMTP host | `localhost` |
 | `MAIL_PORT` | SMTP port | `1025` |
 | `MAIL_USERNAME` | SMTP username, when authentication is enabled | (empty) |
@@ -407,3 +413,33 @@ The paths of the Whish API (`/payment/whish` to create a payment, `/payment/coll
 3. The public HTTPS domains that Whish whitelists for the callback and redirect URLs (the deployed backend, e.g. Railway).
 4. An answer for payouts and refunds (EEC-45): Whish has no escrow release or refund API, so these need a manual process or a
    Whish arrangement.
+
+### EEC-90 — Password-reset email via HTTPS on Railway Hobby (staging)
+
+Railway Hobby restricts outbound SMTP. To send real password-reset messages from staging, Flavors supports
+Resend's HTTPS `POST /emails` API behind the existing `PasswordResetMailSender` interface. The one-hour
+reset-token lifetime, after-commit event listener, and privacy-preserving generic response are unchanged.
+
+1. Ask the team owner to create a Resend account, verify a sending domain/subdomain and configure its DNS records.
+2. Create a sending-enabled API key in Resend; do not commit, screenshot, or share it.
+3. With the owner's approval, add these variables to **Railway staging app only**:
+   `FLAVORS_MAIL_PROVIDER=resend`, `RESEND_API_KEY=<secret>`,
+   `FLAVORS_MAIL_FROM=Flavors <reset@verified-domain.example>` and
+   `FLAVORS_APP_BASE_URL=https://<exact-staging-frontend-host>`.
+4. Deploy to staging using the team's workflow; do not change production settings. Test with an account
+   you control and confirm the link works once, expires, and leads back to staging. Check the Resend
+   delivery dashboard and the application's sanitized mail error logs if a message does not arrive.
+
+The application fails startup if Resend is selected without an API key, with a malformed or local
+sender address (including display-name format), or without an HTTPS app base URL.
+Sender-domain ownership and verification are enforced by Resend, NOT validated locally at startup. `MAIL_*` SMTP variables are ignored in Resend mode. An accepted
+Resend API response is not proof of inbox delivery. API tests mock HTTP and send no real email.
+
+### Password-reset delivery diagnostics and security
+
+- The generic response is intentional, even when a message cannot be sent; it prevents exposing whether an address exists.
+- After the reset token transaction commits, delivery is queued on a bounded worker pool. HTTP requests never wait for Resend, and queue overload is logged as an error.
+- Failed Resend responses are logged at **ERROR** with the provider HTTP status and internal user ID only. Exception bodies, credentials, email addresses, tokens, and reset URLs must not be logged.
+- Monitor delivery failures and queue saturation in staging, and verify delivery with a real test inbox before closing EEC-90.
+- Disable **click tracking and link tracking** on the Resend sending domain: reset URLs contain security-sensitive tokens in the query string. Avoid exposing these URLs to analytics.
+- Protect `/api/public/auth/password-reset/request` with rate limiting (by IP and account plus a global quota) before broad rollout; the pre-existing endpoint does not yet enforce this.
