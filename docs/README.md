@@ -430,6 +430,16 @@ reset-token lifetime, after-commit event listener, and privacy-preserving generi
    you control and confirm the link works once, expires, and leads back to staging. Check the Resend
    delivery dashboard and the application's sanitized mail error logs if a message does not arrive.
 
-The application fails startup if Resend is selected without an API key, verified sender address
-configuration, or HTTPS app base URL. `MAIL_*` SMTP variables are ignored in Resend mode. An accepted
+The application fails startup if Resend is selected without an API key, with a malformed or local
+sender address (including display-name format), or without an HTTPS app base URL.
+Sender-domain ownership and verification are enforced by Resend, NOT validated locally at startup. `MAIL_*` SMTP variables are ignored in Resend mode. An accepted
 Resend API response is not proof of inbox delivery. API tests mock HTTP and send no real email.
+
+### Password-reset delivery diagnostics and security
+
+- The generic response is intentional, even when a message cannot be sent; it prevents exposing whether an address exists.
+- After the reset token transaction commits, delivery is queued on a bounded worker pool. HTTP requests never wait for Resend, and queue overload is logged as an error.
+- Failed Resend responses are logged at **ERROR** with the provider HTTP status and internal user ID only. Exception bodies, credentials, email addresses, tokens, and reset URLs must not be logged.
+- Monitor delivery failures and queue saturation in staging, and verify delivery with a real test inbox before closing EEC-90.
+- Disable **click tracking and link tracking** on the Resend sending domain: reset URLs contain security-sensitive tokens in the query string. Avoid exposing these URLs to analytics.
+- Protect `/api/public/auth/password-reset/request` with rate limiting (by IP and account plus a global quota) before broad rollout; the pre-existing endpoint does not yet enforce this.

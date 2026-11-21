@@ -6,6 +6,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import org.junit.jupiter.api.Test;
@@ -34,7 +35,7 @@ class ResendPasswordResetMailSenderTest {
                     org.assertj.core.api.Assertions.assertThat(payload)
                             .contains("reset@mail.flavors.example")
                             .contains("creator@example.test")
-                            .contains("/reset-password?token=test-token")
+                            .contains("https://flavors-staging.example/reset-password?token=test-token")
                             .contains("Reset your Flavors password");
                 })
                 .andRespond(withSuccess("{\"id\":\"message-id\"}", MediaType.APPLICATION_JSON));
@@ -54,6 +55,29 @@ class ResendPasswordResetMailSenderTest {
         assertThatThrownBy(() -> sender.sendResetLink("creator@example.test", "test-token"))
                 .isInstanceOf(RestClientException.class);
         server.verify();
+    }
+
+    @Test
+    void badRequestPropagatesProviderStatus() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var sender = new ResendPasswordResetMailSender("test-only-api-key", "reset@mail.flavors.example",
+                "https://flavors-staging.example", builder);
+        server.expect(requestTo("https://api.resend.com/emails")).andRespond(withBadRequest());
+
+        assertThatThrownBy(() -> sender.sendResetLink("creator@example.test", "test-token"))
+                .isInstanceOf(org.springframework.web.client.RestClientResponseException.class)
+                .satisfies(exception -> org.assertj.core.api.Assertions.assertThat(
+                        ((org.springframework.web.client.RestClientResponseException) exception)
+                                .getStatusCode().value()).isEqualTo(400));
+        server.verify();
+    }
+
+    @Test
+    void rejectsDisplayNameWrappingLocalSender() {
+        assertThatThrownBy(() -> new ResendPasswordResetMailSender("test-key",
+                "Flavors <reset@flavors.local>", "https://flavors-staging.example", RestClient.builder()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("FLAVORS_MAIL_FROM");
     }
 
     @Test

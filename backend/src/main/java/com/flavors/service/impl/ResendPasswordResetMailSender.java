@@ -2,6 +2,8 @@ package com.flavors.service.impl;
 
 import com.flavors.service.PasswordResetMailSender;
 import java.net.http.HttpClient;
+import jakarta.mail.internet.AddressException;
+import jakarta.mail.internet.InternetAddress;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -35,8 +37,8 @@ public class ResendPasswordResetMailSender implements PasswordResetMailSender {
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("RESEND_API_KEY is required when FLAVORS_MAIL_PROVIDER=resend");
         }
-        if (from == null || from.isBlank() || from.endsWith("@flavors.local")) {
-            throw new IllegalStateException("Set FLAVORS_MAIL_FROM to an address on a verified sending domain");
+        if (!validSenderAddress(from)) {
+            throw new IllegalStateException("Set FLAVORS_MAIL_FROM to a valid address on your Resend sending domain");
         }
         if (baseUrl == null || !baseUrl.startsWith("https://")) {
             throw new IllegalStateException("FLAVORS_APP_BASE_URL must use HTTPS for Resend password-reset links");
@@ -62,6 +64,28 @@ public class ResendPasswordResetMailSender implements PasswordResetMailSender {
                         "text", content))
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    private static boolean validSenderAddress(String from) {
+        if (from == null || from.isBlank()) {
+            return false;
+        }
+        try {
+            InternetAddress[] parsed = InternetAddress.parse(from, true);
+            if (parsed.length != 1) {
+                return false;
+            }
+            parsed[0].validate();
+            String address = parsed[0].getAddress();
+            if (address == null || !address.contains("@")) {
+                return false;
+            }
+            String domain = address.substring(address.lastIndexOf('@') + 1);
+            // Local validation cannot prove domain ownership; Resend verifies that server-side.
+            return !domain.equalsIgnoreCase("flavors.local") && !domain.equalsIgnoreCase("localhost");
+        } catch (AddressException exception) {
+            return false;
+        }
     }
 
     private static JdkClientHttpRequestFactory requestFactory() {
