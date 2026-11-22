@@ -899,6 +899,11 @@ Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's ca
 
 - **Body** (`OfferRequest`): `discountPercent`, `expiresOn` (the last day it works, `"2030-02-01"`), `validDays` (`["MONDAY", ...]`),
   `validFrom` and `validTo` (`"14:30"`), `allBranches`, `branchIds`, `minPurchaseCents`, `maxRedemptions`, `perPersonLimit`.
+  The four numbers are bound as `BigDecimal`, so they reach the checks exactly as sent: as `Integer`, Jackson would cut `100.9` down
+  to `100` before the range check. Only whole numbers are accepted (`20` or `20.0`); a fraction gets a field error.
+- **Creator first (FR-F10.1):** the offer is linked to the campaign and its creator. A draft can be saved with a name only, so a
+  campaign without a creator answers **409** "Creator required", and the page shows "Choose the creator first" with a link to the
+  draft. The draft form shows the offer link only once a creator is chosen.
 - **Rules** (`OfferServiceImpl`). Required: a discount from 1 to 100 (EX-F10.1.3) and an expiry that is today or later ("today" in
   `flavors.campaign.zone`, default `Asia/Beirut`). Everything else has a default: every day; all day (both hours empty; one alone is
   refused, and the end must be after the start, so hours past midnight are not supported yet; whole minutes only, since the page shows
@@ -916,7 +921,9 @@ Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's ca
 - **Optional at send:** a campaign can be sent without an offer. Whether Send should require one is an open question for the team.
 - **Is it live (FR-F10.4)?** Worked out on every read, never stored (`OfferState`), in this order: `ENDED` (the campaign is completed,
   cancelled, removed, rejected, declined or expired), `EXPIRED` (past `expires_at`), `FULL` (redemptions reached the maximum), `LIVE`
-  (campaign `ACTIVE`, `PROOF_SUBMITTED` or `CORRECTIONS_REQUESTED`), `PAUSED` (campaign `DISPUTED`), otherwise `NOT_LIVE_YET`.
+  (campaign `ACTIVE` only, as FR-F10.4 and V4 say), `IN_REVIEW` (campaign `PROOF_SUBMITTED` or `CORRECTIONS_REQUESTED`: the creator
+  has posted, the campaign never goes back to `ACTIVE`, so the offer has stopped), `PAUSED` (campaign `DISPUTED`), otherwise
+  `NOT_LIVE_YET`.
   The response also carries `redemptions` (rows in `redemption`) and `editable`. The claim and redemption stories (UC-F10.2, UC-F11.1)
   must check the same state, plus the day, hours, branch, minimum bill and per-person limit.
 - **Code:** `Offer` (entity, `@ElementCollection` for `offer_branch`; `valid_days` is the V4 bitmask, Monday = 1 ... Sunday = 64, every
@@ -927,8 +934,11 @@ Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's ca
   as cents), maximum uses and uses per person, with the server's messages under each field. Read-only once the campaign is active or
   over, with the live state and how often it was used. Linked from the campaign page and from a saved draft. Each load is marked with
   its campaign, so moving to another campaign's offer shows "loading" until that campaign's offer arrives, never the previous one;
-  the fields are locked while a save is on its way.
-- **Tests:** `OfferServiceImplIT` (TC-F10.1.1 to TC-F10.1.4, EX-F10.1.1 to EX-F10.1.3, every field rule, saving again, the lock after
-  `ACTIVE`, two first saves at once, a change during activation, other brands, and the live states on the real database), `OfferServiceImplTest` (the state for every campaign status, the
-  day bits), `BrandOfferControllerTest` (roles, CSRF, JSON, 204, error bodies); frontend `OfferPage.test.tsx` (including moving
-  between two campaigns' offers, and the fields locked while saving).
+  the fields are locked while a save is on its way. An open page reads the offer again every minute and when the brand comes back
+  to the tab, so its state stays current; only the status is refreshed, never what the brand is typing.
+- **Tests:** `OfferServiceImplIT` (TC-F10.1.1 to TC-F10.1.4, EX-F10.1.1 to EX-F10.1.3, every field rule, fractions refused, a
+  name-only draft, saving again, the lock after `ACTIVE`, two first saves at once, a change during activation, other brands, and
+  the live states on the real database), `OfferServiceImplTest` (the state for every campaign status, the day bits),
+  `BrandOfferControllerTest` (roles, CSRF, JSON, raw `100.9` reaching the checks uncut, 204, error bodies); frontend
+  `OfferPage.test.tsx` (including moving between two campaigns' offers, the fields locked while saving, no creator yet, and the
+  status refreshed on an open page).
