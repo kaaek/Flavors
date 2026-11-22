@@ -10,6 +10,7 @@ import com.flavors.entity.Offer;
 import com.flavors.enums.CampaignStatus;
 import com.flavors.enums.OfferState;
 import com.flavors.exception.CampaignNotFoundException;
+import com.flavors.exception.OfferCreatorRequiredException;
 import com.flavors.exception.OfferLockedException;
 import com.flavors.exception.OfferValidationException;
 import com.flavors.mapper.OfferMapper;
@@ -18,6 +19,7 @@ import com.flavors.repository.CampaignRepository;
 import com.flavors.repository.OfferRepository;
 import com.flavors.service.AuditLogger;
 import com.flavors.service.OfferService;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -47,11 +49,14 @@ class OfferServiceImpl implements OfferService {
     static final Set<CampaignStatus> EDITABLE = EnumSet.of(CampaignStatus.DRAFT,
             CampaignStatus.AWAITING_CREATOR_RESPONSE, CampaignStatus.COUNTERED, CampaignStatus.AWAITING_PAYMENT);
 
+    /** The offer works only while the campaign is {@code ACTIVE} (FR-F10.4, V4). */
+    static final Set<CampaignStatus> RUNNING = EnumSet.of(CampaignStatus.ACTIVE);
+
     /**
-     * Paid and under way, not finished: the offer works (FR-F10.4). The proof stages count, because followers come to the
-     * restaurant after the creator has posted.
+     * The creator has submitted proof, or is correcting it: the campaign is no longer {@code ACTIVE}, so the offer no
+     * longer works. These stages never go back to {@code ACTIVE}.
      */
-    static final Set<CampaignStatus> RUNNING = EnumSet.of(CampaignStatus.ACTIVE, CampaignStatus.PROOF_SUBMITTED,
+    static final Set<CampaignStatus> REVIEW = EnumSet.of(CampaignStatus.PROOF_SUBMITTED,
             CampaignStatus.CORRECTIONS_REQUESTED);
 
     /** The campaign is over, or never happened: the offer has ended for good. */
@@ -109,6 +114,11 @@ class OfferServiceImpl implements OfferService {
         if (!EDITABLE.contains(campaign.getStatus())) {
             throw new OfferLockedException();
         }
+        // FR-F10.1: the offer is linked to the campaign and its creator. A draft can be saved with a name only, so
+        // the creator is checked here; once sent, a campaign always has one (V3).
+        if (campaign.getCreatorId() == null) {
+            throw new OfferCreatorRequiredException();
+        }
         Checked checked = check(brandId, request);
 
         Optional<Offer> existing = offers.findByCampaignId(campaignId);
@@ -141,6 +151,9 @@ class OfferServiceImpl implements OfferService {
         if (RUNNING.contains(status)) {
             return OfferState.LIVE;
         }
+        if (REVIEW.contains(status)) {
+            return OfferState.IN_REVIEW;
+        }
         if (status == CampaignStatus.DISPUTED) {
             return OfferState.PAUSED;
         }
@@ -158,10 +171,10 @@ class OfferServiceImpl implements OfferService {
     private Checked check(long brandId, OfferRequest r) {
         Map<String, String> errors = new LinkedHashMap<>();
 
-        Integer discount = r.discountPercent();
-        if (discount == null) {
+        Long discount = whole(r.discountPercent(), "discountPercent", "Enter a whole number, like 20.", errors);
+        if (r.discountPercent() == null) {
             errors.put("discountPercent", "Enter the discount.");
-        } else if (discount < 1 || discount > 100) {
+        } else if (discount != null && (discount < 1 || discount > 100)) {
             errors.put("discountPercent", "Enter a discount from 1 to 100%.");
         }
 
@@ -206,18 +219,23 @@ class OfferServiceImpl implements OfferService {
             }
         }
 
-        long minPurchaseCents = r.minPurchaseCents() == null ? 0 : r.minPurchaseCents();
+        Long min = whole(r.minPurchaseCents(), "minPurchaseCents", "Enter the amount in whole cents.", errors);
+        long minPurchaseCents = min == null ? 0 : min;
         if (minPurchaseCents < 0) {
             errors.put("minPurchaseCents", "The minimum purchase can't be negative.");
         }
 
-        Integer maxRedemptions = r.maxRedemptions();
-        if (maxRedemptions != null && maxRedemptions < 1) {
+        Long max = whole(r.maxRedemptions(), "maxRedemptions",
+                "Enter a whole number, or leave it empty for no maximum.", errors);
+        if (max != null && max < 1) {
             errors.put("maxRedemptions", "Enter 1 or more, or leave it empty for no maximum.");
+        } else if (max != null && max > Integer.MAX_VALUE) {
+            errors.put("maxRedemptions", "Enter a smaller number.");
         }
 
         // EX-F10.1.1: no limit given means one redemption per person per campaign.
-        int perPersonLimit = r.perPersonLimit() == null ? 1 : r.perPersonLimit();
+        Long perPerson = whole(r.perPersonLimit(), "perPersonLimit", "Enter a whole number, like 1.", errors);
+        long perPersonLimit = perPerson == null ? 1 : perPerson;
         if (perPersonLimit < 1) {
             errors.put("perPersonLimit", "Enter 1 or more.");
         } else if (perPersonLimit > MAX_PER_PERSON) {
@@ -230,7 +248,28 @@ class OfferServiceImpl implements OfferService {
         // The offer works through the whole expiry day, so it stops at the next midnight in the restaurant's zone.
         Instant expiresAt = expiresOn.plusDays(1).atStartOfDay(zone).toInstant();
         return new Checked(discount.shortValue(), expiresAt, validDays, from, to, allBranches, branchIds,
-                minPurchaseCents, maxRedemptions, (short) perPersonLimit);
+                minPurchaseCents, max == null ? null : max.intValue(), (short) perPersonLimit);
+    }
+
+    /**
+     * A number as sent, if it is whole ("20", or "20.0"). A fraction is refused with {@code notWhole} rather than cut
+     * down, so 100.9 can never pass as 100. Null when the field is empty or was refused.
+     */
+    private static Long whole(BigDecimal value, String field, String notWhole, Map<String, String> errors) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal number = value.stripTrailingZeros();
+        if (number.scale() > 0) {
+            errors.put(field, notWhole);
+            return null;
+        }
+        try {
+            return number.longValueExact();
+        } catch (ArithmeticException e) {
+            errors.put(field, "Enter a smaller number.");
+            return null;
+        }
     }
 
     private static boolean blank(String text) {

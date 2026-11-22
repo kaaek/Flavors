@@ -24,19 +24,30 @@ class OfferServiceImplTest {
         EnumSet<CampaignStatus> all = EnumSet.noneOf(CampaignStatus.class);
         all.addAll(OfferServiceImpl.EDITABLE);
         all.addAll(OfferServiceImpl.RUNNING);
+        all.addAll(OfferServiceImpl.REVIEW);
         all.addAll(OfferServiceImpl.OVER);
         all.add(CampaignStatus.DISPUTED);
         // A new campaign status must be placed in one of the groups, or this test fails.
         assertThat(all).containsExactlyInAnyOrder(CampaignStatus.values());
         assertThat(OfferServiceImpl.EDITABLE).doesNotContainAnyElementsOf(OfferServiceImpl.RUNNING)
                 .doesNotContainAnyElementsOf(OfferServiceImpl.OVER).doesNotContain(CampaignStatus.DISPUTED);
-        assertThat(OfferServiceImpl.RUNNING).doesNotContainAnyElementsOf(OfferServiceImpl.OVER);
+        assertThat(OfferServiceImpl.RUNNING).doesNotContainAnyElementsOf(OfferServiceImpl.OVER)
+                .doesNotContainAnyElementsOf(OfferServiceImpl.REVIEW);
+        assertThat(OfferServiceImpl.REVIEW).doesNotContainAnyElementsOf(OfferServiceImpl.OVER)
+                .doesNotContainAnyElementsOf(OfferServiceImpl.EDITABLE);
+    }
+
+    // FR-F10.4: live only while the campaign is ACTIVE.
+    @Test
+    void liveOnlyWhileTheCampaignIsActive() {
+        assertThat(OfferServiceImpl.RUNNING).containsExactly(CampaignStatus.ACTIVE);
+        assertThat(OfferServiceImpl.stateOf(CampaignStatus.ACTIVE, LATER, null, 0, NOW)).isEqualTo(OfferState.LIVE);
     }
 
     @ParameterizedTest
-    @EnumSource(value = CampaignStatus.class, names = {"ACTIVE", "PROOF_SUBMITTED", "CORRECTIONS_REQUESTED"})
-    void liveWhileTheCampaignRuns(CampaignStatus status) {
-        assertThat(OfferServiceImpl.stateOf(status, LATER, null, 0, NOW)).isEqualTo(OfferState.LIVE);
+    @EnumSource(value = CampaignStatus.class, names = {"PROOF_SUBMITTED", "CORRECTIONS_REQUESTED"})
+    void notLiveOnceTheProofIsInReview(CampaignStatus status) {
+        assertThat(OfferServiceImpl.stateOf(status, LATER, null, 0, NOW)).isEqualTo(OfferState.IN_REVIEW);
     }
 
     @ParameterizedTest

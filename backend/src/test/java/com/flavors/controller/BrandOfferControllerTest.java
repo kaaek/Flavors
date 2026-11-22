@@ -1,5 +1,6 @@
 package com.flavors.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -21,6 +22,7 @@ import com.flavors.enums.OfferState;
 import com.flavors.enums.Role;
 import com.flavors.exception.CampaignNotFoundException;
 import com.flavors.exception.GlobalExceptionHandler;
+import com.flavors.exception.OfferCreatorRequiredException;
 import com.flavors.exception.OfferLockedException;
 import com.flavors.exception.OfferValidationException;
 import com.flavors.service.OfferService;
@@ -32,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -110,6 +113,35 @@ class BrandOfferControllerTest {
                 .andExpect(jsonPath("$.title").value("Invalid offer"))
                 .andExpect(jsonPath("$.errors.discountPercent").value("Enter a discount from 1 to 100%."))
                 .andExpect(jsonPath("$.errors.expiresOn").value("The expiry date can't be in the past."));
+    }
+
+    // EX-F10.1.3. Bound to Integer, the JSON reader would have cut 100.9 down to 100 before any check ran.
+    @Test
+    void aFractionalDiscountReachesTheChecksUncutAndIsRefused() throws Exception {
+        when(offers.save(eq(7L), eq(42L), any())).thenThrow(new OfferValidationException(Map.of(
+                "discountPercent", "Enter a whole number, like 20.")));
+
+        mvc.perform(json(put(URL), """
+                        {"discountPercent":100.9,"expiresOn":"2030-02-01"}
+                        """).with(user(brand())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.discountPercent").value("Enter a whole number, like 20."));
+
+        ArgumentCaptor<OfferRequest> sent = ArgumentCaptor.forClass(OfferRequest.class);
+        verify(offers).save(eq(7L), eq(42L), sent.capture());
+        assertThat(sent.getValue().discountPercent()).isEqualByComparingTo("100.9");
+    }
+
+    // FR-F10.1: a draft without a creator can't get an offer yet; the page shows the brand what to do.
+    @Test
+    void aCampaignWithoutACreatorAnswersCreatorRequired() throws Exception {
+        when(offers.save(eq(7L), eq(42L), any())).thenThrow(new OfferCreatorRequiredException());
+
+        mvc.perform(json(put(URL), BODY).with(user(brand())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("Creator required"))
+                .andExpect(jsonPath("$.detail")
+                        .value(org.hamcrest.Matchers.startsWith("Choose the campaign's creator")));
     }
 
     @Test

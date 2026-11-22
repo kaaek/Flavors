@@ -7,8 +7,10 @@ package com.flavors.enums;
 public enum OfferState {
     /** The campaign hasn't started yet (draft, waiting for the creator, or waiting for payment). */
     NOT_LIVE_YET,
-    /** The campaign is running and the offer can be used. */
+    /** The campaign is active and the offer can be used. Only {@code ACTIVE} counts (FR-F10.4). */
     LIVE,
+    /** The creator's proof is being reviewed or corrected: the posting is done, so followers can't use it any more. */
+    IN_REVIEW,
     /** The campaign is disputed: the offer is held until the dispute is decided. */
     PAUSED,
     /** The expiry date has passed. */

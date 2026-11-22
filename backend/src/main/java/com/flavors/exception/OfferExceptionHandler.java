@@ -22,6 +22,14 @@ class OfferExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
     }
 
+    /** The page tells the brand to choose the creator on the campaign first, with a link to it. */
+    @ExceptionHandler(OfferCreatorRequiredException.class)
+    ResponseEntity<ProblemDetail> noCreator(OfferCreatorRequiredException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+        problem.setTitle("Creator required");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problem);
+    }
+
     @ExceptionHandler(OfferLockedException.class)
     ResponseEntity<ProblemDetail> locked(OfferLockedException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());

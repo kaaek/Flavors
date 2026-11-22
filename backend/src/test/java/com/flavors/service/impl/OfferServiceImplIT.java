@@ -9,10 +9,12 @@ import com.flavors.dto.OfferRequest;
 import com.flavors.dto.OfferResponse;
 import com.flavors.enums.OfferState;
 import com.flavors.exception.CampaignNotFoundException;
+import com.flavors.exception.OfferCreatorRequiredException;
 import com.flavors.exception.OfferLockedException;
 import com.flavors.exception.OfferValidationException;
 import com.flavors.service.CampaignService;
 import com.flavors.service.OfferService;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -153,6 +155,53 @@ class OfferServiceImplIT {
         // The edges are allowed.
         assertThat(service.save(brand.id, campaign, minimal(1)).discountPercent()).isEqualTo(1);
         assertThat(service.save(brand.id, campaign, minimal(100)).discountPercent()).isEqualTo(100);
+    }
+
+    // EX-F10.1.3. Bound to Integer, Jackson would have cut 100.9 down to 100 before the range check.
+    @Test
+    void fractionalNumbersAreRefusedNotCutDown() {
+        Brand brand = brand("Hamra");
+        long campaign = draft(brand, creator());
+
+        OfferRequest fractions = new OfferRequest(new BigDecimal("100.9"), TODAY.plusDays(7), null, null, null, null,
+                null, new BigDecimal("1999.5"), new BigDecimal("10.5"), new BigDecimal("1.5"));
+        assertThatThrownBy(() -> service.save(brand.id, campaign, fractions))
+                .isInstanceOfSatisfying(OfferValidationException.class, e -> assertThat(e.getErrors())
+                        .containsEntry("discountPercent", "Enter a whole number, like 20.")
+                        .containsKeys("minPurchaseCents", "maxRedemptions", "perPersonLimit"));
+        assertRefused(brand, campaign, new OfferRequest(new BigDecimal("0.5"), TODAY.plusDays(7), null, null, null,
+                null, null, null, null, null), "discountPercent");
+        assertRefused(brand, campaign, new OfferRequest(BigDecimal.valueOf(20), TODAY.plusDays(7), null, null, null,
+                null, null, null, new BigDecimal("1E12"), null), "maxRedemptions");
+        assertThat(offerCount(campaign)).isZero();
+
+        // A whole number written with decimals is the same number.
+        OfferResponse saved = service.save(brand.id, campaign, new OfferRequest(new BigDecimal("20.0"),
+                TODAY.plusDays(7), null, null, null, null, null, new BigDecimal("2000.00"), new BigDecimal("100.0"),
+                new BigDecimal("2.0")));
+        assertThat(saved.discountPercent()).isEqualTo(20);
+        assertThat(saved.minPurchaseCents()).isEqualTo(2000);
+        assertThat(saved.maxRedemptions()).isEqualTo(100);
+        assertThat(saved.perPersonLimit()).isEqualTo(2);
+    }
+
+    // FR-F10.1: the offer is linked to the campaign and its creator, and a draft can be saved with a name only.
+    @Test
+    void aDraftWithoutACreatorGetsNoOfferUntilOneIsChosen() {
+        Brand brand = brand("Hamra");
+        long campaign = campaigns.saveDraft(brand.id,
+                new CampaignRequest("Idea", null, null, null, null, null, null, null)).id();
+
+        assertThatThrownBy(() -> service.save(brand.id, campaign, minimal(20)))
+                .isInstanceOf(OfferCreatorRequiredException.class);
+        assertThat(offerCount(campaign)).isZero();
+        assertThat(audit("OFFER_CREATED", campaign)).isZero();
+        assertThat(service.get(brand.id, campaign)).isEmpty();
+
+        // Once the brand chooses the creator on the draft, the offer saves and is linked to her.
+        long creator = creator();
+        campaigns.updateDraft(brand.id, campaign, complete(brand, creator));
+        assertThat(service.save(brand.id, campaign, minimal(20)).creatorId()).isEqualTo(creator);
     }
 
     // EX-F10.1.3
@@ -364,7 +413,7 @@ class OfferServiceImplIT {
 
     // FR-F10.4
     @Test
-    void theOfferIsLiveOnlyWhileTheCampaignRunsBeforeTheExpiryAndBelowTheMaximum() {
+    void theOfferIsLiveOnlyWhileTheCampaignIsActiveBeforeTheExpiryAndBelowTheMaximum() {
         Brand brand = brand("Hamra");
         long creator = creator();
         long campaign = draft(brand, creator);
@@ -374,8 +423,6 @@ class OfferServiceImplIT {
         assertThat(state(brand, campaign)).isEqualTo(OfferState.NOT_LIVE_YET);
 
         setStatus(campaign, "ACTIVE");
-        assertThat(state(brand, campaign)).isEqualTo(OfferState.LIVE);
-        setStatus(campaign, "PROOF_SUBMITTED");
         assertThat(state(brand, campaign)).isEqualTo(OfferState.LIVE);
 
         // Its maximum of 2 redemptions is reached.
@@ -389,6 +436,25 @@ class OfferServiceImplIT {
 
         setStatus(campaign, "COMPLETED");
         assertThat(state(brand, campaign)).isEqualTo(OfferState.ENDED);
+    }
+
+    // FR-F10.4: only ACTIVE counts. Once the creator submits proof the campaign is in review and the offer stops.
+    @Test
+    void theOfferStopsOnceTheCreatorsProofIsInReview() {
+        Brand brand = brand("Hamra");
+        long creator = creator();
+        long campaign = draft(brand, creator);
+        service.save(brand.id, campaign, minimal(20));
+        campaigns.send(brand.id, campaign, complete(brand, creator));
+        setStatus(campaign, "ACTIVE");
+        assertThat(state(brand, campaign)).isEqualTo(OfferState.LIVE);
+
+        setStatus(campaign, "PROOF_SUBMITTED");
+        assertThat(state(brand, campaign)).isEqualTo(OfferState.IN_REVIEW);
+        setStatus(campaign, "CORRECTIONS_REQUESTED");
+        assertThat(state(brand, campaign)).isEqualTo(OfferState.IN_REVIEW);
+        setStatus(campaign, "DISPUTED");
+        assertThat(state(brand, campaign)).isEqualTo(OfferState.PAUSED);
     }
 
     // FR-F10.4
