@@ -13,8 +13,12 @@ export const DAYS = [
 ] as const
 export type Day = (typeof DAYS)[number]
 
-/** Whether followers can use the offer right now (FR-F10.4). The server works it out on every read. */
-export type OfferState = 'NOT_LIVE_YET' | 'LIVE' | 'PAUSED' | 'EXPIRED' | 'FULL' | 'ENDED'
+/**
+ * Whether followers can use the offer right now (FR-F10.4: only while the campaign is active). The server
+ * works it out on every read.
+ */
+export type OfferState =
+  'NOT_LIVE_YET' | 'LIVE' | 'IN_REVIEW' | 'PAUSED' | 'EXPIRED' | 'FULL' | 'ENDED'
 
 /** What the offer form sends (UC-F10.1). Empty optional fields get the server's defaults. */
 export interface OfferInput {
@@ -79,6 +83,7 @@ export const OFFER_EDITABLE: ReadonlySet<CampaignStatus> = new Set<CampaignStatu
 export const offerStateLabel: Record<OfferState, string> = {
   NOT_LIVE_YET: 'Not live yet',
   LIVE: 'Live',
+  IN_REVIEW: 'In review',
   PAUSED: 'Paused',
   EXPIRED: 'Expired',
   FULL: 'Fully used',
@@ -89,6 +94,7 @@ export const offerStateLabel: Record<OfferState, string> = {
 export const offerStateHint: Record<OfferState, string> = {
   NOT_LIVE_YET: 'Followers can use it once the campaign is active.',
   LIVE: 'Followers can use it now.',
+  IN_REVIEW: "The creator's proof is in review, so followers can't use it any more.",
   PAUSED: 'Paused while the campaign is disputed.',
   EXPIRED: 'Its expiry date has passed.',
   FULL: 'It reached its maximum number of uses.',

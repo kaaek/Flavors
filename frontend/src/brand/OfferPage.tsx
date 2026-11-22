@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getCampaign, type Campaign } from '../api/campaigns'
 import { ApiError, apiFetch } from '../api/client'
@@ -64,6 +64,7 @@ const dayShort: Record<Day, string> = {
 const stateTone: Record<OfferState, 'neutral' | 'success' | 'warning' | 'danger' | 'info'> = {
   NOT_LIVE_YET: 'neutral',
   LIVE: 'success',
+  IN_REVIEW: 'neutral',
   PAUSED: 'warning',
   EXPIRED: 'danger',
   FULL: 'info',
@@ -213,6 +214,29 @@ function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
   const [busy, setBusy] = useState(false)
   // Set when the server says the campaign went active while this page was open.
   const [locked, setLocked] = useState(false)
+  // FR-F10.1: the offer is linked to the campaign's creator, and a draft may not have one yet.
+  const [needsCreator, setNeedsCreator] = useState(campaign.creator === null)
+  // Counts saves, so a status refresh that started before a save can't overwrite what the save returned.
+  const saves = useRef(0)
+
+  // The state ("Live", "Expired"...) is worked out by the server on every read, so it is read again every minute and
+  // when the brand comes back to this tab. Only the offer is refreshed: what the brand is typing stays as it is.
+  useEffect(() => {
+    const refresh = () => {
+      const started = saves.current
+      getOffer(campaign.id)
+        .then((fresh) => {
+          if (saves.current === started) setOffer(fresh)
+        })
+        .catch(() => undefined)
+    }
+    const timer = window.setInterval(refresh, 60_000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [campaign.id])
 
   const editable = !locked && (offer ? offer.editable : OFFER_EDITABLE.has(campaign.status))
   const set = (patch: Partial<Values>) => setValues((current) => ({ ...current, ...patch }))
@@ -240,6 +264,7 @@ function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
       return
     }
     setBusy(true)
+    saves.current += 1
     try {
       const saved = await saveOffer(campaign.id, built.input)
       setOffer(saved)
@@ -253,6 +278,13 @@ function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
           kind: 'error',
           text: `Offer not saved. ${plural(Object.keys(fields).length)} attention.`,
         })
+      } else if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        error.problem.title === 'Creator required'
+      ) {
+        setNeedsCreator(true)
+        setBanner({ kind: 'error', text: error.message })
       } else if (error instanceof ApiError && error.status === 409) {
         setLocked(true)
         setBanner({ kind: 'error', text: error.message })
@@ -269,6 +301,7 @@ function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
         })
       }
     } finally {
+      saves.current += 1
       setBusy(false)
     }
   }
@@ -316,7 +349,9 @@ function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
         </section>
       )}
 
-      {editable ? (
+      {editable && needsCreator ? (
+        <NoCreator campaignId={campaign.id} />
+      ) : editable ? (
         // Locked while saving: the answer replaces the form's values, so an edit made meanwhile would be lost.
         <fieldset className="fl-fieldset fl-stack" disabled={busy}>
           <OfferFields
@@ -336,7 +371,7 @@ function OfferForm({ campaign, offer: initialOffer, branches }: Loaded) {
         <Link className="fl-btn fl-btn--ghost" to={`/brand/campaigns/${campaign.id}`}>
           Back to campaign
         </Link>
-        {editable && (
+        {editable && !needsCreator && (
           <button
             className="fl-btn fl-btn--primary"
             type="button"
@@ -580,6 +615,24 @@ function OfferFields({
         </div>
       </section>
     </>
+  )
+}
+
+/** A draft without a creator: the offer is linked to her (FR-F10.1), so the brand chooses her first. */
+function NoCreator({ campaignId }: { campaignId: number }) {
+  return (
+    <section className="fl-card fl-section" aria-labelledby="offer-no-creator-title">
+      <h2 id="offer-no-creator-title">Choose the creator first</h2>
+      <p>
+        The offer is linked to the creator whose followers get it, and this campaign has none yet.
+        Choose her on the campaign and save the draft, then come back here to set up the offer.
+      </p>
+      <div>
+        <Link className="fl-btn fl-btn--primary" to={`/brand/campaigns/${campaignId}/edit`}>
+          Choose the creator
+        </Link>
+      </div>
+    </section>
   )
 }
 

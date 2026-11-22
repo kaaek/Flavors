@@ -384,3 +384,77 @@ it('locks the fields while the offer is being saved, so no edit is lost', async 
   expect(await screen.findByRole('status')).toHaveTextContent('Offer saved.')
   expect(screen.getByLabelText(/Discount \(%\)/)).toBeEnabled()
 })
+
+// Review of EEC-41: FR-F10.1 links the offer to the creator, and a draft can be saved with a name only.
+it('asks the brand to choose the creator first when the draft has none', async () => {
+  server({ 'GET /api/brand/campaigns/42': () => ({ ...campaign, status: 'DRAFT', creator: null }) })
+  renderPage()
+
+  expect(
+    await screen.findByRole('heading', { name: 'Choose the creator first' }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Choose the creator' })).toHaveAttribute(
+    'href',
+    '/brand/campaigns/42/edit',
+  )
+  expect(screen.queryByLabelText(/Discount \(%\)/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Save offer' })).not.toBeInTheDocument()
+})
+
+it('shows the same help when the server answers that the creator is missing', async () => {
+  const user = userEvent.setup()
+  server({
+    [`PUT ${OFFER}`]: () => {
+      throw new ApiError(409, {
+        title: 'Creator required',
+        detail: "Choose the campaign's creator first: the offer is linked to the creator.",
+      })
+    },
+  })
+  renderPage()
+
+  await user.type(await screen.findByLabelText(/Discount \(%\)/), '20')
+  change(/Last day it works/, '2030-02-01')
+  await user.click(screen.getByRole('button', { name: 'Save offer' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent("Choose the campaign's creator first")
+  expect(screen.getByRole('link', { name: 'Choose the creator' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Save offer' })).not.toBeInTheDocument()
+})
+
+// Review of EEC-41: the state is worked out on every read, so an open page reads it again.
+it('updates the state when the brand comes back to the page, keeping what she typed', async () => {
+  const user = userEvent.setup()
+  let current: Offer = saved
+  server({ [`GET ${OFFER}`]: () => current })
+  renderPage()
+
+  const discount = await screen.findByLabelText(/Discount \(%\)/)
+  expect(screen.getByText('Not live yet')).toBeInTheDocument()
+  await user.clear(discount)
+  await user.type(discount, '25')
+
+  current = { ...saved, state: 'EXPIRED' }
+  fireEvent.focus(window)
+
+  expect(await screen.findByText('Expired')).toBeInTheDocument()
+  expect(screen.getByLabelText(/Discount \(%\)/)).toHaveValue('25')
+})
+
+it('shows when a live offer stops because the proof is in review', async () => {
+  let current: Offer = { ...saved, state: 'LIVE', editable: false }
+  server({
+    'GET /api/brand/campaigns/42': () => ({ ...campaign, status: 'ACTIVE' }),
+    [`GET ${OFFER}`]: () => current,
+  })
+  renderPage()
+
+  expect(await screen.findByText('Live')).toBeInTheDocument()
+  current = { ...saved, state: 'IN_REVIEW', editable: false }
+  fireEvent.focus(window)
+
+  expect(await screen.findByText('In review')).toBeInTheDocument()
+  expect(
+    screen.getByText("The creator's proof is in review, so followers can't use it any more."),
+  ).toBeInTheDocument()
+})
