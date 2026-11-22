@@ -1069,3 +1069,33 @@ are ignored on unmount or changed refresh dependencies. Visible unfinished escro
 seconds and on focus/visibility, without overlapping calls; released/refunded network polling stops.
 Review actions refresh immediately and job-driven escrow status changes refresh the campaign header.
 Errors preserve last-known data with a stale-data warning. The UI never equates authorization with receipt.
+
+## EEC-75 — Admin TOTP two-step verification (implementation candidate)
+
+- **Requirement:** FT-71/NF-10. Admins must complete a second factor before accessing admin functions.
+- **Password stage:** `POST /api/public/auth/login` validates credentials. For ADMIN accounts it returns
+  `{ "mfaRequired": true, "enrolled": boolean }` and stores an unprivileged, five-minute challenge
+  in the server-side Spring Session; it does **not** issue a fully authenticated session.
+- **Enrollment:** `POST /api/public/auth/mfa/enroll/start` returns a one-time TOTP secret in manual/Base32
+  and `otpauth://` form. `POST /api/public/auth/mfa/enroll/confirm` validates a six-digit code,
+  encrypts the secret using AES-256-GCM and stores ten randomly generated recovery-code hashes.
+  Recovery codes are displayed **once**. The enrollment session is password-verified but not admin-authenticated.
+- **Authentication:** `POST /api/public/auth/mfa/verify` checks a TOTP code in a narrow ±1-step
+  clock-skew window and atomically advances `last_used_step`, rejecting reuse.
+  `POST /api/public/auth/mfa/recovery` atomically consumes a single-use recovery code.
+- **Authorization:** Full admin sessions have `ROLE_ADMIN_MFA` in addition to `ROLE_ADMIN`.
+  All `/api/admin/**` endpoints require `ROLE_ADMIN_MFA`; previously issued sessions containing
+  only `ROLE_ADMIN` cannot bypass this check.
+- **Brute-force defense:** A pending challenge expires in five minutes and permits up to five
+  local verification attempts. A PostgreSQL-backed attempt counter additionally limits guesses
+  across sessions to five per fifteen minutes per admin. The normal password login's rate limits
+  should be reviewed separately before staging rollout.
+- **Storage:** Flyway V13 creates `admin_mfa`, `admin_mfa_recovery_code`, and
+  `admin_mfa_attempt`. Existing migrations remain unchanged. The AES encryption key must
+  be supplied through `FLAVORS_ADMIN_MFA_ENCRYPTION_KEY` (32 random bytes, Base64-encoded).
+  Never include the key, TOTP secret, or recovery codes in source control or logs.
+- **Deployment safety:** Activate in staging with a tested administrator and stored recovery codes;
+  confirm password-only admin sessions get 403, normal brand/creator login still works, and
+  invalid/replayed codes fail. Do not roll out to production until recovery and account-lockout
+  procedures are approved. An admin who loses both authenticator and codes needs an independently
+  authorized, audited manual recovery process, not a password-only bypass.

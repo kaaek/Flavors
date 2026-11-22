@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -121,7 +122,7 @@ class DeliveryProofControllerTest {
 
         mvc.perform(get("/api/brand/campaigns/42/proof").with(user(KARIM)))
                 .andExpect(status().isOk());
-        mvc.perform(get("/api/admin/campaigns/42/proof").with(user(ADMIN)))
+        mvc.perform(get("/api/admin/campaigns/42/proof").with(verifiedAdmin()))
                 .andExpect(status().isOk());
 
         then(service).should().getForBrand(9, 42);
@@ -180,4 +181,13 @@ class DeliveryProofControllerTest {
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(header().string("Content-Disposition", "inline; filename=\"proof-8.png\""));
     }
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor verifiedAdmin() {
+        return authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                ADMIN,
+                null,
+                java.util.List.of(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN_MFA"))));
+    }
+
 }
