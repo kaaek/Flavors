@@ -2,6 +2,7 @@ package com.flavors.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,6 +41,20 @@ class SecurityIT {
 
     @Autowired
     PasswordEncoder passwordEncoder;
+
+    @Test
+    void oldAdminSessionWithoutMfaAuthorityCannotReadAdminApis() throws Exception {
+        mvc.perform(get("/api/admin/creators").with(user("old-admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void oldAdminSessionCannotReadSharedApiOrProofFiles() throws Exception {
+        mvc.perform(get("/api/me").with(user("old-admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/proof-files/1").with(user("old-admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
 
     @Test
     void healthCheckIsPublic() throws Exception {

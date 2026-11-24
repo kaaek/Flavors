@@ -1,6 +1,8 @@
 package com.flavors.controller;
 
 import com.flavors.dto.CurrentUser;
+import com.flavors.enums.Role;
+import com.flavors.service.impl.AdminMfaService;
 import com.flavors.dto.LoginRequest;
 import com.flavors.dto.MeResponse;
 import com.flavors.dto.MessageResponse;
@@ -34,19 +36,25 @@ public class AuthController {
     private final PasswordResetService passwordResetService;
     private final SecurityContextRepository securityContexts;
     private final MeMapper mapper;
+    private final AdminMfaService adminMfa;
 
     public AuthController(AuthService authService, PasswordResetService passwordResetService,
-                          SecurityContextRepository securityContexts, MeMapper mapper) {
+                          SecurityContextRepository securityContexts, MeMapper mapper, AdminMfaService adminMfa) {
         this.authService = authService;
         this.passwordResetService = passwordResetService;
         this.securityContexts = securityContexts;
         this.mapper = mapper;
+        this.adminMfa = adminMfa;
     }
 
     @PostMapping("/api/public/auth/login")
-    MeResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest,
+    Object login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest,
                      HttpServletResponse httpResponse) {
         CurrentUser user = authService.authenticate(request.email(), request.password());
+        if (user.getRole() == Role.ADMIN) {
+            AdminMfaController.startChallenge(httpRequest, user);
+            return new AdminChallengeResponse(true, adminMfa.enrolled(user.getId()));
+        }
         Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
                 user, null, user.getAuthorities());
         SecurityContext context = SecurityContextHolder.createEmptyContext();
@@ -57,6 +65,8 @@ public class AuthController {
         securityContexts.saveContext(context, httpRequest, httpResponse);
         return mapper.toResponse(user);
     }
+
+    public record AdminChallengeResponse(boolean mfaRequired, boolean enrolled) { }
 
     @PostMapping("/api/auth/logout")
     MessageResponse logout(@AuthenticationPrincipal CurrentUser user, Authentication authentication,

@@ -3,6 +3,7 @@ import { CreatorReviewPage } from './admin/CreatorReviewPage'
 import { AdminHome } from './admin/AdminHome'
 import { ForgotPasswordPage } from './auth/ForgotPasswordPage'
 import { LoginPage } from './auth/LoginPage'
+import { AdminMfaPage } from './auth/AdminMfaPage'
 import { RequireRole } from './auth/RequireRole'
 import { ResetPasswordPage } from './auth/ResetPasswordPage'
 import type { Role } from './auth/authContext'
@@ -50,6 +51,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/admin/mfa" element={<AdminMfaPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/register" element={<RegisterChoicePage />} />

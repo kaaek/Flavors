@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -78,7 +79,7 @@ class ProofReviewControllerTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.reviews[0].submissionId").value(5));
         mvc.perform(get("/api/creator/campaigns/42/proof/reviews").with(user(CREATOR)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.reviews[0].decidedBy").doesNotExist());
-        mvc.perform(get("/api/admin/campaigns/42/proof/reviews").with(user(ADMIN)))
+        mvc.perform(get("/api/admin/campaigns/42/proof/reviews").with(verifiedAdmin()))
                 .andExpect(status().isOk());
         verify(service).history(7, Role.CREATOR, 42);
     }
@@ -88,7 +89,7 @@ class ProofReviewControllerTest {
         mvc.perform(post(REVIEW).with(user(CREATOR)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"APPROVED\"}"))
                 .andExpect(status().isForbidden());
-        mvc.perform(post(REVIEW).with(user(ADMIN)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post(REVIEW).with(verifiedAdmin()).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decision\":\"APPROVED\"}"))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/admin/campaigns/42/proof/reviews").with(user(BRAND)))
@@ -147,4 +148,13 @@ class ProofReviewControllerTest {
                         .content("{\"decision\":\"REJECTED\"}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.reason").exists());
     }
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor verifiedAdmin() {
+        return authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                ADMIN,
+                null,
+                java.util.List.of(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN_MFA"))));
+    }
+
 }

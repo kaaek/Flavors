@@ -42,8 +42,33 @@ class RoleGuardTest {
     @ParameterizedTest(name = "{0} on /api/{1}/** allowed: {2}")
     @MethodSource("everyRoleInEveryArea")
     void eachRoleReachesOnlyItsOwnArea(Role role, String area, boolean allowed) throws Exception {
-        mvc.perform(get("/api/" + area + "/probe").with(user("someone").roles(role.name())))
+        var authentication = role == Role.ADMIN && area.equals("admin")
+                ? user("someone").authorities(
+                    new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"),
+                    new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN_MFA"))
+                : user("someone").roles(role.name());
+        mvc.perform(get("/api/" + area + "/probe").with(authentication))
                 .andExpect(allowed ? status().isOk() : status().isForbidden());
+    }
+
+    @Test
+    void passwordOnlyAdminDoesNotGetAdminAccess() throws Exception {
+        mvc.perform(get("/api/admin/probe").with(user("someone").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void oldAdminSessionCannotUseSharedAuthenticatedApis() throws Exception {
+        mvc.perform(get("/api/any/probe").with(user("old-admin").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void mfaVerifiedAdminCanUseSharedAuthenticatedApis() throws Exception {
+        mvc.perform(get("/api/any/probe").with(user("verified-admin").authorities(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN_MFA"))))
+                .andExpect(status().isOk());
     }
 
     @Test

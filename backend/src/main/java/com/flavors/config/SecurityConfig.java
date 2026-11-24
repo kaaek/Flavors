@@ -8,6 +8,8 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -38,9 +40,20 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/api/creator/**").hasRole(Role.CREATOR.name())
                         .requestMatchers("/api/brand/**").hasRole(Role.BRAND.name())
-                        .requestMatchers("/api/admin/**").hasRole(Role.ADMIN.name())
-                        // Anything else under /api (e.g. /api/me) needs a login, whatever the role.
-                        .requestMatchers("/api/**").authenticated()
+                        .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN_MFA")
+                        // Shared authenticated APIs (e.g. /api/me and /api/proof-files/**)
+                        // also serve admins. An old password-only ADMIN session must never
+                        // use these paths to bypass second-factor enforcement.
+                        .requestMatchers("/api/**").access((authentication, request) -> {
+                            var user = authentication.get();
+                            boolean signedIn = user != null && user.isAuthenticated()
+                                    && !(user instanceof AnonymousAuthenticationToken);
+                            boolean pendingAdmin = signedIn && user.getAuthorities().stream()
+                                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))
+                                    && user.getAuthorities().stream()
+                                    .noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN_MFA"));
+                            return new AuthorizationDecision(signedIn && !pendingAdmin);
+                        })
                         // Railway's health check and the CI smoke test. Other actuator endpoints
                         // aren't exposed (application.yml); denying them guards against exposing one by mistake.
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
