@@ -70,6 +70,21 @@ public class PaymentTransaction {
         this.status = PaymentTransactionStatus.FAILED;
     }
 
+    public void retryPayout() {
+        if (type != PaymentTransactionType.RELEASE || status != PaymentTransactionStatus.FAILED) {
+            throw new IllegalStateException("Only a definitively failed release can retry.");
+        }
+        status = PaymentTransactionStatus.PENDING;
+    }
+
+    public void recordPayoutReference(String reference) {
+        if (type != PaymentTransactionType.RELEASE || reference == null || reference.isBlank()
+                || reference.length() > 100 || (providerRef != null && !providerRef.equals(reference))) {
+            throw new IllegalStateException("Invalid or conflicting payout reference.");
+        }
+        providerRef = reference;
+    }
+
     public Long getId() {
         return id;
     }
