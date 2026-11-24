@@ -21,6 +21,7 @@ import com.flavors.repository.ProofReviewRepository;
 import com.flavors.service.DeliveryProofService;
 import com.flavors.service.ProofReviewService;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -169,9 +170,16 @@ class ProofReviewServiceImplIT {
         Fixture future = newFixture();
         review(correcting, ProofReviewDecision.CORRECTIONS_REQUESTED, null);
         review(responded, ProofReviewDecision.APPROVED, null);
+        Instant overdueDeadline = Instant.now().minus(Duration.ofMinutes(5));
+
         for (Fixture fixture : List.of(overdue, correcting, responded)) {
-            jdbc.update("UPDATE campaign SET proof_review_deadline = now() - interval '1 second' WHERE id = ?",
-                    fixture.campaignId());
+                int updated = jdbc.update(
+                        "UPDATE campaign SET proof_review_deadline = ? WHERE id = ?",
+                        java.sql.Timestamp.from(overdueDeadline),
+                        fixture.campaignId()
+                );
+
+                assertThat(updated).isEqualTo(1);
         }
 
         assertThat(reviews.findOverdueCampaignIds()).contains(overdue.campaignId())
