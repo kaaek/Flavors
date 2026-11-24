@@ -568,7 +568,7 @@ brand is "not found" (404), never "forbidden".
 
 - **One body for all of them** (`CampaignRequest`): name, `creatorId`, `branchIds`, `priceOfferedCents` (the budget, integer USD cents),
   `startDate`, `lastPostingDate`, `deliverables` (`platform`, `type`, `count`) and `contentRequirements`. Every field may be missing; the
-  service decides what is required. The follower offer (UC-F10.1) is not part of it: EEC-41 adds that.
+  service decides what is required. The follower offer (UC-F10.1) is not part of it: it has its own endpoint (section 18).
 - **Draft vs send.** A draft needs only a **name**; whatever else it contains must still be sensible (a price above 0, a last posting date
   not before the start, own branches only, an approved creator, deliverables with a known type and a count of 1 or more). **Send** also
   needs a creator, at least one branch, a price, both dates (start today or later, **"today" in `flavors.campaign.zone`, default
@@ -596,7 +596,7 @@ brand is "not found" (404), never "forbidden".
   `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
   and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
   `CreatorSearchPage.test.tsx`.
-- **Not built yet:** the follower offer (EEC-41). Payment is in section 17.
+- The follower offer is in section 18, payment in section 17.
 
 ## 16. Respond to a campaign request (UC-F4.1) — built
 
@@ -884,3 +884,61 @@ run the integration suite; test timings alone do not establish NF-4 in productio
 for a corrected version, a decision that finishes after navigating, an open page kept current while corrections are
 requested in another session and the creator resends) and `CreatorProofSection.test.tsx` (correction
 reason and rounds left, approval and rejection notes, missing reviews).
+
+## 18. Follower offer (UC-F10.1) — built
+
+The brand sets up the discount the creator's followers get at the restaurant (EEC-41). There is **one offer per campaign**
+(`offer.campaign_id` is unique, V4), linked to the campaign and, through it, to the creator.
+
+| Method and path | What |
+|---|---|
+| `GET /api/brand/campaigns/{id}/offer` | The offer, or **204** when none has been set up yet |
+| `PUT /api/brand/campaigns/{id}/offer` | Sets up the offer, or replaces all its conditions (the same call does both) |
+
+Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's campaign is 404, as in section 15.
+
+- **Body** (`OfferRequest`): `discountPercent`, `expiresOn` (the last day it works, `"2030-02-01"`), `validDays` (`["MONDAY", ...]`),
+  `validFrom` and `validTo` (`"14:30"`), `allBranches`, `branchIds`, `minPurchaseCents`, `maxRedemptions`, `perPersonLimit`.
+  The four numbers are bound as `BigDecimal`, so they reach the checks exactly as sent: as `Integer`, Jackson would cut `100.9` down
+  to `100` before the range check. Only whole numbers are accepted (`20` or `20.0`); a fraction gets a field error.
+- **Creator first (FR-F10.1):** the offer is linked to the campaign and its creator. A draft can be saved with a name only, so a
+  campaign without a creator answers **409** "Creator required", and the page shows "Choose the creator first" with a link to the
+  draft. The draft form shows the offer link only once a creator is chosen.
+- **Rules** (`OfferServiceImpl`). Required: a discount from 1 to 100 (EX-F10.1.3) and an expiry that is today or later ("today" in
+  `flavors.campaign.zone`, default `Asia/Beirut`). Everything else has a default: every day; all day (both hours empty; one alone is
+  refused, and the end must be after the start, so hours past midnight are not supported yet; whole minutes only, since the page shows
+  hours and minutes and seconds would be lost on the next save); all branches (or one or more of the
+  brand's **own** branches, EX-F10.1.2); no minimum bill (0 or more); no maximum (1 or more); **one use per person** when no limit is
+  given (EX-F10.1.1; at most 100).
+- **Expiry:** the offer works through the whole expiry day, so `expires_at` = the next midnight in `Asia/Beirut`.
+- **Field errors:** **400** `ProblemDetail` titled "Invalid offer" with `errors` (field name → message), every wrong field at once,
+  like "Invalid campaign". Nothing is saved.
+- **When it can change:** while the campaign is `DRAFT`, `AWAITING_CREATOR_RESPONSE`, `COUNTERED` or `AWAITING_PAYMENT`. After that
+  diners may hold QR codes for it, so a change answers **409** "Offer locked". The save locks the campaign row (`findByIdAndBrandIdForUpdate`,
+  the lock the payment takes to activate it), so an offer change and the activation can't overlap: a change that waited for the
+  activation then sees `ACTIVE` and is refused. The same lock makes two first saves run one after the other, so the second updates the
+  offer instead of inserting a second one.
+- **Optional at send:** a campaign can be sent without an offer. Whether Send should require one is an open question for the team.
+- **Is it live (FR-F10.4)?** Worked out on every read, never stored (`OfferState`), in this order: `ENDED` (the campaign is completed,
+  cancelled, removed, rejected, declined or expired), `EXPIRED` (past `expires_at`), `FULL` (redemptions reached the maximum), `LIVE`
+  (campaign `ACTIVE` only, as FR-F10.4 and V4 say), `IN_REVIEW` (campaign `PROOF_SUBMITTED` or `CORRECTIONS_REQUESTED`: the creator
+  has posted, the campaign never goes back to `ACTIVE`, so the offer has stopped), `PAUSED` (campaign `DISPUTED`), otherwise
+  `NOT_LIVE_YET`.
+  The response also carries `redemptions` (rows in `redemption`) and `editable`. The claim and redemption stories (UC-F10.2, UC-F11.1)
+  must check the same state, plus the day, hours, branch, minimum bill and per-person limit.
+- **Code:** `Offer` (entity, `@ElementCollection` for `offer_branch`; `valid_days` is the V4 bitmask, Monday = 1 ... Sunday = 64, every
+  day = 127), `OfferRepository`, `OfferMapper`, `BrandOfferController`, and `OfferExceptionHandler` (its own advice, so it does not touch
+  `GlobalExceptionHandler`). No migration: V4 already has the tables.
+- **Audit:** `OFFER_CREATED`, `OFFER_UPDATED` (entity `campaign`, with the offer id and discount).
+- **Page:** `/brand/campaigns/:id/offer` (`OfferPage`): discount, last day, days, hours, branches, minimum bill (typed in dollars, sent
+  as cents), maximum uses and uses per person, with the server's messages under each field. Read-only once the campaign is active or
+  over, with the live state and how often it was used. Linked from the campaign page and from a saved draft. Each load is marked with
+  its campaign, so moving to another campaign's offer shows "loading" until that campaign's offer arrives, never the previous one;
+  the fields are locked while a save is on its way. An open page reads the offer again every minute and when the brand comes back
+  to the tab, so its state stays current; only the status is refreshed, never what the brand is typing.
+- **Tests:** `OfferServiceImplIT` (TC-F10.1.1 to TC-F10.1.4, EX-F10.1.1 to EX-F10.1.3, every field rule, fractions refused, a
+  name-only draft, saving again, the lock after `ACTIVE`, two first saves at once, a change during activation, other brands, and
+  the live states on the real database), `OfferServiceImplTest` (the state for every campaign status, the day bits),
+  `BrandOfferControllerTest` (roles, CSRF, JSON, raw `100.9` reaching the checks uncut, 204, error bodies); frontend
+  `OfferPage.test.tsx` (including moving between two campaigns' offers, the fields locked while saving, no creator yet, and the
+  status refreshed on an open page).
