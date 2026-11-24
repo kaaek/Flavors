@@ -113,3 +113,71 @@ it('disconnecting keeps the numbers and shows Needs reconnection', async () => {
   expect(screen.getByText('12,000')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Reconnect Instagram' })).toBeInTheDocument()
 })
+
+const OLD: SocialAccount = {
+  id: 5,
+  platform: 'instagram',
+  status: 'NEEDS_RECONNECTION',
+  followers: null,
+  engagementRate: null,
+  lastPulledAt: null,
+}
+
+// An old "Needs reconnection" card can be removed; a connected one only has Disconnect.
+it('only a card that needs reconnection can be removed', async () => {
+  apiFetchMock.mockResolvedValueOnce([OLD, CONNECTED])
+
+  renderAt('/creator/social')
+
+  expect(await screen.findByRole('button', { name: 'Remove Instagram' })).toBeInTheDocument()
+  expect(screen.getAllByRole('button', { name: 'Remove Instagram' })).toHaveLength(1)
+  expect(screen.getByRole('button', { name: 'Disconnect Instagram' })).toBeInTheDocument()
+})
+
+it('asks before removing, and Cancel keeps the card', async () => {
+  const user = userEvent.setup()
+  apiFetchMock.mockResolvedValueOnce([OLD])
+
+  renderAt('/creator/social')
+  await user.click(await screen.findByRole('button', { name: 'Remove Instagram' }))
+  expect(screen.getByText('Remove this account and its saved numbers?')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(screen.getByRole('button', { name: 'Remove Instagram' })).toBeInTheDocument()
+  expect(apiFetchMock).toHaveBeenCalledTimes(1)
+})
+
+it('removing deletes the card and keeps the other one', async () => {
+  const user = userEvent.setup()
+  apiFetchMock.mockResolvedValueOnce([OLD, CONNECTED]).mockResolvedValueOnce(undefined)
+
+  renderAt('/creator/social')
+  await user.click(await screen.findByRole('button', { name: 'Remove Instagram' }))
+  await user.click(screen.getByRole('button', { name: 'Yes, remove' }))
+
+  expect(apiFetchMock).toHaveBeenLastCalledWith('/api/creator/social/5/remove', {
+    method: 'DELETE',
+  })
+  expect(await screen.findByRole('button', { name: 'Disconnect Instagram' })).toBeInTheDocument()
+  expect(screen.queryByText('Needs reconnection')).not.toBeInTheDocument()
+  expect(screen.getByText('12,000')).toBeInTheDocument()
+})
+
+it('shows the reason when the account cannot be removed', async () => {
+  const user = userEvent.setup()
+  apiFetchMock.mockResolvedValueOnce([OLD]).mockRejectedValueOnce(
+    new ApiError(409, {
+      title: 'Account cannot be removed',
+      detail: 'This account has results from campaigns, so it cannot be removed.',
+    }),
+  )
+
+  renderAt('/creator/social')
+  await user.click(await screen.findByRole('button', { name: 'Remove Instagram' }))
+  await user.click(screen.getByRole('button', { name: 'Yes, remove' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'This account has results from campaigns, so it cannot be removed.',
+  )
+  expect(screen.getByText('Needs reconnection')).toBeInTheDocument()
+})

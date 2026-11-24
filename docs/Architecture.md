@@ -54,12 +54,12 @@ Code is grouped by **layer**, not by feature: every story puts its classes in th
 ```
 com.flavors
 ├── FlavorsApplication
-├── controller/     REST endpoints (@RestController): MeController, PortfolioController
-├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService, PortfolioService
-│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl, PortfolioServiceImpl
-├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository, CreatorProfileRepository, SocialAccountRepository, CampaignRepository, PortfolioFeatureRepository
-├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, PortfolioFeature
-├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus
+├── controller/     REST endpoints (@RestController): MeController, PortfolioController, BrandCampaignController
+├── service/        service interfaces (the business-logic contract): AuditLogger, IdempotencyService, PortfolioService, CampaignService
+│   └── impl/       @Service implementations: AuditLoggerImpl, IdempotencyServiceImpl, AppUserDetailsServiceImpl, PortfolioServiceImpl, CampaignServiceImpl
+├── repository/     Spring Data repositories: AppUserRepository, AuditLogRepository, CreatorProfileRepository, SocialAccountRepository, CampaignRepository, NotificationRepository, PortfolioFeatureRepository
+├── entity/         JPA entities, one per table: AppUser, AuditLogEntry, CreatorProfile, SocialAccount, Campaign, CampaignDeliverable, Notification, PortfolioFeature
+├── enums/          enum types shared by entities and DTOs: Role, UserStatus, VerificationStatus, SocialAccountStatus, CampaignStatus, DeliverablePlatform, DeliverableType
 ├── dto/            API request/response objects and the session principal: MeResponse, CurrentUser, PortfolioResponse, UpdatePortfolioRequest
 ├── mapper/         entity/principal <-> DTO converters: MeMapper, PortfolioMapper
 ├── config/         Spring configuration and startup wiring: SecurityConfig, SpaForwardingConfig, AdminSeeder, SchedulingConfig
@@ -196,6 +196,17 @@ unique index allows one `UNUSED` claim per phone per offer, and `phone_hash` is 
   `creator_profile`), created_at. The rules that span tables (the campaign must be COMPLETED and must belong to the
   creator) are enforced by `PortfolioServiceImpl`, not by the database.
 
+**V9 — screenshots required** (built: `V9__campaign_screenshots_required.sql`, EEC-46)
+- `campaign.screenshots_required`: boolean, default false. Part of the terms the brand sets on the campaign form; when
+  true, a final delivery proof needs at least one screenshot (FR-F5.1, §18).
+
+**V10 — escrow release operations** (EEC-45, tested by `EscrowReleaseOperationIT`)
+- `escrow_release_operation`: unique escrow/operation identity, proof/review authorization evidence,
+  immutable original/fee/net snapshot, payout state, pinned provider/destination/transaction references,
+  timestamps, worker leases and attempt metadata. Constraints and a trigger protect money, identity,
+  legal transitions and terminal confirmation. Cross-table eligibility is rechecked under the campaign lock.
+  V1–V9 are unchanged. No dispute schema is introduced (see section 20 for the execution model).
+
 ### 4.3 ER diagram
 
 Tables and their foreign keys (columns are listed in §4.2 and in the migrations). `||--o{` reads
@@ -239,6 +250,8 @@ erDiagram
 
     campaign ||--o| escrow_payment : "paid through"
     escrow_payment ||--o{ payment_transaction : "moves money by"
+    escrow_payment ||--o| escrow_release_operation : "authorizes full release through"
+    proof_submission ||--o{ escrow_release_operation : "provides authorization evidence"
     campaign ||--o{ proof_submission : "proven by"
     proof_submission ||--o{ proof_link : contains
     proof_submission ||--o{ proof_file : contains
@@ -268,13 +281,17 @@ Each story writes the JPA entities for its tables (§4.1). Story IDs are from th
 | `offer_claim` | UC-F10.2 |
 | `redemption`, `scan_failure` | UC-F11.1, F12.1, F13.1, F14.1 |
 | `escrow_payment`, `payment_transaction` | UC-F7.1, F7.2, F23.1, F25.1 |
+| `escrow_release_operation` | UC-F7.2 (EEC-45); simulated execution only until real provider confirmation |
 | `proof_submission`, `proof_link`, `proof_file` | UC-F5.1 |
 | `proof_review` | UC-F6.1 |
 | `dispute`, `dispute_evidence` | UC-F8.1 |
 | `notification` | UC-F18.1 |
 
 Entities written so far: `app_user`, `audit_log` (EEC-27); `creator_profile`, `social_account`, `portfolio_feature` and a
-read-only `campaign` (EEC-36). Later stories add columns and methods to these classes instead of writing second copies.
+read-only `campaign` (EEC-36); `campaign` (now with its price, dates, branches and deliverables), `campaign_deliverable` and
+`notification` (write only) in EEC-40; `proof_submission`, `proof_link`, `proof_file` (EEC-46, which also lets `campaign`
+record a proof submission and Timer C); `proof_review` (EEC-47 review core). Later stories add columns and methods to these
+classes instead of writing second copies.
 
 ## 5. Security — built
 
@@ -356,9 +373,8 @@ do database work (an external call inside it cannot be rolled back). Mapping `Id
 HTTP 409 comes with the global exception handler. **Tests:** `IdempotencyServiceImplIT` (repeat, conflict, other scope,
 retry after failure, 8 concurrent retries).
 
-Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provider webhooks
-(scope `webhook:<provider>`, key = event id, EX-F7.1.3), and release, refund and dispute decisions
-(UC-F7.2, F8.1). QR double scans are handled by the `redemption.claim_id` unique constraint instead.
+Used by the Pay button (`Idempotency-Key` header, UC-F7.1, §17). Still planned: release, refund and dispute
+decisions (UC-F7.2, F8.1). QR double scans are handled by the `redemption.claim_id` unique constraint instead.
 
 ## 8. Admin account seeding — built
 
@@ -402,7 +418,7 @@ Planned uses: the Pay button (`Idempotency-Key` header, UC-F7.1), payment-provid
   | Role | Pages (top bar) | Also reachable |
   |---|---|---|
   | Creator | Home `/creator`, Portfolio `/creator/portfolio`, Social accounts `/creator/social`, Profile status `/creator/status` | Connect Instagram returns to `/creator/social?instagram=<result>` |
-  | Brand | Home `/brand`, Account `/brand/account` | |
+  | Brand | Home `/brand`, Find creators `/brand/creators`, Campaigns `/brand/campaigns`, Account `/brand/account` | New campaign `/brand/campaigns/new` (optionally `?creator=<id>`), a draft `/brand/campaigns/:id/edit`, a sent campaign `/brand/campaigns/:id` |
   | Admin | Home `/admin`, Approvals `/admin/creators` (with the pending count) | |
   | Public | `/`, `/login`, `/forgot-password`, `/reset-password`, `/register`, `/register/brand`, `/register/creator` | `/s/:slug` (storefront) and `/claim/:token` (diner QR page) are placeholders |
 
@@ -478,7 +494,8 @@ returns 409 before approval.
 
 ## 13. Scheduled jobs and the daily social refresh (UC-F1.3) — built
 
-`SchedulingConfig` turns on `@Scheduled`. The only job so far is `SocialRefreshJob` (`service/impl/`, EEC-37):
+`SchedulingConfig` turns on `@Scheduled`. The other jobs are described with their features: campaign response expiry (§16),
+payment deadline and reconciliation (§17). This section covers `SocialRefreshJob` (`service/impl/`, EEC-37):
 
 - **When:** `flavors.social.refresh-cron` (default `0 0 3 * * *`) in `flavors.social.refresh-zone` (default `Asia/Beirut`);
   `flavors.social.refresh-enabled=false` switches it off. The variables are in [README.md](README.md#daily-social-refresh-eec-37).
@@ -490,8 +507,8 @@ returns 409 before approval.
 - **Not configured, not flagged:** where Instagram or `FLAVORS_TOKEN_ENCRYPTION_KEY` isn't set, the run is skipped entirely,
   so a missing setting can't mark every creator "Needs reconnection".
 - **No long transaction:** `refresh()` reads in a short transaction, calls Instagram with none, then writes in a short one.
-  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect and disconnect
-  do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
+  The write takes `SELECT ... FOR UPDATE` on the account row (`SocialAccountRepository.lockById`), as connect, disconnect and
+  remove do, and only writes if the stored token is still the one the pull used. A disconnect or reconnect that happens during a pull
   is never undone by the stale result.
 - **Token:** a business system-user token from a Unified Login configuration with expiry "Never" (EEC-88), so nothing is renewed.
   It stops working only if the creator removes the app from her business portfolio or moves the account; the next pull then
@@ -500,7 +517,22 @@ returns 409 before approval.
 - **Tests:** `SocialRefreshJobTest`, `SocialRefreshJobIT` (TC-F1.3.1, TC-F1.3.2, failure isolation, the lock),
   `SocialAccountServiceImplIT` (disconnect/reconnect during a pull), `InstagramClientImplTest` (login URL, code exchange, account
   list and pull against a local stand-in for graph.facebook.com). A real pull against Instagram can only be checked with a Meta app and a tester account.
-- **Planned:** FR-F1.8 (refresh a campaign's posts when its delivery proof is submitted) comes with EEC-46.
+- **Removing an old account:** `DELETE /api/creator/social/{id}/remove` (CREATOR, 204) deletes an account that is already
+  `NEEDS_RECONNECTION`, so an old card can leave her Social accounts page. It also deletes that account's rows in
+  `social_post_metric` (the token column goes with the row) and writes `SOCIAL_ACCOUNT_REMOVED` to the audit log. It answers
+  409 (`SocialAccountRemovalNotAllowedException`) if the account is still connected, or if any of its posts has a
+  `campaign_id`, because those figures feed that campaign's results. Someone else's account is 404 (NF-1). The page
+  (`SocialAccountsPage`) shows a "Remove" button, with an "are you sure?" step, only on cards that need reconnection.
+  Connecting the same Instagram account again afterwards creates a new row. Tests: `SocialAccountServiceImplIT`,
+  `SocialAccountControllerTest`, `SocialAccountsPage.test.tsx`.
+  **Locking:** `remove()` and `disconnect()` lock the account (`lockById`) before they read its status or owner, so the
+  status they check is the committed one (a reconnect committed just before is seen, and the account is kept). A
+  daily pull that finds the account already removed skips it and does not count it as an error.
+  **Invariant for campaign links:** any future writer that sets `social_post_metric.campaign_id` (EEC-46) must take
+  `accounts.lockById` for that account first. `remove()` checks for campaign links and then deletes, in two statements,
+  and relies on that lock; without it a link committed in between would be deleted silently.
+- **Planned:** FR-F1.8 needs a separate, explicit post-link matching contract. EEC-46 stores proof links but does not guess
+  which Instagram metric row they identify, because the current `PostFigures` contract exposes no permalink.
 
 ## 14. Search (UC-F2.1, plus brand search) — built
 
@@ -525,5 +557,545 @@ Brands search creators (EEC-39); creators search brands (added at the team's req
 - **Tests:** `SearchTextTest`, `CreatorSearchControllerTest`, `BrandSearchControllerTest`, `BrandProfileControllerTest`,
   `CreatorSearchServiceImplIT`, `BrandSearchServiceImplIT`, `BrandProfileServiceImplIT`, `SearchSchemaIT`; frontend
   `CreatorSearchPage.test.tsx`, `BrandSearchPage.test.tsx`.
-- **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); the "Create campaign" button on a result is
-  disabled until the campaign story; results link to `/s/:slug`, still a placeholder.
+- **Planned:** search by Instagram handle (needs the handle stored, with the Instagram fix); results link to `/s/:slug`, still a
+  placeholder. The "Start a campaign" button on a result opens the campaign form (§15).
+
+## 15. Create a campaign and send it (UC-F3.1) — built
+
+A brand writes a campaign for **one** creator, saves it as a draft as often as it likes, and sends it (EEC-40). All endpoints are
+under `/api/brand/campaigns`, so the existing BRAND guard applies; the brand is always the logged-in user, and a campaign of another
+brand is "not found" (404), never "forbidden".
+
+| Method and path | What |
+|---|---|
+| `GET /api/brand/campaigns` | The brand's campaigns, most recently changed first (name, creator, status, price offered, agreed price) |
+| `GET /api/brand/campaigns/{id}` | One campaign in full, including the agreed price, payment deadline and accepted-at once the creator has agreed (EEC-43) |
+| `GET /api/brand/campaigns/creators/{creatorId}` | The approved, active creator a form opens with (404 otherwise) |
+| `POST /api/brand/campaigns` | Saves a new **draft** (201) |
+| `PUT /api/brand/campaigns/{id}` | Replaces the details of a draft |
+| `POST /api/brand/campaigns/send` | Creates the campaign and sends it in one step (201): the form was never saved |
+| `POST /api/brand/campaigns/{id}/send` | Saves the given details into a draft and sends it |
+
+- **One body for all of them** (`CampaignRequest`): name, `creatorId`, `branchIds`, `priceOfferedCents` (the budget, integer USD cents),
+  `startDate`, `lastPostingDate`, `deliverables` (`platform`, `type`, `count`) and `contentRequirements`. Every field may be missing; the
+  service decides what is required. The follower offer (UC-F10.1) is not part of it: it has its own endpoint (section 18).
+- **Draft vs send.** A draft needs only a **name**; whatever else it contains must still be sensible (a price above 0, a last posting date
+  not before the start, own branches only, an approved creator, deliverables with a known type and a count of 1 or more). **Send** also
+  needs a creator, at least one branch, a price, both dates (start today or later, **"today" in `flavors.campaign.zone`, default
+  `Asia/Beirut`**) and at least one deliverable. Content requirements are always optional. Name: up to 150 characters.
+- **Deliverables:** platform `INSTAGRAM` only; types `REEL`, `POST`, `STORY`, `CAROUSEL` (`DeliverablePlatform`, `DeliverableType`).
+  The database leaves both open (V3), so another platform is a new enum value.
+- **Field errors:** a wrong or missing field returns **400** `ProblemDetail` titled "Invalid campaign" with `errors`, a map from the field
+  name to its message, for example `{"startDate": "Pick a start date.", "deliverables[0].count": "Enter 1 or more."}`. All wrong fields come
+  back together, and the form highlights each one.
+- **Send** runs in **one transaction**: the draft is updated, the status becomes `AWAITING_CREATOR_RESPONSE`, `sent_at` is set,
+  `response_deadline` = `sent_at` + 3 days (Timer A; section 16 expires it), a `CAMPAIGN_REQUEST` row is written to `notification` for the
+  creator (in-app only, no email) and a `CAMPAIGN_SENT` audit entry is recorded. A refused send saves nothing, not even the new details
+  of an existing draft. The row is locked while it is sent, so two parallel sends notify once and the second gets 409.
+- **A draft is private.** Only the brand's endpoints can read it, no notification exists until Send, and the creator-side listing of
+  campaigns (EEC-43, section 16) shows `status <> 'DRAFT'` only. Drafts and sends are audited (`CAMPAIGN_DRAFT_SAVED`, `CAMPAIGN_DRAFT_UPDATED`,
+  `CAMPAIGN_SENT`).
+- **Other refusals:** **409** "No branch" when the brand has none (EX-F3.1.3; checked on every write); **409** "Campaign already sent" when
+  a sent campaign is changed or sent again.
+- **Pages:** the list `/brand/campaigns` (name, creator, price offered, agreed price, status; Edit on drafts; New campaign), the form
+  `/brand/campaigns/new[?creator=<id>]` and `/brand/campaigns/:id/edit` (sections Basics, Offer and dates, Deliverables, Content requirements;
+  invalid fields get a message under them and a banner on top; Save draft and Send to creator), and the read-only `/brand/campaigns/:id`
+  with the creator's deadline and, once agreed, the agreed price, "Pay by" and "Accepted" (EEC-43). "Start a campaign" on a creator search result opens the form with that creator chosen; without one, the form
+  has a small creator search. Enter in a field never sends. The price is typed in dollars and sent as cents (`lib/moneyInput.ts`).
+- **Tests:** `CampaignServiceImplIT` (TC-F3.1.1 to TC-F3.1.4, EX-F3.1.1 to EX-F3.1.3, every field rule, other brands, parallel sends),
+  `BrandCampaignControllerTest` (roles, CSRF, JSON, error bodies); frontend `CampaignFormPage.test.tsx` (send, refused send, draft, reopen
+  and edit, no branch, creator picking, deliverables, read-only view), `CampaignListPage.test.tsx`, plus the link audit and
+  `CreatorSearchPage.test.tsx`.
+- The follower offer is in section 18, payment in section 17.
+
+## 16. Respond to a campaign request (UC-F4.1) — built
+
+- **Endpoints** (`CampaignResponseController`, `CreatorCampaignController`). Answers are `POST` and return `204`. Creator:
+  `/api/creator/campaigns/{id}/accept`, `/reject`, `/counter-offer` (body `{priceCents?, deliverables?}`). Brand:
+  `/api/brand/campaigns/{id}/counter-offer/approve` and `/decline`. Reads are `GET`: `/api/creator/campaigns` (the creator's requests, never
+  drafts), `/api/creator/campaigns/{id}`, and `/api/creator/campaigns/{id}/counter-offer` and `/api/brand/campaigns/{id}/counter-offer`
+  (the counter-offer on a campaign). The URL prefix decides the role (SecurityConfig), and the caller is always the logged-in user.
+  The campaign responses carry `agreedPriceCents`, `paymentDeadline` and `acceptedAt`.
+- **Visibility:** someone else's campaign, an unknown id, and a draft that names the creator all answer `404` (NF-1), so nobody can tell them apart.
+  A campaign that exists but can't take this answer (already answered, expired, past the deadline) answers `409`.
+- **Rules** (`CampaignResponseServiceImpl`): the creator's answers need status `AWAITING_CREATOR_RESPONSE`; approve and decline need `COUNTERED`.
+  Both need an open `response_deadline`. A counter-offer must change the price (above 0), the deliverables, or both. It holds the full proposed
+  terms. The unique `counter_offer.campaign_id` is the final guard for one counter-offer per campaign.
+- **Locking:** every answer loads the campaign row with `findByIdForUpdate` (`PESSIMISTIC_WRITE`) and checks the status and deadline only after
+  that, so two calls on the same campaign never both succeed. The two counter-offer reads run in read-only transactions, where PostgreSQL
+  refuses `FOR UPDATE`, so they use a plain `findById` with the same visibility filter and no lock.
+- **Outcomes:** accept → `AWAITING_PAYMENT` and Timer B starts. Reject → `REJECTED`. Approve → `AWAITING_PAYMENT` at the counter price with the new
+  deliverables (`Campaign.replaceDeliverables`). Decline → `DECLINED`, nothing is charged.
+- **Connected account (FT-68):** a creator with no social account in status `CONNECTED` can't accept a campaign request. `CampaignResponseServiceImpl.acceptCampaign` answers **409** "Account disconnected" (`SocialAccountDisconnectedException`) until she reconnects, after the status and deadline checks. Reject and counter-offer are not blocked, and the campaign stays `AWAITING_CREATOR_RESPONSE` on a refused accept. Tests: `CampaignResponseServiceImplTest` and `CampaignResponseServiceImplIT`.
+- **Timer A covers the whole negotiation:** the creator and the brand together have 3 days from the send to agree. `CampaignResponseExpirationJob`
+  runs every minute (`flavors.campaign.response-expiration-cron`, zone `Asia/Beirut`) and expires `AWAITING_CREATOR_RESPONSE` and `COUNTERED`
+  requests past `response_deadline`, one campaign per transaction, so one bad row cannot undo the others and two overlapping runs do not
+  notify twice.
+- **Notifications** (constants in `Notification`): the brand is told of an accept, a reject, a counter-offer and an expiry; the creator is told
+  when her counter is approved or declined, and when a countered request expires.
+- **Audit:** every answer and every expiry is audited (`CAMPAIGN_ACCEPTED`, `CAMPAIGN_REJECTED`, `COUNTER_OFFER_SUBMITTED`,
+  `COUNTER_OFFER_APPROVED`, `COUNTER_OFFER_DECLINED`, `CAMPAIGN_RESPONSE_EXPIRED`).
+- **Pages:** creator `/creator/campaigns` (list of requests) and `/creator/campaigns/:id` (terms, Accept, Reject, counter-offer form, agreed
+  price and payment deadline once agreed). Brand: the existing `/brand/campaigns/:id` shows the counter-offer with Approve and Decline while the
+  campaign is `COUNTERED`, and the agreed price, "Pay by" and "Accepted" once agreed; the list `/brand/campaigns` has an "Agreed price" column.
+- **Tests:** `CampaignResponseServiceImplTest` (the rules, TC-F4.1.1 to TC-F4.1.6, the deadline boundary, the COUNTERED expiry),
+  `CampaignResponseControllerTest` (roles, CSRF, status codes and error bodies), `CreatorCampaignControllerTest` (the creator's list and
+  detail reads), `CampaignResponseServiceImplIT` (the same flow on the real database, the counter-offer reads, plus concurrent accept/reject,
+  approve/decline, counters and expiry runs); frontend `CampaignDetailPage.test.tsx` and `CampaignListPage.test.tsx`.
+
+## 17. Pay and hold the campaign payment (UC-F7.1) — built
+
+The brand pays for a campaign that the creator accepted (`AWAITING_PAYMENT`). The money is held in escrow (`HELD`), and
+the campaign goes `ACTIVE`. Timer B (3 days from acceptance) expires the request if nobody paid. EEC-44. Whish Money is the
+provider; its setup is in [README.md](README.md#whish-money-payments-eec-44).
+
+| Method and path | What |
+|---|---|
+| `POST /api/brand/campaigns/{id}/payment` (BRAND, `Idempotency-Key` header required) | Starts the payment. Answers 200 with `checkoutUrl` (where the payer goes) |
+| `GET /api/brand/campaigns/{id}/escrow` (BRAND) | The escrow status: `PENDING`, `HELD`, `RELEASED`, `FROZEN` or `REFUNDED` (FR-F7.7) |
+| `GET /api/creator/campaigns/{id}/escrow` (CREATOR) | The same, for the creator |
+| `GET /api/public/payments/callback?externalId=…` | The provider's callback. It only asks for the status (see below) |
+| `GET /api/public/payments/return?externalId=…` | The payer's return. Checks the status, then `302` to `/brand/campaigns/{id}?payment=held\|received\|failed\|pending` (`received` is a payment confirmed after the window: not held) |
+
+Non-party and unknown ids answer 404 (NF-1). A campaign that can't be paid now (not `AWAITING_PAYMENT`, window passed) answers
+409. The provider being unreachable answers 502, and nothing has changed. Payments switched off answer 503.
+
+- **Provider port** (`PaymentProvider`, `service/`): `name()` (stored in `escrow_payment.provider`, `WHISH`),
+  `startHostedPayment(...)` (returns the hosted checkout URL) and `queryStatus(...)` (`PAID`, `PENDING` or `FAILED`).
+  Card data is entered on the provider's page, never in Flavors (FR-F7.2). Three adapters, chosen by `flavors.whish.mode`:
+  `SimulatedPaymentProvider` (`mock`, the default for dev and tests: no network and no money; its checkout is the return URL, and
+  tests set outcomes in code, so no HTTP path can mark a payment paid),
+  `WhishPaymentProvider` (`sandbox` or `live`: calls Whish with the credentials from the environment, `RestClient`), and
+  `UnavailablePaymentProvider` (`disabled`, the production default). In the prod profile the mock is not created, so
+  `mock` there fails at startup instead of taking fake money.
+- **Starting a payment** (`PaymentServiceImpl.startPayment`): the call is idempotent per key (scope
+  `brand-payment:{brandId}`, fingerprint = campaign id; the same key for another campaign is refused). Inside the idempotency
+  transaction the campaign row is locked, the status and window are checked, the escrow row is created (`PENDING`, the agreed
+  price in cents) or reused, and an open `CHARGE` attempt is reused or created. The attempt's `provider_ref` is a random UUID,
+  which is the Whish `externalId`. The provider call comes after that transaction, because an external call can't be rolled back.
+  Calling it again for the same attempt is safe. An open attempt is reused, so a second Pay click never opens a second charge.
+  **Before a reused attempt (or the attempt of a replayed key) is opened again, the provider is asked for its status** through
+  the same `reconcile` path as the callback, because the payer may have paid and closed the tab before the return or the
+  callback was processed: `PAID` in the window is held and the click answers 409 "Already paid" (no new checkout); `PENDING`
+  reopens the same checkout; `FAILED` opens a fresh attempt; a provider error answers 502 and opens nothing, so a second charge
+  can't follow. An attempt created by this very call is not asked about. A replayed key is also re-checked under the lock
+  (campaign still `AWAITING_PAYMENT`, window open, attempt still `PENDING`) before the provider is called, so a replay after
+  expiry is refused (409). Timer B is unchanged: it never calls the provider.
+- **Confirming a payment** (`reconcile`): the callback, the return and the sweep only ask Flavors to check the status. The
+  provider's answer is what counts. A payment that is already `SUCCEEDED` needs no provider call. Otherwise the status is queried
+  outside any transaction, then applied under the campaign row lock (the same lock as EEC-43, `findByIdForUpdate`). `PAID` in the
+  window marks the attempt `SUCCEEDED`, the escrow `HELD` (`held_at`) and the campaign `ACTIVE`, and notifies both sides
+  (`ESCROW_HELD`). `FAILED` marks the attempt `FAILED` and leaves the campaign `AWAITING_PAYMENT` (EX-F7.1.1: the brand retries with
+  a new key). A repeat or a concurrent answer finds the payment already recorded and changes nothing (TC-F7.1.4, EX-F7.1.3).
+- **Timer B** (`PaymentDeadlineExpirationJob` → `expireOverduePayments`, `flavors.payment.deadline-expiration-cron`, default every
+  minute, zone `Asia/Beirut`): expires `AWAITING_PAYMENT` campaigns whose `payment_deadline` has passed and whose escrow is not `HELD`.
+  It works strictly on the deadline and never asks the provider, so it runs even when Whish is down. Open attempts are marked
+  `FAILED`, both sides get `CAMPAIGN_PAYMENT_EXPIRED`, and the audit log has `PAYMENT_WINDOW_EXPIRED`. Each campaign runs in its own
+  transaction, under the same lock, so a payment and Timer B can't both win. A payment confirmed before the deadline is held by the
+  normal reconcile path (callback, return or sweep) and Timer B then leaves the campaign alone.
+- **Reconciliation sweep** (`PaymentReconciliationJob`, every 5 minutes): asks the provider about payments still `PENDING` for
+  campaigns that are still `AWAITING_PAYMENT`, once they are two minutes old. This covers a callback that never arrived.
+- **Known gap, for EEC-45:** a payment confirmed after the deadline (or on a campaign that is no longer waiting) is recorded as
+  `SUCCEEDED` but not held. The escrow stays `PENDING`, the audit log has `PAYMENT_NOT_HELD`, and the payer is told the payment was
+  received but not held (`payment=received`). A PAID answer after expiry is never held and never reported as held. Residual: a brand
+  that pays in the last minutes before the deadline can be charged without a campaign until EEC-45 adds refunds.
+- **Escrow is a Flavors ledger state.** The current Whish integration is collection-only; it implements no hold, refund or payout API. `HELD` means Flavors has recorded
+  money that Whish collected. Creator payout capability is unconfirmed while the virtual account application is pending.
+  EEC-45's proposed release/payout design is in section 20; account approval alone will not establish payout API access.
+- **Schema:** none added. `escrow_payment` and `payment_transaction` (V5) hold it all: the provider reference is unique,
+  so one confirmation matches one payment.
+- **Pages:** brand `/brand/campaigns/:id` shows **Awaiting payment** with the time left (TC-F7.1.5), the Pay button (a new
+  `Idempotency-Key` per click, then a redirect to the checkout), the escrow status, and the return notices. Creator
+  `/creator/campaigns/:id` shows the escrow status and that she is waiting for the brand. Both pages check again every 30 seconds
+  while the campaign is `AWAITING_PAYMENT`, so the status shows well inside the 1-minute target (NF-3). The escrow block is hidden
+  for an expired campaign that was never paid (`PENDING` is not shown then); no escrow status was added for it.
+- **Audit:** `PAYMENT_STARTED`, `PAYMENT_FAILED`, `ESCROW_HELD`, `CAMPAIGN_ACTIVATED`, `PAYMENT_WINDOW_EXPIRED`, `PAYMENT_NOT_HELD`.
+- **Tests:** `PaymentServiceImplIT` (TC-F7.1.1 to TC-F7.1.5, EX-F7.1.1 to EX-F7.1.3, idempotent start, concurrent confirmations,
+  payment vs Timer B race, sweep, visibility), `WhishPaymentProviderTest` (the adapter against a mocked HTTP server: headers,
+  paid only on exact `success`, pending on `status: false`, provider errors), `PaymentControllerTest` (roles, the key header,
+  callback and return, already-paid and provider-error answers), `PaymentRestartIT` and `PaymentStartActionTest` (a Pay click on an
+  attempt that may already be paid: paid at the provider with the tab closed, still waiting, ended, provider error, paid after the
+  window), frontend `CampaignPayment.test.tsx` and `timeLeft.test.ts`.
+- **Not built here:** the real Whish merchant integration. The paths and answer fields come from unofficial notes and are
+  configurable (`flavors.whish.create-path`, `status-path`). See the README for what the merchant account must provide.
+  Amount and currency must be verified once the official Whish spec is available: the status check does not compare them today.
+
+## EEC-35 — Brand view of a creator's verified portfolio
+
+A logged-in **BRAND** opens `/brand/creators/:creatorId/portfolio` from the creator search results.
+`App.tsx` guards this route using `RequireRole` and `AppShell`. The read-only React page
+`brand/CreatorPortfolioPage.tsx` loads `GET /api/brand/creators/{creatorId}/portfolio` through
+`apiFetch`/`useFetch` (same-origin session cookie). The backend `CreatorPortfolioController` delegates
+to `PortfolioViewService` / `PortfolioViewServiceImpl`, which assembles a
+`CreatorPortfolioResponse` DTO from the approved creator, connected social accounts, featured
+campaigns, tracked redemptions, and reviews. The browser never receives JPA entities.
+
+- **Access:** only logged-in brands may view approved creators; authorization and approval checks
+  are enforced server-side, not inferred from frontend labels.
+- **Verification:** a campaign result is verified only when its status is `COMPLETED` and it has
+  at least one tracked redemption. Unverified results are never given a verified badge. ROI is
+  displayed only when returned by the backend; null is shown as unavailable.
+- **Metrics:** each connected account's follower count, engagement rate and `lastPulledAt`
+  are shown together, so stale figures remain visibly dated. Monetary amounts are integer USD cents.
+- **Empty states:** no featured campaigns, no reviews and no social accounts each have an
+  explicit message; other portfolio sections remain visible. Failed requests show an error state.
+- **Tests:** frontend `CreatorPortfolioPage.test.tsx`; backend `CreatorPortfolioControllerTest`,
+  `PortfolioViewServiceImplIT` and `RoiTest`.
+
+## 18. Campaign delivery proof (UC-F5.1, EEC-46) - built
+
+The creator can prepare one draft for the campaign's current round, replace its links/screenshots, and submit it once.
+The campaign must be `ACTIVE`, or `CORRECTIONS_REQUESTED` for a later round. Submitting changes it to `PROOF_SUBMITTED`
+and sets Timer C to five days from the submission. A proof holds at most 10 links. Screenshots are optional unless the
+brand ticked **Ask for screenshots with the proof** on the campaign form (`campaign.screenshots_required`, V9, frozen with
+the other terms when the campaign is sent); then a final submission needs at least one (FR-F5.1). There may be at most
+five, each at most 5 MiB; the declared content type must match a PNG, JPEG, GIF or WebP signature, and the file must be
+a complete, undamaged image of at most 25 megapixels (see image checks below). SVG is deliberately refused.
+
+| Method and path | Who | What |
+|---|---|---|
+| `GET /api/creator/campaigns/{campaignId}/proof` | assigned CREATOR | All submitted versions plus her current draft |
+| `PUT /api/creator/campaigns/{campaignId}/proof/draft` | assigned CREATOR | Save multipart `proof` JSON and optional `files`; null fields keep existing values and empty lists clear them |
+| `POST /api/creator/campaigns/{campaignId}/proof/submit` | assigned CREATOR | Validate and freeze the current round as a submitted version; returns 201 |
+| `GET /api/brand/campaigns/{campaignId}/proof` | owning BRAND | Submitted versions only; never the draft |
+| `GET /api/admin/campaigns/{campaignId}/proof` | ADMIN | Submitted versions only |
+| `GET /api/proof-files/{fileId}` | authorized CREATOR, BRAND or ADMIN | Proxy one private screenshot after ownership/state checks |
+
+- **Who sees what:** a creator sees a campaign's proof only once it is sent to her: like her campaign pages (§16), a
+  campaign still in `DRAFT` that already names her answers 404 on every creator proof endpoint (read, save, submit,
+  screenshot download), exactly like someone else's campaign or an unknown id (NF-1).
+- Draft saves and final submission take the campaign row lock (`CampaignRepository.findByIdForUpdate`), the same lock the
+  request answers and payments use, so they run one after the other. Database partial unique indexes still enforce one
+  draft and one submitted version per round if two app instances receive the same operation.
+- A final submission requires at least one absolute HTTP(S) link, and every row must be one: a blank row next to a valid
+  link is refused, not dropped (EX-F5.1.2). Drafts may be incomplete. Every submitted row is immutable through this API
+  and later correction rounds create new rows, so earlier versions are retained.
+- **Image checks** (`ProofImageIntegrity`, after the signature check). A valid signature says nothing about the rest of
+  the file, so: PNG chunks are walked to `IEND` with every CRC checked, then the image is decoded; JPEG is decoded and
+  any decoder warning (a missing end marker, a short data segment) counts as damage; GIF blocks are walked to the trailer
+  and the first frame is decoded; WebP has no JDK decoder, so its RIFF size, every chunk length and the VP8/VP8L/VP8X
+  header are checked, and the data the header announces must follow it (a VP8 frame's first partition and token data,
+  VP8L image data, the image inside each animation frame), so a header-only file is refused. Damage that still decodes
+  cleanly cannot be seen (JPEG has no checksums, and WebP data is not
+  decoded). Resource limits: the size is read from the header and refused above 25 megapixels before any decoding;
+  decoding subsamples to at most 1024 pixels per side, skips metadata (compressed text chunks are never inflated),
+  reads from memory (no temporary files), and at most two uploads are decoded at a time.
+- `DeliveryProofMapper` converts the proof rows into `DeliveryProofResponse` (the mapper rule in §3); the service only
+  decides which versions each role may see.
+- `PROOF_DRAFT_SAVED` and `PROOF_SUBMITTED` are written through the append-only audit log in the same transaction.
+- Screenshot metadata is transactional PostgreSQL data. Bytes use `ProofFileStorage`: filesystem under the `dev` and test
+  profiles, and a private S3-compatible Railway Bucket elsewhere. New objects are removed after a database rollback; replaced
+  draft objects are removed only after commit. An unknown commit outcome keeps the objects to avoid losing evidence.
+  Submitted objects have no delete endpoint.
+- API responses expose an authenticated download URL, never the storage key. Downloads use `Cache-Control: no-store`,
+  `Content-Disposition: inline` and `X-Content-Type-Options: nosniff`.
+- **Pages:** both campaign pages show the proof from `ACTIVE` on (`showsProof` in `api/proof.ts`), as their own components
+  so the pages only gain one block each. The creator's `CreatorProofSection` edits the round's draft: up to 10 link rows
+  and a dropzone for screenshots, checked in the browser first (type, 5 MB, at most 5). A screenshot is saved as soon as
+  it is uploaded, as the design's dropzone says; every save also sends the links on screen, so nothing typed is lost.
+  **Send proof** asks for a confirmation inline, like the admin's reject form, then shows Timer C (`ReviewTimer`,
+  redrawn every minute until it ends). Before that it
+  refuses an empty or invalid row and marks it, and asks for a screenshot when the campaign requires one. A correction
+  round starts from the last version's links (screenshots are uploaded again). The brand's `BrandProofSection` is
+  read-only and checks for a new version every 30 seconds while one can arrive (`ACTIVE`, `CORRECTIONS_REQUESTED`), so
+  a sent version shows within a minute without a reload (FR-F5.5); when the status changes the page reloads its header.
+  Both list the sent rounds newest first with `ProofRounds`; only the newest starts open. `apiFetch` sends a `FormData`
+  body unchanged so the browser sets the multipart boundary.
+- **One campaign at a time:** both sections are keyed by the campaign id, so opening another campaign (same route,
+  new id) starts them from scratch, and an answer that arrives after leaving (a save, a send, a check) is ignored
+  instead of being shown on, or reported to, the next campaign. The brand page also drops a `campaignOverride` that
+  belongs to another campaign.
+- Tests: `DeliveryProofControllerTest`, `DeliveryProofServiceImplTest` (including required and optional screenshots),
+  `ProofImageValidatorTest` (real images of each type; cut off anywhere, damaged chunks, damaged data with valid
+  checksums, broken WebP headers, header-only WebP files, too many pixels, the 25-megapixel edge),
+  `FileSystemProofFileStorageTest`, `S3ProofFileStorageTest`, and `DeliveryProofServiceImplIT` (draft privacy, final
+  submission/Timer C, invalid and blank links, required screenshots, version retention, ownership, transactional
+  object cleanup, concurrent submission, limits and content validation, a cut-off screenshot leaves nothing stored);
+  `BrandCampaignControllerTest` and `CampaignServiceImplIT` for the campaign setting; `CreatorProofVisibilityIT` (a
+  draft naming the creator answers on every creator proof and review endpoint exactly like an unknown campaign).
+  Frontend `CreatorProofSection.test.tsx` (blank rows, required screenshots, a clean form and ignored late answers
+  after switching campaigns), `BrandProofSection.test.tsx` (the 30-second check, navigating between campaigns, a late
+  check), `CampaignFormPage.test.tsx` (the checkbox), `ReviewTimer.test.tsx` (the countdown moves while the page is
+  open), `client.test.ts` (FormData) and `timeLeft.test.ts`.
+  `CampaignPayment.test.tsx` and `CreatorCampaignDetailPage.test.tsx` stub the proof section, since they test payment
+  and the request answer only.
+
+## 19. Campaign delivery review (UC-F6.1, EEC-47) - built, payment follow-ups deferred
+
+This increment depends on EEC-46. It implements review decisions and correction rounds, backend and pages, not the
+payment/dispute stories. V5 already owns `proof_review`, so no new migration is required.
+
+| Method and path | Who | What |
+|---|---|---|
+| `POST /api/brand/campaigns/{campaignId}/proof/{submissionId}/review` | owning BRAND | JSON `{decision, reason}`; decision is `APPROVED`, `CORRECTIONS_REQUESTED` or `REJECTED`; returns 200 including on an identical retry |
+| `GET /api/brand/campaigns/{campaignId}/proof/reviews` | owning BRAND | Agreement (dates, content requirements, screenshots required, platform/type/count), decision history and available decisions for the latest final submission |
+| `GET /api/creator/campaigns/{campaignId}/proof/reviews` | assigned CREATOR | Read-only agreement/history, including correction/rejection reasons |
+| `GET /api/admin/campaigns/{campaignId}/proof/reviews` | ADMIN | Read-only agreement/history |
+
+- Proof links/images remain at the EEC-46 endpoints. The brand checks them manually against the agreement; this API
+  does not claim to verify posts on an external platform. The agreement is read from the `Campaign` entity (dates,
+  content requirements, the screenshot setting, deliverables) and converted by `ProofReviewMapper.toAgreement`, like
+  every other response (the mapper rule in §3); this story does not edit campaign terms.
+- The decision loads the campaign with `CampaignRepository.findByIdAndBrandIdForUpdate`, which filters by the owning brand,
+  so another brand cannot lock the campaign. It is the same row lock as EEC-46 and the request answers, and a new decision
+  is accepted only on the latest submitted version while its campaign is `PROOF_SUBMITTED` and the current time is
+  strictly before Timer C.
+- A correction request increments `correction_rounds_used`, sets `CORRECTIONS_REQUESTED`, and clears the old deadline.
+  EEC-46 then accepts a new final submission and starts a fresh five-day deadline. After two correction requests, only
+  approve/reject remain available. Every review and submitted version is retained.
+- A rejection requires a non-blank reason. Reasons are trimmed and limited to 2000 characters. Correction reasons are
+  optional under the current acceptance criteria. Missing decisions and oversized reasons return field errors (400);
+  inaccessible proofs return 404; a stale/expired/contradictory decision returns 409.
+- One review per submission is enforced by V5's unique constraint. Identical retries return the original row, even after
+  its deadline or a later round, without repeating the audit or consuming another correction round. A different decision
+  or reason for the same submission is refused. Audit actions (`PROOF_APPROVED`, `PROOF_CORRECTIONS_REQUESTED`,
+  `PROOF_REJECTED`) commit with the review and campaign change.
+- Decision timestamps are normalized to PostgreSQL microseconds before persistence, so an identical retry returns the
+  same timestamp. The deciding user's id stays in the database and audit log; review responses do not expose it.
+- **Pages:** the brand's `BrandProofSection` also loads the reviews. `ProofReviewPanel` shows only while the backend lists
+  decisions: Timer C, the agreement to check against, and Approve / Request corrections / Reject, each confirmed
+  inline (a rejection needs a reason; a correction note is optional). After a decision the section and the page header
+  reload. Both sides show the decision on the newest version with `ProofOutcome`, matched against the versions on screen
+  so a version sent a moment ago never shows an older decision, and `ProofRounds` marks each round with its decision and
+  reason. Because the campaign stays `PROOF_SUBMITTED` after approve/reject, `ProofOutcome` says what happened and that
+  release or a dispute is not available yet, instead of relying on the status chip. If the creator's reviews can't be
+  loaded, the proof form still works without them.
+- **Kept current:** with reviews, the brand's view also changes from outside the page: a decision made in another tab
+  or session can ask for corrections, which leads to a new version. So `BrandProofSection` checks every 30 seconds while
+  the campaign is `ACTIVE`, `PROOF_SUBMITTED` or `CORRECTIONS_REQUESTED` (not only while a version can arrive, as in
+  §18), and stops once nothing can change (`COMPLETED`, `DISPUTED` and the other end states).
+- **Creators:** the reviews endpoint follows the same rule as the proof (§18): a campaign still in `DRAFT` answers 404
+  to the creator it names, so its agreement is not shown before it is sent.
+- **Per version, per campaign:** `BrandProofSection` keys `ProofReviewPanel` by the version under review, so its
+  state (the choice, the reason, "decided") belongs to that version: when the creator sends a corrected version, the
+  controls come back for it. The section itself is keyed by the campaign (§18). Its reloads (the 30-second check from
+  §18, and the one after a decision) are numbered and only the newest answer is shown, so an older answer that arrives
+  late can't replace a newer one. A decision that finishes after the brand has left is not reported to the page.
+
+**Deferred integration, not a completed financial workflow:** approval/rejection clears Timer C but leaves the campaign
+`PROOF_SUBMITTED` while the required follow-up is pending. `ProofReviewResponse.requiredFollowUp` is `RELEASE_PAYMENT`,
+`FREEZE_PAYMENT_AND_OPEN_DISPUTE`, or `RESUBMIT_PROOF`. The saved `proof_review` is the durable decision record; it is
+not a successful payout/dispute. EEC-45 Step 3 now creates a durable release operation and authorization audit atomically
+with approval (see section 20), and identical approval retries repair legacy missing operations. Step 5
+freezes escrow atomically with rejection. Step 6 can confirm explicitly simulated payouts and complete campaigns.
+There is no real payout adapter or dispute creation/`DISPUTED` transition. Real payout capability and EEC-54
+dispute processing remain pending before this flow is complete end to end with real funds.
+
+`ProofReviewService.findOverdueCampaignIds()` supplies at most 100 unanswered, overdue current submissions for the
+Timer C authorization job (section 20). It excludes reviewed versions, existing operations, ineligible escrow,
+historical rejections, and campaigns in `CORRECTIONS_REQUESTED`, even if an old deadline remains.
+Each candidate must be locked and rechecked; this method is only a read snapshot. Step 4 authorizes release
+automatically but does not transfer funds. The financial/dispute portions of TC-F6.1.1/TC-F6.1.4 remain pending.
+
+Tests: `ProofReviewServiceImplTest` and `ProofReviewControllerTest` cover the decision rules, retry behavior, privacy,
+role/CSRF guards, validation and deadline boundaries without Docker. `ProofReviewQueryTest` validates Hibernate query
+translation without a database. `ProofReviewServiceImplIT` covers PostgreSQL mappings,
+persisted decisions/audit, the complete correction/resubmission cycle, concurrent decisions, agreement reads (including
+the screenshot setting), overdue filtering, and approval and rejection each recorded within five seconds (FR-F6.6).
+`ProofReviewApiIT` times both decisions through the whole HTTP stack (security, JSON, controller, PostgreSQL). CI must
+run the integration suite; test timings alone do not establish NF-4 in production. Frontend: `BrandProofSection.test.tsx`
+(agreement, each decision and its confirmation, reason rules, the last round, an expired review time, fresh controls
+for a corrected version, a decision that finishes after navigating, an open page kept current while corrections are
+requested in another session and the creator resends) and `CreatorProofSection.test.tsx` (correction
+reason and rounds left, approval and rejection notes, missing reviews).
+
+## 18. Follower offer (UC-F10.1) — built
+
+The brand sets up the discount the creator's followers get at the restaurant (EEC-41). There is **one offer per campaign**
+(`offer.campaign_id` is unique, V4), linked to the campaign and, through it, to the creator.
+
+| Method and path | What |
+|---|---|
+| `GET /api/brand/campaigns/{id}/offer` | The offer, or **204** when none has been set up yet |
+| `PUT /api/brand/campaigns/{id}/offer` | Sets up the offer, or replaces all its conditions (the same call does both) |
+
+Both are under `/api/brand/**` (BRAND only, CSRF on the PUT). Another brand's campaign is 404, as in section 15.
+
+- **Body** (`OfferRequest`): `discountPercent`, `expiresOn` (the last day it works, `"2030-02-01"`), `validDays` (`["MONDAY", ...]`),
+  `validFrom` and `validTo` (`"14:30"`), `allBranches`, `branchIds`, `minPurchaseCents`, `maxRedemptions`, `perPersonLimit`.
+  The four numbers are bound as `BigDecimal`, so they reach the checks exactly as sent: as `Integer`, Jackson would cut `100.9` down
+  to `100` before the range check. Only whole numbers are accepted (`20` or `20.0`); a fraction gets a field error.
+- **Creator first (FR-F10.1):** the offer is linked to the campaign and its creator. A draft can be saved with a name only, so a
+  campaign without a creator answers **409** "Creator required", and the page shows "Choose the creator first" with a link to the
+  draft. The draft form shows the offer link only once a creator is chosen.
+- **Rules** (`OfferServiceImpl`). Required: a discount from 1 to 100 (EX-F10.1.3) and an expiry that is today or later ("today" in
+  `flavors.campaign.zone`, default `Asia/Beirut`). Everything else has a default: every day; all day (both hours empty; one alone is
+  refused, and the end must be after the start, so hours past midnight are not supported yet; whole minutes only, since the page shows
+  hours and minutes and seconds would be lost on the next save); all branches (or one or more of the
+  brand's **own** branches, EX-F10.1.2); no minimum bill (0 or more); no maximum (1 or more); **one use per person** when no limit is
+  given (EX-F10.1.1; at most 100).
+- **Expiry:** the offer works through the whole expiry day, so `expires_at` = the next midnight in `Asia/Beirut`.
+- **Field errors:** **400** `ProblemDetail` titled "Invalid offer" with `errors` (field name → message), every wrong field at once,
+  like "Invalid campaign". Nothing is saved.
+- **When it can change:** while the campaign is `DRAFT`, `AWAITING_CREATOR_RESPONSE`, `COUNTERED` or `AWAITING_PAYMENT`. After that
+  diners may hold QR codes for it, so a change answers **409** "Offer locked". The save locks the campaign row (`findByIdAndBrandIdForUpdate`,
+  the lock the payment takes to activate it), so an offer change and the activation can't overlap: a change that waited for the
+  activation then sees `ACTIVE` and is refused. The same lock makes two first saves run one after the other, so the second updates the
+  offer instead of inserting a second one.
+- **Optional at send:** a campaign can be sent without an offer. Whether Send should require one is an open question for the team.
+- **Is it live (FR-F10.4)?** Worked out on every read, never stored (`OfferState`), in this order: `ENDED` (the campaign is completed,
+  cancelled, removed, rejected, declined or expired), `EXPIRED` (past `expires_at`), `FULL` (redemptions reached the maximum), `LIVE`
+  (campaign `ACTIVE` only, as FR-F10.4 and V4 say), `IN_REVIEW` (campaign `PROOF_SUBMITTED` or `CORRECTIONS_REQUESTED`: the creator
+  has posted, the campaign never goes back to `ACTIVE`, so the offer has stopped), `PAUSED` (campaign `DISPUTED`), otherwise
+  `NOT_LIVE_YET`.
+  The response also carries `redemptions` (rows in `redemption`) and `editable`. The claim and redemption stories (UC-F10.2, UC-F11.1)
+  must check the same state, plus the day, hours, branch, minimum bill and per-person limit.
+- **Code:** `Offer` (entity, `@ElementCollection` for `offer_branch`; `valid_days` is the V4 bitmask, Monday = 1 ... Sunday = 64, every
+  day = 127), `OfferRepository`, `OfferMapper`, `BrandOfferController`, and `OfferExceptionHandler` (its own advice, so it does not touch
+  `GlobalExceptionHandler`). No migration: V4 already has the tables.
+- **Audit:** `OFFER_CREATED`, `OFFER_UPDATED` (entity `campaign`, with the offer id and discount).
+- **Page:** `/brand/campaigns/:id/offer` (`OfferPage`): discount, last day, days, hours, branches, minimum bill (typed in dollars, sent
+  as cents), maximum uses and uses per person, with the server's messages under each field. Read-only once the campaign is active or
+  over, with the live state and how often it was used. Linked from the campaign page and from a saved draft. Each load is marked with
+  its campaign, so moving to another campaign's offer shows "loading" until that campaign's offer arrives, never the previous one;
+  the fields are locked while a save is on its way. An open page reads the offer again every minute and when the brand comes back
+  to the tab, so its state stays current; only the status is refreshed, never what the brand is typing.
+- **Tests:** `OfferServiceImplIT` (TC-F10.1.1 to TC-F10.1.4, EX-F10.1.1 to EX-F10.1.3, every field rule, fractions refused, a
+  name-only draft, saving again, the lock after `ACTIVE`, two first saves at once, a change during activation, other brands, and
+  the live states on the real database), `OfferServiceImplTest` (the state for every campaign status, the day bits),
+  `BrandOfferControllerTest` (roles, CSRF, JSON, raw `100.9` reaching the checks uncut, 204, error bodies); frontend
+  `OfferPage.test.tsx` (including moving between two campaigns' offers, the fields locked while saving, no creator yet, and the
+  status refreshed on an open page).
+
+## 20. Escrow release and creator payout (UC-F7.2, EEC-45) — simulation built, real payouts blocked
+
+The updated sprint boundary and implementation contract are documented in
+[EEC-45-release-payout-design.md](EEC-45-release-payout-design.md). Step 2 adds V10's durable release
+operation, entity/repository, and persistence tests. Step 3 adds `EscrowReleaseService` / implementation,
+approval authorization in the review transaction, and explicit recovery of legacy approved reviews.
+Step 4 adds automatic deadline authorization; Step 5 freezes escrow after rejection. Step 6 executes
+and reconciles explicitly simulated payouts. Production payouts remain disabled.
+
+- Approval or an unanswered five-day deadline authorizes a durable release operation. Both paths use
+  the same campaign lock, immutable fee/net snapshot, and one-operation-per-escrow identity.
+- `RELEASED` retains its V5 meaning: confirmed creator payment. Authorization and provider acceptance
+  leave escrow `HELD`, with separate payout status; only authoritative confirmation completes payout.
+- EEC-45 is Sprint 2; EEC-54 is Sprint 3. Step 5 records rejection and freezes escrow atomically.
+  The existing persisted rejection review is EEC-54's input. No dispute-opening service, handoff table,
+  dispute migration, evidence, or resolution is added. Dispute creation and the `DISPUTED` campaign
+  transition are deferred to EEC-54; Sprint 2 leaves the rejected campaign `PROOF_SUBMITTED` with frozen funds.
+- Payout submission/status calls run outside database transactions. Unknown outcomes require reconciliation
+  before retry; database idempotency alone cannot guarantee an external transfer occurs only once.
+- Whish virtual account approval is pending. Payout/transfer/refund/status-query capabilities and the
+  two-business-day settlement target are unconfirmed. Collection settings must not enable payouts.
+- Development and tests may explicitly enable the separate simulated payout adapter; production payouts remain disabled.
+  V10 adds `escrow_release_operation` only, with unique escrow/operation keys, immutable fee/net snapshots,
+  source/review checks, provider references, timestamps/leases/counters, and guarded payout-state transitions.
+  It never changes escrow itself. Step 3 uses the campaign lock and unique operation identity to prevent
+  duplicate authorizations; review, authorization and audits commit or roll back together. Recovery scans
+  eligible legacy approvals in keyset batches and rechecks each under the campaign lock in its own transaction.
+  No provider, worker, API change, or freezing orchestration is implemented in Step 3.
+
+Step 4 adds `EscrowReleaseDeadlineJob`, `EscrowReleaseProcessingService` / implementation, and
+`EscrowReleaseService.authorizeOverdue`. The job runs every minute by default in `Asia/Beirut`, using
+`flavors.escrow.release-deadline-cron` / `flavors.escrow.release-deadline-zone` (cron `-` disables it).
+Each invocation handles at most 100 candidates from the existing overdue query. The batch holds no
+transaction; each candidate runs in a separate `REQUIRES_NEW` transaction through the release-service
+proxy. Failure rolls back only that campaign and leaves it discoverable for a later run.
+
+Timer C locks the same campaign row as reviews/submissions, then checks the latest current submitted
+round, deadline <= current time, no current decision or historical rejection, `HELD` escrow with the
+agreed amount, and no existing release. Approval and Timer C share authorization creation, the entity's
+15% fee/net snapshot, and `ESCROW_RELEASE_AUTHORIZED` audit (source `APPROVAL` or `TIMER_C`). Timer C
+atomically clears the completed deadline and stores no brand review. Concurrent scans serialize under
+the campaign lock; unique escrow/operation keys provide the persistence backstop. Corrections cancel
+the old cycle; resubmission retains its fresh five-day window. No payout, escrow transition, freezing,
+dispute, API, or frontend change belongs to Step 4.
+
+`EscrowReleaseTimerCTest`, `EscrowReleaseDeadlineJobTest`, and PostgreSQL `EscrowReleaseTimerCIT`
+cover deadline boundaries, correction/resubmission cycles, repeated and concurrent runs, approval races,
+ineligible escrow, bounded batches, audit rollback, failure isolation, and restart recovery.
+
+Step 5 adds `EscrowReleaseService.freezeForRejection`, invoked by the existing review endpoint for a
+new rejection and an identical retry. The method requires the review transaction (`MANDATORY`),
+reuses the campaign lock, verifies latest/current proof and the owning brand's persisted rejection,
+and refuses any existing release operation. It uses the existing escrow lookup after locking and
+the guarded `EscrowPayment.freeze` transition. Review, deadline clearing, `PROOF_REJECTED` audit,
+escrow `HELD` -> `FROZEN`, and `ESCROW_FROZEN` audit commit or roll back together.
+
+Frozen retries change neither timestamps nor audit; retrying a legacy rejection can repair held
+escrow without duplicating its review. New rejections retain existing endpoint ownership and deadline
+checks. Timer C and rejection serialize on the campaign lock: a committed rejection prevents
+authorization, and a committed expiry closes manual review. Release guards exclude rejected/frozen
+escrow. No payout execution, dispute creation, frontend, API display, or migration change is added.
+The persisted rejection and frozen escrow remain discoverable by EEC-54; campaign stays
+`PROOF_SUBMITTED`. `EscrowFreezingIT` covers rollback on audit/update failures, idempotency, ownership,
+history, and Timer C races; entity/service tests and the existing HTTP test verify freezing too.
+
+Step 6 adds a separate `PayoutProvider` port, `PayoutRequest`/`PayoutResult`, `PayoutConfig`,
+`SimulatedPayoutProvider`, `UnavailablePayoutProvider`, `EscrowPayoutService` / implementation,
+and `EscrowPayoutJob`. Collection settings cannot enable payouts. `FLAVORS_PAYOUT_MODE` defaults to
+`disabled`; explicit `simulated` requires dev/test and is rejected in prod/production, including mixed
+profiles. No real adapter or beneficiary onboarding exists. FR-F7.12 remains pending verified external
+payout capability and confirmation of the two-business-day SLA. Simulation never transfers real money.
+
+The worker selects up to 100 due operations per minute (cron/zone `flavors.payout.processing-cron` /
+`flavors.payout.processing-zone`, default `Asia/Beirut`, cron `-` disables it). It prepares in one short
+transaction, invokes the provider without a transaction, and applies results in another transaction.
+Preparation uses database idempotency then campaign/operation locks, checks eligibility, pins the
+destination/provider and one net `RELEASE` transaction, and persists `UNKNOWN` with a two-minute UUID
+lease before dispatch. The external reference remains the immutable operation key across attempts.
+Fees/net are copied from the stored snapshot, never recalculated.
+
+Pending acknowledgement does not release funds. Unknown/expired-lease work only queries; a query timeout
+or ambiguous missing result never permits resubmission. Backoff is one minute. Only definitive failure
+explicitly safe to retry can dispatch again, using the same logical operation/transaction. Results must
+match the request identity and active lease token. Confirmation atomically marks operation `CONFIRMED`,
+transaction `SUCCEEDED`, escrow `RELEASED` with snapshot amounts/timestamp, campaign `COMPLETED`, and audits.
+Each candidate is isolated; rollback after provider acceptance leaves the durable unknown claim for
+reconciliation. Payout audits and references explicitly identify simulation. No API/frontend change or
+notification is added in Step 6.
+
+The simulator ledger is in memory. A worker interruption can reconcile an accepted simulation while
+the ledger survives; losing that ledger leaves unknown operations held for inspection, without a blind
+retry or fabricated success. Production needs a verified durable provider lookup contract, credentials,
+destination onboarding, and SLA agreement before real payouts can be enabled.
+
+Step 7 extends the existing ownership-checked brand/creator escrow GET responses through `EscrowMapper`.
+It retains the old escrow fields and adds nullable snapshot fee/net, payout status, authorization source,
+authorization/submission/confirmation timestamps, simulation labelling, and a non-sensitive availability
+flag. Read-only repeatable-read transactions give one coherent escrow/operation snapshot. No provider
+reference/destination, operation key, lease, transaction ID, credential, or internal error is returned.
+There is no new public release endpoint or expansion of role/ownership access.
+
+Both campaign detail pages render the shared `EscrowPanel`: held funds without an operation, authorized,
+submitted, unknown/reconciling, failed, confirmed/released, frozen, and refunded states remain distinct.
+Fee/net are stored snapshot values; simulation is explicitly labelled as no real transfer. Review approval
+now says release authorized, and rejection says frozen with dispute handling deferred to Sprint 3 EEC-54.
+`showsEscrow` retains terminal/frozen records. No provider behavior or production enablement changes.
+
+Campaign pages remount on campaign ID changes; the panel also keys state by viewer/campaign. Late answers
+are ignored on unmount or changed refresh dependencies. Visible unfinished escrow refreshes every 30
+seconds and on focus/visibility, without overlapping calls; released/refunded network polling stops.
+Review actions refresh immediately and job-driven escrow status changes refresh the campaign header.
+Errors preserve last-known data with a stale-data warning. The UI never equates authorization with receipt.
+
+## EEC-75 — Admin TOTP two-step verification (implementation candidate)
+
+- **Requirement:** FT-71/NF-10. Admins must complete a second factor before accessing admin functions.
+- **Password stage:** `POST /api/public/auth/login` validates credentials. For ADMIN accounts it returns
+  `{ "mfaRequired": true, "enrolled": boolean }` and stores an unprivileged, five-minute challenge
+  in the server-side Spring Session; it does **not** issue a fully authenticated session.
+- **Enrollment:** `POST /api/public/auth/mfa/enroll/start` returns a one-time TOTP secret in manual/Base32
+  and `otpauth://` form. `POST /api/public/auth/mfa/enroll/confirm` validates a six-digit code,
+  encrypts the secret using AES-256-GCM and stores ten randomly generated recovery-code hashes.
+  Recovery codes are displayed **once**. The enrollment session is password-verified but not admin-authenticated.
+- **Authentication:** `POST /api/public/auth/mfa/verify` checks a TOTP code in a narrow ±1-step
+  clock-skew window and atomically advances `last_used_step`, rejecting reuse.
+  `POST /api/public/auth/mfa/recovery` atomically consumes a single-use recovery code.
+- **Authorization:** Full admin sessions have `ROLE_ADMIN_MFA` in addition to `ROLE_ADMIN`.
+  All `/api/admin/**` endpoints require `ROLE_ADMIN_MFA`; previously issued sessions containing
+  only `ROLE_ADMIN` cannot bypass this check.
+- **Brute-force defense:** A pending challenge expires in five minutes and permits up to five
+  local verification attempts. A PostgreSQL-backed attempt counter additionally limits guesses
+  across sessions to five per fifteen minutes per admin. The normal password login's rate limits
+  should be reviewed separately before staging rollout.
+- **Storage:** Flyway V13 creates `admin_mfa`, `admin_mfa_recovery_code`, and
+  `admin_mfa_attempt`. Existing migrations remain unchanged. The AES encryption key must
+  be supplied through `FLAVORS_ADMIN_MFA_ENCRYPTION_KEY` (32 random bytes, Base64-encoded).
+  Never include the key, TOTP secret, or recovery codes in source control or logs.
+- **Deployment safety:** Activate in staging with a tested administrator and stored recovery codes;
+  confirm password-only admin sessions get 403, normal brand/creator login still works, and
+  invalid/replayed codes fail. Do not roll out to production until recovery and account-lockout
+  procedures are approved. An admin who loses both authenticator and codes needs an independently
+  authorized, audited manual recovery process, not a password-only bypass.

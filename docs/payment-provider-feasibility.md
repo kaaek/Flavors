@@ -4,6 +4,18 @@
 **Task:** SPIKE-2 — Payment Provider Research  
 **Decision:** CONDITIONAL GO — MontyPay
 
+> **Current EEC-45 status (17 November 2026):** Whish is the intended provider and Flavors' virtual account application
+> is pending approval. Creator payouts/transfers, refunds, status queries, automated settlement, and settlement within
+> two business days remain unconfirmed. Account approval alone does not establish payout API access. Development/tests
+> will use simulated payouts; actual production payouts remain disabled. See
+> [the Step 1 release/payout design](EEC-45-release-payout-design.md) for the proposed contract and rollout gates.
+> The MontyPay decision and fallback discussion below are historical research, not authorization to implement a real
+> payout adapter or an operational manual payout process.
+
+> **Superseded (EEC-44):** the captain chose Whish Money instead of MontyPay, because the team has Whish accounts and it is
+> easier to test. The provider is now behind the `PaymentProvider` port. See [Architecture.md §17](Architecture.md#17-pay-and-hold-the-campaign-payment-uc-f71--built)
+> and [README.md](README.md#whish-money-payments-eec-44). The findings below are the research record, not the current choice.
+
 ## 1. Objective
 
 Investigate payment providers capable of supporting USD card payments, payment holding, refunds, and creator payouts in Lebanon within two business days. The research supports the payment workflows defined in UC-F7.1, UC-F7.2, and UC-F8.1.

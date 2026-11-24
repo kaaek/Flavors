@@ -6,6 +6,7 @@ import com.flavors.entity.SocialPostMetric;
 import com.flavors.enums.SocialAccountStatus;
 import com.flavors.exception.CreatorProfileMissingException;
 import com.flavors.exception.SocialAccountNotFoundException;
+import com.flavors.exception.SocialAccountRemovalNotAllowedException;
 import com.flavors.exception.SocialAccountTakenException;
 import com.flavors.exception.SocialConnectionUnavailableException;
 import com.flavors.exception.SocialPlatformException;
@@ -92,14 +93,16 @@ class SocialAccountServiceImpl implements SocialAccountService {
         }
         // Flushed now: the token is written with plain SQL, so the row must already exist. A reconnect takes the
         // account lock, so a pull that started with the old token can't write its result over the new connection.
-        SocialAccount account = existing.isPresent()
-                ? accounts.lockById(existing.get().getId()).orElseThrow(SocialAccountNotFoundException::new)
-                : accounts.saveAndFlush(new SocialAccount(creatorId, InstagramClient.PLATFORM, snapshot.externalId()));
+        Optional<SocialAccount> reconnecting = existing.isPresent()
+                ? accounts.lockById(existing.get().getId())
+                : Optional.empty();
+        SocialAccount account = reconnecting.orElseGet(
+                () -> accounts.saveAndFlush(new SocialAccount(creatorId, InstagramClient.PLATFORM, snapshot.externalId())));
 
         storeFigures(account, snapshot, Instant.now());
         tokens.store(account.getId(), cipher.encrypt(token));
 
-        auditLogger.record(existing.isPresent() ? "SOCIAL_ACCOUNT_RECONNECTED" : "SOCIAL_ACCOUNT_CONNECTED",
+        auditLogger.record(reconnecting.isPresent() ? "SOCIAL_ACCOUNT_RECONNECTED" : "SOCIAL_ACCOUNT_CONNECTED",
                 "social_account", account.getId(),
                 Map.of("platform", InstagramClient.PLATFORM, "followers", snapshot.followers()));
         return mapper.toResponse(account);
@@ -113,12 +116,38 @@ class SocialAccountServiceImpl implements SocialAccountService {
 
     @Override
     public void disconnect(long creatorId, long accountId) {
-        SocialAccount owned = accounts.findByIdAndCreatorId(accountId, creatorId)
-                .orElseThrow(SocialAccountNotFoundException::new);
-        SocialAccount account = accounts.lockById(owned.getId()).orElseThrow(SocialAccountNotFoundException::new);
+        SocialAccount account = lockOwned(creatorId, accountId);
         account.markNeedsReconnection();
         tokens.clear(account.getId());
         auditLogger.record("SOCIAL_ACCOUNT_DISCONNECTED", "social_account", account.getId());
+    }
+
+    /**
+     * Refused (409) unless the account is still 'Needs reconnection' and has no campaign results. The account is
+     * locked before anything is read, so the status checked is the committed one: a reconnect that committed a
+     * moment ago is seen, and the account is kept.
+     *
+     * <p>Invariant: any writer that links a post to a campaign ({@code SocialPostMetric.campaignId}) must take
+     * {@code accounts.lockById} for that account first. The campaign check below and the delete after it are two
+     * statements; without that lock, a link committed in between would be deleted silently.
+     */
+    @Override
+    public void remove(long creatorId, long accountId) {
+        // Locked like disconnect, which serializes this against the pull's write. A pull still running is not
+        // waited for; its write then finds the account gone.
+        SocialAccount account = lockOwned(creatorId, accountId);
+        if (account.getStatus() != SocialAccountStatus.NEEDS_RECONNECTION) {
+            throw new SocialAccountRemovalNotAllowedException("Disconnect this account before removing it.");
+        }
+        if (postMetrics.existsBySocialAccountIdAndCampaignIdIsNotNull(account.getId())) {
+            throw new SocialAccountRemovalNotAllowedException(
+                    "This account has results from campaigns, so it cannot be removed.");
+        }
+        // The figures first: they point to the account. The token column goes with the row.
+        postMetrics.deleteBySocialAccountId(account.getId());
+        postMetrics.flush();
+        accounts.delete(account);
+        auditLogger.record("SOCIAL_ACCOUNT_REMOVED", "social_account", account.getId());
     }
 
     /**
@@ -219,6 +248,16 @@ class SocialAccountServiceImpl implements SocialAccountService {
             auditLogger.record("SOCIAL_ACCOUNT_NEEDS_RECONNECTION", "social_account", account.getId(),
                     Map.of("reason", reason));
         }
+    }
+
+    /**
+     * The creator's own account, locked. Lock first and check the owner on the locked row: a plain load before the
+     * lock could return a status that a concurrent commit has already changed. Someone else's account is "not found".
+     */
+    private SocialAccount lockOwned(long creatorId, long accountId) {
+        return accounts.lockById(accountId)
+                .filter(a -> a.getCreatorId().equals(creatorId))
+                .orElseThrow(SocialAccountNotFoundException::new);
     }
 
     private void requireReady() {

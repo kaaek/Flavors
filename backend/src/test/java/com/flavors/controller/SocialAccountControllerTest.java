@@ -23,6 +23,7 @@ import com.flavors.enums.Role;
 import com.flavors.enums.SocialAccountStatus;
 import com.flavors.exception.CreatorProfileMissingException;
 import com.flavors.exception.SocialAccountNotFoundException;
+import com.flavors.exception.SocialAccountRemovalNotAllowedException;
 import com.flavors.exception.SocialAccountTakenException;
 import com.flavors.exception.SocialConnectionUnavailableException;
 import com.flavors.exception.SocialPlatformException;
@@ -213,6 +214,44 @@ class SocialAccountControllerTest {
         mvc.perform(delete("/api/creator/social/99").with(user(LARA)).with(csrf()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.title").value("Social account not found"));
+    }
+
+    // ---- Remove ----
+
+    @Test
+    void removeAnswers204() throws Exception {
+        mvc.perform(delete("/api/creator/social/3/remove").with(user(LARA)).with(csrf()))
+                .andExpect(status().isNoContent());
+
+        then(service).should().remove(7L, 3L);
+    }
+
+    @Test
+    void removingSomeoneElsesAccountAnswers404() throws Exception {
+        willThrow(new SocialAccountNotFoundException()).given(service).remove(7L, 99L);
+
+        mvc.perform(delete("/api/creator/social/99/remove").with(user(LARA)).with(csrf()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.title").value("Social account not found"));
+    }
+
+    @Test
+    void removingAnAccountThatMustStayAnswers409WithTheReason() throws Exception {
+        willThrow(new SocialAccountRemovalNotAllowedException("Disconnect this account before removing it."))
+                .given(service).remove(7L, 3L);
+
+        mvc.perform(delete("/api/creator/social/3/remove").with(user(LARA)).with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.title").value("Account cannot be removed"))
+                .andExpect(jsonPath("$.detail").value("Disconnect this account before removing it."));
+    }
+
+    @Test
+    void aBrandCannotRemoveAnAccount() throws Exception {
+        mvc.perform(delete("/api/creator/social/3/remove").with(user(KARIM)).with(csrf()))
+                .andExpect(status().isForbidden());
+
+        then(service).shouldHaveNoInteractions();
     }
 
     /** A session in which Lara started a connection with this state. */

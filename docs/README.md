@@ -88,8 +88,10 @@ cd frontend && npm install && npm run dev                 # app on http://localh
 To create the admin account on startup, also set `FLAVORS_SEED_ADMIN_ENABLED=true`, `FLAVORS_ADMIN_EMAIL` and
 `FLAVORS_ADMIN_PASSWORD` for the backend.
 
-Password-reset email uses SMTP. For local testing, run an SMTP catcher on port 1025 or set the `MAIL_*`
-variables below to another server.
+Password-reset email defaults to SMTP for local development (an SMTP catcher at port 1025 or configured
+`MAIL_*` variables). Railway Hobby staging uses Resend over HTTPS: set `FLAVORS_MAIL_PROVIDER=resend`,
+`RESEND_API_KEY`, `FLAVORS_MAIL_FROM` (verified sender) and `FLAVORS_APP_BASE_URL` (HTTPS staging URL).
+The public password-reset response remains generic to avoid revealing whether an email is registered.
 
 To try the production image: `docker build -t flavors .`, then run it with the `PG*` variables pointing at a database.
 
@@ -159,7 +161,7 @@ git push -u origin EEC-31-creator-registration
 
 ## Contributing
 
-Read [Architecture.md](Architecture.md) first: it settles the schema, security and conventions. This
+The pull-request process (reviewers, template, checks) is in [CONTRIBUTING.md](../CONTRIBUTING.md). Read [Architecture.md](Architecture.md) first: it settles the schema, security and conventions. This
 section covers what you need day to day on top of it.
 
 ### Database changes
@@ -241,7 +243,7 @@ Nothing here is in git because it is account configuration and secrets.
 **Railway** (https://railway.com)
 
 1. Create a project `flavors` with two environments, `staging` and `production`.
-2. In each environment add a **PostgreSQL** service and an **app** service. The app service builds from this
+2. In each environment add a **PostgreSQL** service, a private Railway **Bucket** named `proof-files`, and an **app** service. Create the bucket in the same region as the app. The app service builds from this
    GitHub repository using `railway.json` (Dockerfile build, health check `/actuator/health`). Name it `app`, or set
    the GitHub variable `RAILWAY_SERVICE` to its name.
 3. On each app service set the variables below. Reference the database service's variables rather than copying
@@ -250,10 +252,18 @@ Nothing here is in git because it is account configuration and secrets.
    | Variable | Value |
    |---|---|
    | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | `${{Postgres.PGHOST}}` etc. (Railway reference variables) |
+   | `FLAVORS_PROOF_STORAGE_TYPE` | `s3` |
+   | `FLAVORS_PROOF_STORAGE_BUCKET` | `${{proof-files.BUCKET}}` |
+   | `FLAVORS_PROOF_STORAGE_ENDPOINT` | `${{proof-files.ENDPOINT}}` |
+   | `FLAVORS_PROOF_STORAGE_REGION` | `${{proof-files.REGION}}` |
+   | `FLAVORS_PROOF_STORAGE_ACCESS_KEY` | `${{proof-files.ACCESS_KEY_ID}}` |
+   | `FLAVORS_PROOF_STORAGE_SECRET_KEY` | `${{proof-files.SECRET_ACCESS_KEY}}` |
    | `FLAVORS_SEED_ADMIN_ENABLED` | `true` (can be switched off after the first start) |
    | `FLAVORS_ADMIN_EMAIL`, `FLAVORS_ADMIN_PASSWORD` | the first admin's login; use a strong password |
    | `FLAVORS_APP_BASE_URL` | the public app URL used in password-reset links |
-   | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | the SMTP server used for password-reset email |
+   | `FLAVORS_MAIL_PROVIDER` | `resend` for Railway Hobby staging; defaults to `smtp` for local development |
+   | `RESEND_API_KEY` | Resend API credential; secret, staging only |
+   | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | SMTP settings for local development (not used with Resend) |
    | `FLAVORS_MAIL_FROM` | the From address for password-reset email |
    | `SPRING_PROFILES_ACTIVE` | `prod` on the production environment: it loads `application-prod.yml`, which switches the Swagger docs off. Leave it unset (or `staging`) on staging, where the docs stay on |
 
@@ -291,7 +301,9 @@ On Railway, the variables are set per environment (staging, production).
 | `FLAVORS_SEED_ADMIN_ENABLED` | Create the admin account on startup if it doesn't exist | `false` |
 | `FLAVORS_ADMIN_EMAIL` | Email of the seeded admin (required when seeding is enabled) | `admin@flavors.local` |
 | `FLAVORS_ADMIN_PASSWORD` | Password of the seeded admin (required when seeding is enabled) | (never commit) |
-| `FLAVORS_APP_BASE_URL` | Public base URL used in password-reset links | `http://localhost:5173` |
+| `FLAVORS_APP_BASE_URL` | Public base URL used in password-reset links (HTTPS staging frontend URL when using Resend) | `http://localhost:5173` |
+| `FLAVORS_MAIL_PROVIDER` | Mail transport: `smtp` locally or `resend` over HTTPS | `smtp` |
+| `RESEND_API_KEY` | Resend HTTPS API credential (never commit) | (empty) |
 | `MAIL_HOST` | SMTP host | `localhost` |
 | `MAIL_PORT` | SMTP port | `1025` |
 | `MAIL_USERNAME` | SMTP username, when authentication is enabled | (empty) |
@@ -299,8 +311,38 @@ On Railway, the variables are set per environment (staging, production).
 | `MAIL_AUTH` | Enable SMTP authentication | `false` |
 | `MAIL_STARTTLS` | Enable SMTP STARTTLS | `false` |
 | `FLAVORS_MAIL_FROM` | From address for password-reset email | `no-reply@flavors.local` |
+| `FLAVORS_PROOF_STORAGE_TYPE` | Delivery-proof screenshot storage adapter | `filesystem` in dev/tests; `s3` elsewhere |
+| `FLAVORS_PROOF_STORAGE_PATH` | Local proof screenshot directory; used only by the `filesystem` adapter | `./data/proof-files` |
+| `FLAVORS_PROOF_STORAGE_BUCKET` | Railway Bucket's globally unique S3 name (`BUCKET`, not `RAILWAY_BUCKET_NAME`) | (required for `s3`) |
+| `FLAVORS_PROOF_STORAGE_ENDPOINT` | Railway Bucket's base S3 endpoint | (required for `s3`) |
+| `FLAVORS_PROOF_STORAGE_REGION` | Railway Bucket's S3 region | (required for `s3`) |
+| `FLAVORS_PROOF_STORAGE_ACCESS_KEY` | Railway Bucket access-key id | (required for `s3`; never commit) |
+| `FLAVORS_PROOF_STORAGE_SECRET_KEY` | Railway Bucket secret access key | (required for `s3`; never commit) |
 
 The `PG*` names match what Railway's Postgres service exposes, so staging and production need no renaming.
+
+### Delivery-proof screenshot storage (EEC-46)
+
+Development and tests write private screenshots under `FLAVORS_PROOF_STORAGE_PATH`. Staging and production use one
+private Railway Bucket instance per environment. In Railway, create the bucket first and then add the six app-service
+variables above as **reference variables** using Railway's autocomplete; do not copy credential values into Git.
+
+The browser never receives a bucket credential or object key. It uploads through the backend, and authorized users read
+screenshots through `/api/proof-files/{fileId}`. The backend checks the campaign owner and submission state before proxying
+the private object. No bucket CORS rule or public access is needed.
+
+### Delivery-proof review (EEC-47)
+
+Brands can record a review, request up to two correction rounds, and read the decision history and agreed delivery terms.
+Creator and admin history is read-only. Both campaign pages show the decisions; brands decide on theirs. This adds no
+environment variables. See
+[Architecture section 19](Architecture.md#19-campaign-delivery-review-uc-f61-eec-47---built-payment-follow-ups-deferred) for the API and limits.
+
+EEC-45 Step 3 authorizes release atomically with approval and can recover older approved reviews missing an operation.
+Approval leaves escrow `HELD`; Step 5 freezes escrow atomically with rejection. Step 6 can confirm simulated
+payouts; real payouts and dispute creation remain pending. A recorded approval/rejection reports its
+`requiredFollowUp`; it does not mean money has moved or a dispute exists. Step 4 schedules Timer C authorization,
+but payout execution remains deferred until the payment integration is present.
 
 ### Connecting Instagram (EEC-33, EEC-88)
 
@@ -346,3 +388,97 @@ pull keeps the last figures and shows "Needs reconnection". The job does nothing
 | `FLAVORS_SOCIAL_REFRESH_ENABLED` | `false` turns the job off | `true` |
 
 To try it locally, set the cron to every minute: `FLAVORS_SOCIAL_REFRESH_CRON="0 * * * * *"`.
+
+## Whish Money payments (EEC-44)
+
+Brands pay for accepted campaigns through Whish Money (collect only; the money is held as a Flavors ledger state, see
+[Architecture.md §17](Architecture.md#17-pay-and-hold-the-campaign-payment-uc-f71--built)). All of this comes from the environment and
+is never committed. Without it the default is the **mock**, which runs the whole flow inside Flavors with no network and no money.
+
+| Variable | Used for | Default |
+|---|---|---|
+| `WHISH_MODE` | `mock` (no network and no money, dev and tests), `sandbox` or `live` (call Whish), `disabled` (no payments). Production runs `disabled` until it is set to `sandbox` or `live` | `mock` (`disabled` in prod) |
+| `WHISH_BASE_URL` | Whish API base, e.g. the sandbox `https://lb.sandbox.whish.money/itel-service/api` | (none, required for `sandbox`/`live`) |
+| `WHISH_CHANNEL` | Merchant channel, sent as the `channel` header | (none) |
+| `WHISH_SECRET` | Merchant secret, sent as the `secret` header. Never log or commit it | (none) |
+| `WHISH_WEBSITE_URL` | Merchant website, sent as the `websiteurl` header | (none) |
+| `FLAVORS_APP_BASE_URL` | The public address of this app. Whish calls the callback and redirects the payer here, so it must be a **public HTTPS** address (local development needs a tunnel) | `http://localhost:5173` |
+
+The paths of the Whish API (`/payment/whish` to create a payment, `/payment/collect/status` to check it) are set in the
+`flavors.whish.create-path` and `flavors.whish.status-path` properties.
+
+**What the merchant account must provide before `sandbox` or `live`:**
+
+1. Whish merchant credentials (channel, secret, website URL) for the sandbox and for production.
+2. The official Whish API specification. Everything the adapter knows comes from unofficial notes: the paths, the headers,
+   the callback format, the limits (reported as 1 to 5,000 USD) and whether USD cards and wallets are both enabled.
+3. The public HTTPS domains that Whish whitelists for the callback and redirect URLs (the deployed backend, e.g. Railway).
+4. Separate confirmation of creator payout/transfer, refund, and status-query capabilities. The current collection
+   adapter implements none of these; do not infer them from a Whish account or collection credentials.
+
+
+### EEC-90 — Password-reset email via HTTPS on Railway Hobby (staging)
+
+Railway Hobby restricts outbound SMTP. To send real password-reset messages from staging, Flavors supports
+Resend's HTTPS `POST /emails` API behind the existing `PasswordResetMailSender` interface. The one-hour
+reset-token lifetime, after-commit event listener, and privacy-preserving generic response are unchanged.
+
+1. Ask the team owner to create a Resend account, verify a sending domain/subdomain and configure its DNS records.
+2. Create a sending-enabled API key in Resend; do not commit, screenshot, or share it.
+3. With the owner's approval, add these variables to **Railway staging app only**:
+   `FLAVORS_MAIL_PROVIDER=resend`, `RESEND_API_KEY=<secret>`,
+   `FLAVORS_MAIL_FROM=Flavors <reset@verified-domain.example>` and
+   `FLAVORS_APP_BASE_URL=https://<exact-staging-frontend-host>`.
+4. Deploy to staging using the team's workflow; do not change production settings. Test with an account
+   you control and confirm the link works once, expires, and leads back to staging. Check the Resend
+   delivery dashboard and the application's sanitized mail error logs if a message does not arrive.
+
+The application fails startup if Resend is selected without an API key, with a malformed or local
+sender address (including display-name format), or without an HTTPS app base URL.
+Sender-domain ownership and verification are enforced by Resend, NOT validated locally at startup. `MAIL_*` SMTP variables are ignored in Resend mode. An accepted
+Resend API response is not proof of inbox delivery. API tests mock HTTP and send no real email.
+
+### Password-reset delivery diagnostics and security
+
+- The generic response is intentional, even when a message cannot be sent; it prevents exposing whether an address exists.
+- After the reset token transaction commits, delivery is queued on a bounded worker pool. HTTP requests never wait for Resend, and queue overload is logged as an error.
+- Failed Resend responses are logged at **ERROR** with the provider HTTP status and internal user ID only. Exception bodies, credentials, email addresses, tokens, and reset URLs must not be logged.
+- Monitor delivery failures and queue saturation in staging, and verify delivery with a real test inbox before closing EEC-90.
+- Disable **click tracking and link tracking** on the Resend sending domain: reset URLs contain security-sensitive tokens in the query string. Avoid exposing these URLs to analytics.
+- Protect `/api/public/auth/password-reset/request` with rate limiting (by IP and account plus a global quota) before broad rollout; the pre-existing endpoint does not yet enforce this.
+
+### Creator payouts and escrow release (EEC-45: simulation built, real payouts blocked)
+
+As of 17 November 2026, Flavors' Whish virtual account application is pending approval. Whish remains the intended
+provider, but creator transfers, payout APIs, refunds, status queries, automated settlement, and the two-business-day
+payout target have not been confirmed. A virtual account approval will not by itself establish those capabilities.
+
+The contract is [EEC-45-release-payout-design.md](EEC-45-release-payout-design.md), summarized in
+[Architecture section 20](Architecture.md#20-escrow-release-and-creator-payout-uc-f72-eec-45--simulation-built-real-payouts-blocked).
+Approval/Timer C authorize a durable payout operation; escrow becomes `RELEASED` only after creator payment is
+confirmed. Step 5 rejection freezes funds and retains the existing rejection review for EEC-54 in Sprint 3.
+No dispute-opening service or handoff table belongs to this Sprint 2 branch. Step 2 adds V10 payout
+persistence and tests; Step 3 adds atomic approval authorization and explicit legacy-approval recovery.
+Step 4 adds automatic Timer C authorization in batches of at most 100, with one transaction per campaign.
+It runs every minute in `Asia/Beirut`; configure `flavors.escrow.release-deadline-cron` and
+`flavors.escrow.release-deadline-zone` (cron `-` disables it). Escrow stays `HELD` after authorization.
+Step 5 adds rejection freezing to the same review transaction, with idempotent retries and audit.
+Step 6 adds simulated payout execution/reconciliation; dispute creation and actual production payouts remain pending.
+
+Payouts are separate from Whish collection: `FLAVORS_PAYOUT_MODE` defaults to `disabled`. To simulate,
+set it to `simulated` with an active `dev` or `test` profile. Production (`prod`/`production`) refuses
+simulation, including mixed profiles; no real payout adapter or credentials are configured. Simulation
+never sends money to real creators. FR-F7.12 and its two-business-day SLA remain pending external confirmation.
+The payout job handles at most 100 operations per minute; configure `flavors.payout.processing-cron`
+and `flavors.payout.processing-zone` (cron `-` disables it). Unknown outcomes reconcile before retry.
+If the simulator loses its in-memory ledger, unknown operations remain held for inspection rather than
+being paid again. Step 7 adds payout displays; notifications remain deferred.
+
+The existing brand/creator escrow GET responses now include stored fee/net, payout progress and timestamps,
+authorization source, simulation labelling and availability. Both campaign pages show these details without
+claiming receipt before confirmation. Frozen/released/refunded records stay visible, and frozen payments
+explain the Sprint 3 EEC-54 dispute boundary. Visible unfinished payments refresh every 30 seconds and on
+focus; campaign navigation isolates state and ignores late responses. No manual release endpoint is added.
+
+Actual production payouts remain disabled until the account and required capabilities are confirmed and a real
+integration is implemented. Existing `WHISH_MODE` controls collection only. No manual payout API is implemented.

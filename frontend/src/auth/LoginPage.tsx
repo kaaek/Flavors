@@ -18,10 +18,17 @@ export function LoginPage() {
     const data = new FormData(event.currentTarget)
 
     try {
-      const me = await apiFetch<Me>('/api/public/auth/login', {
-        method: 'POST',
-        body: { email: data.get('email'), password: data.get('password') },
-      })
+      const me = await apiFetch<Me | { mfaRequired: true; enrolled: boolean }>(
+        '/api/public/auth/login',
+        {
+          method: 'POST',
+          body: { email: data.get('email'), password: data.get('password') },
+        },
+      )
+      if ('mfaRequired' in me) {
+        navigate('/admin/mfa', { replace: true })
+        return
+      }
       await refresh()
       navigate(homeByRole[me.role], { replace: true })
     } catch (caught) {

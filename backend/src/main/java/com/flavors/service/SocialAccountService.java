@@ -29,6 +29,13 @@ public interface SocialAccountService {
     void disconnect(long creatorId, long accountId);
 
     /**
+     * Deletes an account that needs reconnection, with its pulled figures, so an old card can leave her page.
+     * Refused (SocialAccountRemovalNotAllowedException) while it is still connected, or if any of its posts
+     * was made for a campaign, because those figures feed the campaign's results.
+     */
+    void remove(long creatorId, long accountId);
+
+    /**
      * Pulls fresh figures with the stored token. If the pull fails, or the token was revoked, the last figures
      * and their time stay and the account is flagged 'Needs reconnection' (TC-F19.4.3, EX-F1.3.1).
      *

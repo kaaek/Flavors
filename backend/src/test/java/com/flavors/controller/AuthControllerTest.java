@@ -18,6 +18,7 @@ import com.flavors.exception.SuspendedAccountException;
 import com.flavors.mapper.MeMapper;
 import com.flavors.service.AuthService;
 import com.flavors.service.PasswordResetService;
+import com.flavors.service.impl.AdminMfaService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +41,28 @@ class AuthControllerTest {
 
     @MockitoBean
     PasswordResetService passwordResetService;
+
+    @MockitoBean
+    AdminMfaService adminMfa;
+
+    @Test
+    void adminPasswordRequiresMfaInsteadOfReturningAdminSession() throws Exception {
+        when(authService.authenticate("admin@example.com", "right-password"))
+                .thenReturn(new CurrentUser(99, "admin@example.com", Role.ADMIN, null, true));
+        when(adminMfa.enrolled(99)).thenReturn(true);
+
+        mvc.perform(post("/api/public/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"admin@example.com","password":"right-password"}
+                                """)
+                        .cookie(new Cookie("XSRF-TOKEN", "token"))
+                        .header("X-XSRF-TOKEN", "token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mfaRequired").value(true))
+                .andExpect(jsonPath("$.enrolled").value(true))
+                .andExpect(jsonPath("$.role").doesNotExist());
+    }
 
     @Test
     void successfulBrandLoginReturnsTheRole() throws Exception {

@@ -2,11 +2,79 @@ package com.flavors.repository;
 
 import com.flavors.entity.Campaign;
 import com.flavors.enums.CampaignStatus;
+import jakarta.persistence.LockModeType;
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface CampaignRepository extends JpaRepository<Campaign, Long> {
 
     /** E.g. the COMPLETED campaigns a creator can choose to feature. */
     List<Campaign> findByCreatorIdAndStatus(Long creatorId, CampaignStatus status);
+/** The creator's received campaigns, excluding private brand drafts, most recently updated first. */
+        List<Campaign> findByCreatorIdAndStatusNotOrderByUpdatedAtDescIdDesc(Long creatorId, CampaignStatus status);
+    /** The brand's own campaigns, most recently changed first. */
+    List<Campaign> findByBrandIdOrderByUpdatedAtDescIdDesc(Long brandId);
+
+    /** Filtering by brand in the query means another brand's campaign is simply not found. */
+    Optional<Campaign> findByIdAndBrandId(Long id, Long brandId);
+
+    /**
+     * Same, and locks the row until the transaction ends, so two requests sending or editing the same
+     * campaign at once run one after the other and only the first one sends (and notifies).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Campaign c where c.id = :id and c.brandId = :brandId")
+    Optional<Campaign> findByIdAndBrandIdForUpdate(@Param("id") Long id, @Param("brandId") Long brandId);
+
+    /**
+     * The campaign row, locked until the transaction ends (UC-F4.1). Every answer to a request (accept, reject,
+     * counter, approve, decline) and the expiry job load it this way, so two of them on the same campaign run one
+     * after the other, and the second one sees the first one's result and refuses. Delivery-proof drafts and
+     * submissions (EEC-46) take the same lock.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Campaign c where c.id = :id")
+    Optional<Campaign> findByIdForUpdate(@Param("id") Long id);
+
+    /** Timer B: the ids of campaigns waiting for payment whose payment deadline has passed, oldest first. */
+    @Query("select c.id from Campaign c where c.status = :status and c.paymentDeadline <= :now "
+            + "order by c.paymentDeadline")
+    List<Long> findOverduePaymentIds(@Param("status") CampaignStatus status, @Param("now") Instant now);
+
+    /** Timer A: the ids of requests in these statuses whose response deadline has passed, oldest first. */
+    @Query("select c.id from Campaign c where c.status in :statuses and c.responseDeadline <= :now "
+            + "order by c.responseDeadline")
+    List<Long> findOverdueResponseIds(@Param("statuses") Collection<CampaignStatus> statuses,
+                                      @Param("now") Instant now);
+
+    /**
+     * Timer C: campaigns whose latest proof is still unanswered after its deadline, oldest first. Only genuinely
+     * unanswered current submissions qualify; a correction request stops the old timer.
+     */
+    @Query("""
+            select c.id from Campaign c
+            where c.status = com.flavors.enums.CampaignStatus.PROOF_SUBMITTED
+              and c.proofReviewDeadline <= :now
+              and exists (select e.id from EscrowPayment e where e.campaignId = c.id
+                          and e.status = com.flavors.enums.EscrowStatus.HELD
+                          and e.amountCents = c.agreedPriceCents
+                          and not exists (select o.id from EscrowReleaseOperation o where o.escrowId = e.id))
+              and not exists (select r.id from ProofReview r, ProofSubmission rejected
+                              where r.submissionId = rejected.id and rejected.campaignId = c.id
+                                and r.decision = com.flavors.enums.ProofReviewDecision.REJECTED)
+              and exists (select s.id from ProofSubmission s
+                          where s.campaignId = c.id
+                            and s.status = com.flavors.enums.ProofSubmissionStatus.SUBMITTED
+                            and s.round = c.correctionRoundsUsed + 1
+                            and not exists (select r.id from ProofReview r where r.submissionId = s.id))
+            order by c.proofReviewDeadline asc, c.id asc
+            """)
+    List<Long> findOverdueProofCampaignIds(@Param("now") Instant now, Pageable pageable);
 }

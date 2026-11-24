@@ -1,0 +1,210 @@
+import { apiFetch } from './client'
+
+export type CampaignStatus =
+  | 'DRAFT'
+  | 'AWAITING_CREATOR_RESPONSE'
+  | 'COUNTERED'
+  | 'REJECTED'
+  | 'DECLINED'
+  | 'EXPIRED'
+  | 'AWAITING_PAYMENT'
+  | 'ACTIVE'
+  | 'PROOF_SUBMITTED'
+  | 'CORRECTIONS_REQUESTED'
+  | 'DISPUTED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'REMOVED'
+
+/** Instagram is the only platform for now (EEC-40); the types are what a brand can ask a creator to publish. */
+export const PLATFORMS = ['INSTAGRAM'] as const
+export const DELIVERABLE_TYPES = ['REEL', 'POST', 'STORY', 'CAROUSEL'] as const
+export type Platform = (typeof PLATFORMS)[number]
+export type DeliverableType = (typeof DELIVERABLE_TYPES)[number]
+
+export interface Deliverable {
+  platform: Platform
+  type: DeliverableType
+  count: number
+}
+
+/** What the form sends. Every field may be empty for a draft; Send needs them all except the content requirements. */
+export interface CampaignInput {
+  name: string
+  creatorId: number | null
+  branchIds: number[]
+  /** The budget: what the brand offers the creator, in integer cents. */
+  priceOfferedCents: number | null
+  startDate: string | null
+  lastPostingDate: string | null
+  deliverables: { platform: string; type: string; count: number | null }[]
+  contentRequirements: string | null
+  /** The creator's final proof must include at least one screenshot (FR-F5.1). */
+  screenshotsRequired: boolean
+}
+
+export interface Campaign {
+  id: number
+  name: string
+  status: CampaignStatus
+  creator: { id: number; displayName: string } | null
+  branches: { id: number; name: string; location: string }[]
+  priceOfferedCents: number | null
+  startDate: string | null
+  lastPostingDate: string | null
+  deliverables: Deliverable[]
+  contentRequirements: string | null
+  /** The creator's final proof must include at least one screenshot (FR-F5.1). */
+  screenshotsRequired: boolean
+  sentAt: string | null
+  /** Timer A: when the creator's 3 days to answer run out. */
+  responseDeadline: string | null
+  agreedPriceCents: number | null
+  paymentDeadline: string | null
+  acceptedAt: string | null
+  /** The escrow status (FR-F7.7); null until the brand starts paying. */
+  escrowStatus: EscrowStatus | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type EscrowStatus = 'PENDING' | 'HELD' | 'RELEASED' | 'FROZEN' | 'REFUNDED'
+
+/** The words for each escrow status, as the spec names them (FR-F7.7). */
+export const escrowLabel: Record<EscrowStatus, string> = {
+  PENDING: 'Pending',
+  HELD: 'Held',
+  RELEASED: 'Released',
+  FROZEN: 'Frozen',
+  REFUNDED: 'Refunded',
+}
+
+export interface CampaignSummary {
+  id: number
+  name: string
+  status: CampaignStatus
+  creatorId: number | null
+  creatorName: string | null
+  priceOfferedCents: number | null
+  agreedPriceCents: number | null
+  updatedAt: string
+}
+export interface CreatorCampaignSummary {
+  id: number
+  name: string
+  status: CampaignStatus
+  brandId: number
+  brandName: string
+  priceOfferedCents: number | null
+  agreedPriceCents: number | null
+  paymentDeadline: string | null
+  acceptedAt: string | null
+  updatedAt: string
+}
+
+export type CounterOfferStatus = 'PENDING' | 'APPROVED' | 'DECLINED'
+
+export interface CounterOffer {
+  id: number
+  campaignId: number
+  priceCents: number
+  deliverables: Deliverable[]
+  status: CounterOfferStatus
+  createdAt: string | null
+  decidedAt: string | null
+}
+
+export interface CampaignCreator {
+  id: number
+  displayName: string
+  foodCategory: string
+  location: string
+}
+
+const base = '/api/brand/campaigns'
+
+export const listCampaigns = () => apiFetch<CampaignSummary[]>(base)
+export const getCampaign = (id: number) => apiFetch<Campaign>(`${base}/${id}`)
+export const getCampaignCreator = (creatorId: number) =>
+  apiFetch<CampaignCreator>(`${base}/creators/${creatorId}`)
+
+/** Saves a new draft. */
+export const createDraft = (body: CampaignInput) =>
+  apiFetch<Campaign>(base, { method: 'POST', body })
+/** Replaces the details of a draft. */
+export const updateDraft = (id: number, body: CampaignInput) =>
+  apiFetch<Campaign>(`${base}/${id}`, { method: 'PUT', body })
+/** Creates a campaign and sends it to the creator in one step. */
+export const sendNew = (body: CampaignInput) =>
+  apiFetch<Campaign>(`${base}/send`, { method: 'POST', body })
+/** Saves the details into an existing draft and sends it. */
+export const sendDraft = (id: number, body: CampaignInput) =>
+  apiFetch<Campaign>(`${base}/${id}/send`, { method: 'POST', body })
+/** Lists campaigns received by the creator. */
+export const listCreatorCampaigns = () =>
+  apiFetch<CreatorCampaignSummary[]>('/api/creator/campaigns')
+/** Gets one campaign received by the creator. */
+export const getCreatorCampaign = (campaignId: number) =>
+  apiFetch<Campaign>(`/api/creator/campaigns/${campaignId}`)
+
+export interface CounterOfferRequest {
+  priceCents: number | null
+  deliverables: Deliverable[] | null
+}
+
+/** Accepts a campaign request as the creator. */
+export const acceptCreatorCampaign = (campaignId: number) =>
+  apiFetch<void>(`/api/creator/campaigns/${campaignId}/accept`, {
+    method: 'POST',
+  })
+
+/** Rejects a campaign request as the creator. */
+export const rejectCreatorCampaign = (campaignId: number) =>
+  apiFetch<void>(`/api/creator/campaigns/${campaignId}/reject`, {
+    method: 'POST',
+  })
+
+/** Submits a price and/or deliverables counter-offer as the creator. */
+export const submitCreatorCounterOffer = (campaignId: number, body: CounterOfferRequest) =>
+  apiFetch<void>(`/api/creator/campaigns/${campaignId}/counter-offer`, {
+    method: 'POST',
+    body,
+  })
+
+/** Gets a counter-offer for the creator. */
+export const getCreatorCounterOffer = (campaignId: number) =>
+  apiFetch<CounterOffer>(`/api/creator/campaigns/${campaignId}/counter-offer`)
+
+/** Gets a counter-offer for the brand. */
+export const getBrandCounterOffer = (campaignId: number) =>
+  apiFetch<CounterOffer>(`/api/brand/campaigns/${campaignId}/counter-offer`)
+
+/** Approves a counter-offer as the brand. */
+export const approveCounterOffer = (campaignId: number) =>
+  apiFetch<void>(`/api/brand/campaigns/${campaignId}/counter-offer/approve`, {
+    method: 'POST',
+  })
+
+/** Declines a counter-offer as the brand. */
+export const declineCounterOffer = (campaignId: number) =>
+  apiFetch<void>(`/api/brand/campaigns/${campaignId}/counter-offer/decline`, {
+    method: 'POST',
+  })
+
+/** The words shown for each status; the sent ones carry the owner of the next move. */
+export const statusLabel: Record<CampaignStatus, string> = {
+  DRAFT: 'Draft',
+  AWAITING_CREATOR_RESPONSE: 'Awaiting creator response',
+  COUNTERED: 'Countered',
+  REJECTED: 'Rejected',
+  DECLINED: 'Declined',
+  EXPIRED: 'Expired',
+  AWAITING_PAYMENT: 'Awaiting payment',
+  ACTIVE: 'Active',
+  PROOF_SUBMITTED: 'Proof submitted',
+  CORRECTIONS_REQUESTED: 'Corrections requested',
+  DISPUTED: 'Disputed',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+  REMOVED: 'Removed',
+}

@@ -60,3 +60,23 @@ it('shows a connection message for an unexpected error', async () => {
     'Could not reach the server. Please try again.',
   )
 })
+
+it('sends an admin to MFA instead of granting dashboard access after password alone', async () => {
+  const user = userEvent.setup()
+  apiFetchMock.mockResolvedValue({ mfaRequired: true, enrolled: true })
+  render(
+    <MemoryRouter initialEntries={['/login']}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/admin/mfa" element={<p>Admin verification challenge</p>} />
+        <Route path="/admin" element={<p>Admin dashboard</p>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  await user.type(screen.getByLabelText('Email'), 'admin@example.com')
+  await user.type(screen.getByLabelText('Password'), 'correct-password')
+  await user.click(screen.getByRole('button', { name: 'Log in' }))
+  expect(await screen.findByText('Admin verification challenge')).toBeInTheDocument()
+  expect(screen.queryByText('Admin dashboard')).not.toBeInTheDocument()
+  expect(refresh).not.toHaveBeenCalled()
+})

@@ -11,4 +11,10 @@ public interface SocialPostMetricRepository extends JpaRepository<SocialPostMetr
     Optional<SocialPostMetric> findBySocialAccountIdAndExternalPostId(Long socialAccountId, String externalPostId);
 
     List<SocialPostMetric> findBySocialAccountId(Long socialAccountId);
+
+    /** True if any post of this account was made for a campaign, so its figures feed that campaign's results. */
+    boolean existsBySocialAccountIdAndCampaignIdIsNotNull(Long socialAccountId);
+
+    /** Used when the creator removes the account: its pulled figures go with it. */
+    void deleteBySocialAccountId(Long socialAccountId);
 }

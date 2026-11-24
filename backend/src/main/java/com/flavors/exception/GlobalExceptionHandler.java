@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 /**
  * Turns domain exceptions into JSON {@code ProblemDetail} responses, like the 401 and 403 ones.
@@ -77,6 +78,60 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
+    /** The campaign form has wrong or missing fields: {@code errors} names each one so the form can highlight it. */
+    @ExceptionHandler(CampaignValidationException.class)
+    ResponseEntity<ProblemDetail> campaignInvalid(CampaignValidationException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setTitle("Invalid campaign");
+        problem.setProperty("errors", e.getErrors());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problem);
+    }
+
+    @ExceptionHandler(NoBranchException.class)
+    ResponseEntity<ProblemDetail> noBranch(NoBranchException e) {
+        return problem(HttpStatus.CONFLICT, "No branch", e.getMessage());
+    }
+
+    @ExceptionHandler(CampaignNotFoundException.class)
+    ResponseEntity<ProblemDetail> campaignNotFound(CampaignNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Campaign not found", e.getMessage());
+    }
+
+    @ExceptionHandler(CampaignNotEditableException.class)
+    ResponseEntity<ProblemDetail> campaignNotEditable(CampaignNotEditableException e) {
+        return problem(HttpStatus.CONFLICT, "Campaign already sent", e.getMessage());
+    }
+
+    @ExceptionHandler(CampaignResponseStateException.class)
+    ResponseEntity<ProblemDetail> campaignResponseState(CampaignResponseStateException e) {
+        return problem(HttpStatus.CONFLICT, "Request can't be answered", e.getMessage());
+    }
+
+    @ExceptionHandler(PaymentNotFoundException.class)
+    ResponseEntity<ProblemDetail> paymentNotFound(PaymentNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Payment not found", e.getMessage());
+    }
+
+    /** Payments switched off answers 503; a provider that failed or is unreachable answers 502 and nothing changed. */
+    @ExceptionHandler(PaymentProviderException.class)
+    ResponseEntity<ProblemDetail> paymentProvider(PaymentProviderException e) {
+        if (e.isDisabled()) {
+            return problem(HttpStatus.SERVICE_UNAVAILABLE, "Payments unavailable", e.getMessage());
+        }
+        return problem(HttpStatus.BAD_GATEWAY, "Payment provider unavailable",
+                "The payment provider did not answer, so no new payment was opened. Please try again in a moment.");
+    }
+
+    @ExceptionHandler(PaymentAlreadyPaidException.class)
+    ResponseEntity<ProblemDetail> paymentAlreadyPaid(PaymentAlreadyPaidException e) {
+        return problem(HttpStatus.CONFLICT, "Already paid", e.getMessage());
+    }
+
+    @ExceptionHandler(SocialAccountDisconnectedException.class)
+    ResponseEntity<ProblemDetail> socialAccountDisconnected(SocialAccountDisconnectedException e) {
+        return problem(HttpStatus.CONFLICT, "Account disconnected", e.getMessage());
+    }
+
     @ExceptionHandler(InvalidPortfolioException.class)
     ResponseEntity<ProblemDetail> invalidPortfolio(InvalidPortfolioException e) {
         return problem(HttpStatus.BAD_REQUEST, "Invalid portfolio", e.getMessage());
@@ -95,6 +150,33 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(FeatureNotFoundException.class)
     ResponseEntity<ProblemDetail> featureNotFound(FeatureNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "Not featured", e.getMessage());
+    }
+
+    @ExceptionHandler(DeliveryProofNotFoundException.class)
+    ResponseEntity<ProblemDetail> deliveryProofNotFound(DeliveryProofNotFoundException e) {
+        return problem(HttpStatus.NOT_FOUND, "Delivery proof not found", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidDeliveryProofException.class)
+    ResponseEntity<ProblemDetail> invalidDeliveryProof(InvalidDeliveryProofException e) {
+        return problem(HttpStatus.BAD_REQUEST, "Invalid delivery proof", e.getMessage());
+    }
+
+    @ExceptionHandler(DeliveryProofConflictException.class)
+    ResponseEntity<ProblemDetail> deliveryProofConflict(DeliveryProofConflictException e) {
+        return problem(HttpStatus.CONFLICT, "Delivery proof cannot be changed", e.getMessage());
+    }
+
+    @ExceptionHandler(ProofStorageException.class)
+    ResponseEntity<ProblemDetail> proofStorage(ProofStorageException e) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Proof storage unavailable",
+                "The screenshot service is temporarily unavailable. Please try again.");
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ProblemDetail> uploadTooLarge(MaxUploadSizeExceededException e) {
+        return problem(HttpStatus.CONTENT_TOO_LARGE, "Screenshot too large",
+                "Each screenshot must be no larger than 5 MB, with at most 5 screenshots per proof.");
     }
 
     /**

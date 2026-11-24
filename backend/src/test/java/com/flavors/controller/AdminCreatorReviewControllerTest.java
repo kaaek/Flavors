@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -51,7 +52,7 @@ class AdminCreatorReviewControllerTest {
         when(reviews.listPending()).thenReturn(List.of(
                 new PendingCreatorResponse(7, "Lara", "Street food", "Beirut", Instant.parse("2026-10-31T10:00:00Z"))));
 
-        mvc.perform(get("/api/admin/creators/pending").with(user(ADMIN)))
+        mvc.perform(get("/api/admin/creators/pending").with(verifiedAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(7))
                 .andExpect(jsonPath("$[0].displayName").value("Lara"));
@@ -61,7 +62,7 @@ class AdminCreatorReviewControllerTest {
     void adminApprovesAndTheDecisionIsAttributedToThem() throws Exception {
         when(reviews.approve(1L, 7L)).thenReturn(review(VerificationStatus.APPROVED, null));
 
-        mvc.perform(withCsrf(post("/api/admin/creators/7/approve")).with(user(ADMIN)))
+        mvc.perform(withCsrf(post("/api/admin/creators/7/approve")).with(verifiedAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.verificationStatus").value("APPROVED"));
 
@@ -71,7 +72,7 @@ class AdminCreatorReviewControllerTest {
     @Test // TC-F20.1.2
     void rejectingWithoutAReasonIsRefused() throws Exception {
         mvc.perform(withCsrf(post("/api/admin/creators/7/reject"))
-                        .with(user(ADMIN))
+                        .with(verifiedAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\": \"  \"}"))
                 .andExpect(status().isBadRequest())
@@ -86,7 +87,7 @@ class AdminCreatorReviewControllerTest {
                 .thenReturn(review(VerificationStatus.REJECTED, "Account is private."));
 
         mvc.perform(withCsrf(post("/api/admin/creators/7/reject"))
-                        .with(user(ADMIN))
+                        .with(verifiedAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\": \"Account is private.\"}"))
                 .andExpect(status().isOk())
@@ -99,7 +100,7 @@ class AdminCreatorReviewControllerTest {
         doThrow(new ReviewNotAllowedException("Needs reconnection: approval is blocked."))
                 .when(reviews).approve(1L, 7L);
 
-        mvc.perform(withCsrf(post("/api/admin/creators/7/approve")).with(user(ADMIN)))
+        mvc.perform(withCsrf(post("/api/admin/creators/7/approve")).with(verifiedAdmin()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("Needs reconnection: approval is blocked."));
     }
@@ -125,4 +126,13 @@ class AdminCreatorReviewControllerTest {
         return new CreatorReviewResponse(7, "lara@example.com", "Lara", null, "Street food", "Beirut", 10000, 30000,
                 status, reason, false, Instant.parse("2026-10-31T10:00:00Z"), null, List.of());
     }
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor verifiedAdmin() {
+        return authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                ADMIN,
+                null,
+                java.util.List.of(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN_MFA"))));
+    }
+
 }

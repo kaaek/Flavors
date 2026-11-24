@@ -260,10 +260,6 @@ export function CreatorSearchPage() {
         )}
       </div>
 
-      <p className="fl-hint">
-        Campaigns are not built yet, so “Create campaign” is switched off for now.
-      </p>
-
       {results.status === 'error' && (
         <div className="fl-alert fl-alert--danger" role="alert">
           <Icon name="alert" />
@@ -317,13 +313,9 @@ export function CreatorSearchPage() {
                 {results.data.items.map((item) => (
                   <tr key={item.creatorId}>
                     <td>
-                      {item.storefrontSlug ? (
-                        <Link className="fl-link" to={`/s/${item.storefrontSlug}`}>
-                          {item.displayName}
-                        </Link>
-                      ) : (
-                        item.displayName
-                      )}
+                      <Link className="fl-link" to={`/brand/creators/${item.creatorId}/portfolio`}>
+                        {item.displayName}
+                      </Link>
                     </td>
                     <td>{item.foodCategory ?? dash}</td>
                     <td>{item.location ?? dash}</td>
@@ -335,15 +327,20 @@ export function CreatorSearchPage() {
                     <td>{count(item.redemptions)}</td>
                     <td>
                       <div className="fl-row">
-                        <SaveCreatorButton creatorId={item.creatorId} initiallySaved={item.saved} />
-                        {/* A live link would be a dead end until the campaign story exists (and fail the link audit). */}
-                        <button
-                          className="fl-btn fl-btn--primary fl-btn--sm"
-                          type="button"
-                          disabled
+                        <Link
+                          className="fl-btn fl-btn--outline fl-btn--sm"
+                          to={`/brand/creators/${item.creatorId}/portfolio`}
                         >
-                          Create campaign
-                        </button>
+                          View portfolio
+                        </Link>
+                        <SaveCreatorButton creatorId={item.creatorId} initiallySaved={item.saved} />
+                        <Link
+                          className="fl-btn fl-btn--primary fl-btn--sm"
+                          to={`/brand/campaigns/new?creator=${item.creatorId}`}
+                          aria-label={`Start a campaign with ${item.displayName}`}
+                        >
+                          Start a campaign
+                        </Link>
                       </div>
                     </td>
                   </tr>
