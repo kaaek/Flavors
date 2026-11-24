@@ -37,7 +37,7 @@ import static org.mockito.Mockito.*;
     @Test
     void adminCanRecordReviewEvidence() throws Exception {
         mvc.perform(post(URL)
-                .with(user("admin").roles("ADMIN"))
+                .with(user("admin").roles("ADMIN", "ADMIN_MFA"))
                 .with(csrf())
                 .contentType("application/json")
                 .content(VALID_BODY))
@@ -76,7 +76,7 @@ import static org.mockito.Mockito.*;
     @Test
     void blankEvidenceIsRejected() throws Exception {
         mvc.perform(post(URL)
-                .with(user("admin").roles("ADMIN"))
+                .with(user("admin").roles("ADMIN", "ADMIN_MFA"))
                 .with(csrf())
                 .contentType("application/json")
                 .content("""
