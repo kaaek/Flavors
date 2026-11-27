@@ -20,6 +20,7 @@ export const navItems: Record<Role, NavItem[]> = {
     { label: 'My campaigns', to: '/creator/campaigns' },
     { label: 'Find brands', to: '/creator/brands' },
     { label: 'Portfolio', to: '/creator/portfolio' },
+    { label: 'Storefront', to: '/creator/storefront' },
     { label: 'Social accounts', to: '/creator/social' },
     { label: 'Profile status', to: '/creator/status' },
   ],

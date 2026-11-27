@@ -13,6 +13,8 @@ import org.springframework.data.repository.query.Param;
 /** Look a profile up with {@code findById(userId)}: the id is the creator's user id. */
 public interface CreatorProfileRepository extends JpaRepository<CreatorProfile, Long> {
 
+    Optional<CreatorProfile> findByStorefrontSlug(String storefrontSlug);
+
     /** The admin queue (UC-F20.1): profiles in one state, oldest first. */
     List<CreatorProfile> findByVerificationStatusOrderByCreatedAtAsc(VerificationStatus status);
 

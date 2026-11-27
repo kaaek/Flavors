@@ -24,6 +24,12 @@ const actions: { to: string; icon: IconName; title: string; text: string }[] = [
     text: 'Your details, price range and featured campaigns.',
   },
   {
+    to: '/creator/storefront',
+    icon: 'user',
+    title: 'Share storefront',
+    text: 'Your public page with live restaurant offers.',
+  },
+  {
     to: '/creator/social',
     icon: 'chart',
     title: 'Social accounts',

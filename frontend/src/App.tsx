@@ -28,6 +28,8 @@ import './layout/layout.css'
 import { LandingPage } from './pages/LandingPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PublicPlaceholder } from './pages/PublicPlaceholder'
+import { CreatorStorefrontPage } from './pages/CreatorStorefrontPage'
+import { StorefrontLinkPage } from './creator/StorefrontLinkPage'
 import { RegisterChoicePage } from './pages/RegisterChoicePage'
 import { BrandRegistrationPage } from './registration/BrandRegistrationPage'
 import { CreatorRegistrationPage } from './registration/CreatorRegistrationPage'
@@ -57,15 +59,7 @@ export function AppRoutes() {
       <Route path="/register" element={<RegisterChoicePage />} />
       <Route path="/register/brand" element={<BrandRegistrationPage />} />
       <Route path="/register/creator" element={<CreatorRegistrationPage />} />
-      <Route
-        path="/s/:slug"
-        element={
-          <PublicPlaceholder
-            title="Creator storefront"
-            note="This public page arrives with the storefront story."
-          />
-        }
-      />
+      <Route path="/s/:slug" element={<CreatorStorefrontPage />} />
       <Route
         path="/claim/:token"
         element={
@@ -82,6 +76,7 @@ export function AppRoutes() {
         <Route path="/creator/campaigns" element={<CreatorCampaignListPage />} />
         <Route path="/creator/campaigns/:id" element={<CreatorCampaignDetailPage />} />
         <Route path="/creator/portfolio" element={<PortfolioPage />} />
+        <Route path="/creator/storefront" element={<StorefrontLinkPage />} />
         <Route path="/creator/social" element={<SocialAccountsPage />} />
         <Route path="/creator/status" element={<CreatorStatusPage />} />
         <Route path="/creator/*" element={<NotFoundPage />} />
