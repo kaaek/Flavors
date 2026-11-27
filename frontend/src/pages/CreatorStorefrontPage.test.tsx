@@ -17,7 +17,9 @@ beforeEach(() => {
 function page() {
   return render(
     <MemoryRouter initialEntries={['/s/lara-eats']}>
-      <Routes><Route path="/s/:slug" element={<CreatorStorefrontPage />} /></Routes>
+      <Routes>
+        <Route path="/s/:slug" element={<CreatorStorefrontPage />} />
+      </Routes>
     </MemoryRouter>,
   )
 }
@@ -25,10 +27,25 @@ function page() {
 describe('public creator storefront', () => {
   it('shows live offer and restrictions without requiring an account', async () => {
     fetchMock.mockResolvedValue({
-      displayName: 'Lara Eats', bio: 'Food creator', foodCategory: 'Burgers', location: 'Beirut', slug: 'lara-eats',
-      offers: [{ id: 1, restaurant: 'Burger House', discountPercent: 20, expiresOn: '2030-02-01',
-        validDays: ['MONDAY'], validFrom: '12:00', validTo: '17:00', minPurchaseCents: 2000,
-        perPersonLimit: 1, branches: [{ name: 'Downtown', location: 'Beirut' }] }],
+      displayName: 'Lara Eats',
+      bio: 'Food creator',
+      foodCategory: 'Burgers',
+      location: 'Beirut',
+      slug: 'lara-eats',
+      offers: [
+        {
+          id: 1,
+          restaurant: 'Burger House',
+          discountPercent: 20,
+          expiresOn: '2030-02-01',
+          validDays: ['MONDAY'],
+          validFrom: '12:00',
+          validTo: '17:00',
+          minPurchaseCents: 2000,
+          perPersonLimit: 1,
+          branches: [{ name: 'Downtown', location: 'Beirut' }],
+        },
+      ],
     })
     page()
     expect(await screen.findByText('Lara Eats')).toBeInTheDocument()
@@ -39,8 +56,14 @@ describe('public creator storefront', () => {
   })
 
   it('shows no offers yet for an approved creator without live offers', async () => {
-    fetchMock.mockResolvedValue({ displayName: 'Lara', bio: null, foodCategory: 'Food', location: 'Beirut',
-      slug: 'lara-eats', offers: [] })
+    fetchMock.mockResolvedValue({
+      displayName: 'Lara',
+      bio: null,
+      foodCategory: 'Food',
+      location: 'Beirut',
+      slug: 'lara-eats',
+      offers: [],
+    })
     page()
     expect(await screen.findByText('No offers yet')).toBeInTheDocument()
   })
