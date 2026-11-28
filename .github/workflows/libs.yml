@@ -1,0 +1,79 @@
+# Builds and tests the shared libraries (libs/) and the service template (services/_template).
+# Separate from ci.yml on purpose: it only runs when those directories change, and the monolith's
+# pipeline is untouched. See services/README.md.
+name: Libs and service template
+
+on:
+  pull_request:
+    paths:
+      - 'libs/**'
+      - 'services/**'
+      - '.github/workflows/libs.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'libs/**'
+      - 'services/**'
+      - '.github/workflows/libs.yml'
+  workflow_call:
+
+concurrency:
+  group: libs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  libs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: |
+            libs/**/pom.xml
+            services/*/pom.xml
+      # `install`, not just `verify`: the template (and every service) resolves libs from the local repository.
+      - run: ./mvnw -B install
+        working-directory: libs
+
+  # One entry per service directory. A new service adds its directory name here.
+  service:
+    needs: libs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [_template]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: |
+            libs/**/pom.xml
+            services/*/pom.xml
+      # No registry yet: each job installs the (already tested) libs into its own local repository.
+      - run: ./mvnw -B -DskipTests install
+        working-directory: libs
+      # The integration tests start Postgres and RabbitMQ through Testcontainers; GitHub's runners have Docker.
+      - run: ./mvnw -B verify
+        working-directory: services/${{ matrix.service }}
+
+  # Proves each service image still builds (it builds the libs itself); nothing is pushed anywhere.
+  image:
+    needs: libs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [_template]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f services/${{ matrix.service }}/Dockerfile -t flavors-${{ matrix.service }}:ci .

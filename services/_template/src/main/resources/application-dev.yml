@@ -1,0 +1,15 @@
+# Local development against the compose stack (deploy/compose). Activate with SPRING_PROFILES_ACTIVE=dev.
+spring:
+  datasource:
+    url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:template}
+    username: ${PGUSER:template}
+    password: ${PGPASSWORD:template}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+flavors:
+  platform:
+    security:
+      jwks-uri: ${FLAVORS_JWKS_URI:http://localhost:8081/.well-known/jwks.json}

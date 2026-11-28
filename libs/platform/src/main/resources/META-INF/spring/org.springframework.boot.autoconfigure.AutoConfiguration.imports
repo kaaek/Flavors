@@ -1,0 +1,3 @@
+com.flavors.platform.config.PlatformAutoConfiguration
+com.flavors.platform.security.PlatformSecurityConfiguration
+com.flavors.platform.outbox.OutboxAutoConfiguration

@@ -1,0 +1,58 @@
+# Settings every environment shares. Profile files (application-<profile>.yml) override these; pick one
+# with SPRING_PROFILES_ACTIVE=dev|staging|prod. Local defaults live in application-dev.yml.
+spring:
+  application:
+    name: template-service
+
+  # PG* variables, like the monolith and Railway/CloudNativePG expose them. There are deliberately no
+  # defaults: a missing variable fails startup instead of silently connecting somewhere else.
+  datasource:
+    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
+
+  # Each service owns its Flyway history in its own database (flyway_schema_history).
+  flyway:
+    locations: classpath:db/migration
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    # The outbox relay marks an event published only after the broker confirmed it.
+    publisher-confirm-type: correlated
+
+server:
+  port: ${PORT:8080}
+  # The Ingress terminates TLS and forwards plain HTTP with X-Forwarded-* headers.
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only the health endpoints are public; the Kubernetes probes poll them.
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        # /actuator/health/liveness and /actuator/health/readiness
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          # Not ready without the database. The broker is not listed: with the outbox a broker outage only
+          # delays events, it must not take the service out of rotation.
+          include: readinessState,db
+
+flavors:
+  platform:
+    security:
+      # Identity's public keys. Required: no default, so a missing value fails startup.
+      jwks-uri: ${FLAVORS_JWKS_URI}
+      issuer: ${FLAVORS_JWT_ISSUER:}
+      access-cookie-name: ${FLAVORS_ACCESS_COOKIE:flavors_access}
