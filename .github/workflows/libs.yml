@@ -76,4 +76,4 @@ jobs:
         service: [_template]
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -f services/${{ matrix.service }}/Dockerfile -t flavors-${{ matrix.service }}:ci .
+      - run: docker build -f services/${{ matrix.service }}/Dockerfile -t flavors-service-${{ strategy.job-index }}:ci .
