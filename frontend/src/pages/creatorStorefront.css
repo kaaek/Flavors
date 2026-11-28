@@ -1,0 +1,61 @@
+.storefront-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 5rem;
+  color: var(--color-text, #252826);
+}
+.storefront-header {
+  padding: 2.5rem;
+  margin-bottom: 2rem;
+  border-radius: 22px;
+  background: #fff4e7;
+}
+.storefront-eyebrow {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: #a43b14;
+}
+.storefront-header h1 {
+  margin: 0.8rem 0;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+}
+.storefront-offers {
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+}
+.storefront-offer,
+.storefront-empty {
+  padding: 1.6rem;
+  border: 1px solid #eaded2;
+  border-radius: 18px;
+  background: white;
+}
+.storefront-discount {
+  display: inline-block;
+  padding: 0.35rem 0.65rem;
+  border-radius: 99px;
+  background: #d63809;
+  color: white;
+  font-weight: 700;
+}
+.storefront-offer h3 {
+  margin: 0.8rem 0;
+}
+.storefront-offer p {
+  margin: 0.55rem 0;
+}
+.storefront-locations {
+  padding-top: 0.7rem;
+  border-top: 1px solid #eee;
+}
+.storefront-locations ul {
+  padding-left: 1.4rem;
+}
+.storefront-note {
+  font-size: 0.85rem;
+  color: #665c51;
+  font-style: italic;
+}

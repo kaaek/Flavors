@@ -1099,3 +1099,12 @@ Errors preserve last-known data with a stale-data warning. The UI never equates 
   invalid/replayed codes fail. Do not roll out to production until recovery and account-lockout
   procedures are approved. An admin who loses both authenticator and codes needs an independently
   authorized, audited manual recovery process, not a password-only bypass.
+
+
+### EEC-48 · Public creator storefront (UC-F17.1)
+
+- `GET /api/public/storefronts/{slug}` is anonymous and only serves approved, active creator accounts with an issued storefront slug. Missing, suspended, or unapproved profiles return 404.
+- `GET /api/creator/storefront` gives an authenticated creator their own shareable link information; non-approved creators cannot publish a storefront.
+- Offers are read directly from EEC-41: campaign **ACTIVE**, offer not expired (restaurant-local end-of-expiry day), and successful redemption count strictly below `maxRedemptions` when set. Valid days/hours are visible restrictions, not a reason to hide an otherwise live offer during closed hours. No data is cached, so each request reflects expiry and caps.
+- The public DTO includes only creator display information, restaurant name, branch names/locations, and offer conditions. It never exposes diner identifiers, private campaign budgets, internal IDs for users, or redemption details.
+- `/s/:slug` is the public SPA route; creators copy the link from `/creator/storefront`. QR claiming and redemption belong to EEC-42/EEC-11, and are not implemented by this story. No Flyway migration is required.
