@@ -1,0 +1,72 @@
+# Settings every environment shares. Profile files (application-<profile>.yml) override these; pick one
+# with SPRING_PROFILES_ACTIVE=dev|staging|prod. Local defaults live in application-dev.yml.
+spring:
+  application:
+    name: brand-service
+
+  # PG* variables, like the monolith and Railway/CloudNativePG expose them. There are deliberately no
+  # defaults: a missing variable fails startup instead of silently connecting somewhere else.
+  # PHASE 1: this is the SAME database as the monolith's (data ownership is split in a later phase).
+  datasource:
+    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
+
+  jpa:
+    # The monolith's Flyway owns the schema. Hibernate only checks that the entities match it at startup.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+  # OFF in Phase 1: the schema lives in the monolith (backend/src/main/resources/db/migration). A schema
+  # change this service needs is a new versioned migration there, never an edit of a merged one.
+  flyway:
+    enabled: false
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
+
+server:
+  port: ${PORT:8080}
+  # The gateway/Ingress terminates TLS and forwards plain HTTP with X-Forwarded-* headers.
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only the health endpoints are public; the Kubernetes probes poll them.
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  health:
+    # This service publishes no events yet, so the broker is not a dependency.
+    rabbit:
+      enabled: false
+
+flavors:
+  platform:
+    outbox:
+      # No outbox/inbox tables exist in the shared database yet (the monolith's schema has none) and this
+      # service emits no events in Phase 1, so the relay stays off.
+      relay-enabled: false
+    security:
+      # Identity's public keys. Required: no default, so a missing value fails startup.
+      jwks-uri: ${FLAVORS_JWKS_URI}
+      issuer: ${FLAVORS_JWT_ISSUER:}
+      access-cookie-name: ${FLAVORS_ACCESS_COOKIE:flavors_access}

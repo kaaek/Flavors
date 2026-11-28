@@ -68,16 +68,6 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
-    @ExceptionHandler(SavedCreatorNotFoundException.class)
-    ProblemDetail savedCreatorNotFound(SavedCreatorNotFoundException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(CreatorNotApprovedException.class)
-    ProblemDetail creatorNotApproved(CreatorNotApprovedException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
-    }
-
     /** The campaign form has wrong or missing fields: {@code errors} names each one so the form can highlight it. */
     @ExceptionHandler(CampaignValidationException.class)
     ResponseEntity<ProblemDetail> campaignInvalid(CampaignValidationException e) {
