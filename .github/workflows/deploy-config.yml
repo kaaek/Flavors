@@ -1,0 +1,62 @@
+# Validates the deployment configuration for the microservice stack (EEC-95): the compose files, the gateway's
+# nginx config, and the Kubernetes manifests. It only reads files under deploy/ and builds no application images.
+name: Deploy config
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy-config.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'deploy/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/deploy-config.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-config-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Root compose file (Postgres for local development)
+        run: docker compose -f docker-compose.yml config --quiet
+      - name: Local stack, default profile
+        run: docker compose -f deploy/compose/docker-compose.yml config --quiet
+      - name: Local stack, every service profile on
+        run: docker compose -f deploy/compose/docker-compose.yml --profile services config --quiet
+
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: nginx -t on the gateway config
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/gateway/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$PWD/deploy/gateway/flavors-proxy.conf:/etc/nginx/flavors-proxy.conf:ro" \
+            nginx:1.27-alpine nginx -t
+
+  kubernetes:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        overlay: [base, minikube]
+    steps:
+      - uses: actions/checkout@v4
+      # kubectl is preinstalled on GitHub's runners; `kubectl kustomize` needs no cluster.
+      - name: Render deploy/k8s/${{ matrix.overlay }}
+        run: kubectl kustomize deploy/k8s/${{ matrix.overlay }} > "$RUNNER_TEMP/${{ matrix.overlay }}.yaml"
+      - name: Validate against the Kubernetes schemas (kubeconform)
+        run: |
+          docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary - \
+            < "$RUNNER_TEMP/${{ matrix.overlay }}.yaml"
