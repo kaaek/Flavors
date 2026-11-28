@@ -126,6 +126,18 @@ class AuditAndIdempotencyIT extends IntegrationTestBase {
     }
 
     @Test
+    void anIdempotencyKeyIsNotSharedBetweenUsers() {
+        Response a = postJson("/api/template/ping", Map.of("Authorization", "Bearer " + token(1, "BRAND", null),
+                "Idempotency-Key", "shared-key"), "{\"note\":\"user-a\"}");
+        Response b = postJson("/api/template/ping", Map.of("Authorization", "Bearer " + token(2, "BRAND", null),
+                "Idempotency-Key", "shared-key"), "{\"note\":\"user-b\"}");
+
+        assertThat(b.status()).isEqualTo(200); // not a conflict, and not user A's stored result
+        assertThat(b.body()).isNotEqualTo(a.body());
+        assertThat(auditRows("TEMPLATE_PING", "user-b")).isEqualTo(1);
+    }
+
+    @Test
     void validationErrorsAreProblemDetails() {
         Response response = postJson("/api/template/ping", Map.of("Authorization", "Bearer " + token(3, "CREATOR", null)),
                 "{\"note\":\"\"}");

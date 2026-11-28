@@ -48,12 +48,15 @@ class TemplateController {
      */
     @PostMapping("/api/template/ping")
     ResponseEntity<TemplatePingService.PingResult> ping(
+            @AuthenticationPrincipal CurrentUser user,
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @jakarta.validation.Valid @RequestBody PingRequest request) {
+        // The scope includes the caller: a key is only meaningful per user, otherwise one user could replay
+        // (and read) another user's stored result by guessing or reusing a key.
         if (key == null) {
             return ResponseEntity.ok(pings.ping(request.note()));
         }
-        return ResponseEntity.ok(idempotency.execute("template-ping", key, request.note(),
+        return ResponseEntity.ok(idempotency.execute("template-ping:" + user.id(), key, request.note(),
                 () -> pings.ping(request.note()), TemplatePingService.PingResult.class));
     }
 
