@@ -1,0 +1,161 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: creator
+  namespace: flavors
+  labels:
+    app.kubernetes.io/name: creator
+    app.kubernetes.io/part-of: flavors
+    flavors.io/tier: service
+  annotations:
+    flavors.io/placeholder: "true"   # image not built yet (Phase 1); replicas stay 0 until it is
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: creator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: creator
+        app.kubernetes.io/part-of: flavors
+        flavors.io/tier: service
+    spec:
+      containers:
+        - name: creator
+          image: flavors/creator:placeholder-not-built
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: flavors-config
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://creator-db:5432/creator
+            - name: SPRING_DATASOURCE_USERNAME
+              value: creator
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: flavors-secrets, key: creator-db-password }
+            - name: SPRING_RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef: { name: flavors-secrets, key: rabbitmq-username }
+            - name: SPRING_RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: flavors-secrets, key: rabbitmq-password }
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 1Gi }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: creator
+  namespace: flavors
+  labels:
+    app.kubernetes.io/name: creator
+    app.kubernetes.io/part-of: flavors
+    flavors.io/tier: service
+spec:
+  # STRANGLER: points at the monolith until creator ships. At cutover change this selector to `creator` and set replicas on the Deployment.
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: creator-db
+  namespace: flavors
+  labels:
+    app.kubernetes.io/name: creator-db
+    app.kubernetes.io/part-of: flavors
+    flavors.io/tier: database
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: creator-db
+  ports:
+    - name: postgres
+      port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: creator-db
+  namespace: flavors
+  labels:
+    app.kubernetes.io/name: creator-db
+    app.kubernetes.io/part-of: flavors
+    flavors.io/tier: database
+spec:
+  serviceName: creator-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: creator-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: creator-db
+        app.kubernetes.io/part-of: flavors
+        flavors.io/tier: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: creator
+            - name: POSTGRES_USER
+              value: creator
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: flavors-secrets
+                  key: creator-db-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "creator", "-d", "creator"]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "creator", "-d", "creator"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi

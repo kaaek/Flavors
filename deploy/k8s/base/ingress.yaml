@@ -1,0 +1,136 @@
+# The in-cluster equivalent of deploy/gateway/nginx.conf: same path table (plan section 1.1), same order.
+# The paths are regular expressions (use-regex); ingress-nginx tries the longest path first, so the specific
+# routes win over the general ones. Anything else goes to `web` (the SPA) or, for /api, the monolith.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: flavors
+  namespace: flavors
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 30m
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api/brand/campaigns/[^/]+/proof/(reviews|[^/]+/review)(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: campaign, port: { number: 8080 } }
+          - path: /api/brand/campaigns/[^/]+/proof(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: proof, port: { number: 8080 } }
+          - path: /api/creator/campaigns/[^/]+/proof(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: proof, port: { number: 8080 } }
+          - path: /api/admin/campaigns/[^/]+/proof(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: proof, port: { number: 8080 } }
+          - path: /api/proof-files(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: proof, port: { number: 8080 } }
+          - path: /api/brand/campaigns/[^/]+/payment(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: payment, port: { number: 8080 } }
+          - path: /api/[^/]+/campaigns/[^/]+/escrow(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: payment, port: { number: 8080 } }
+          - path: /api/public/payments(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: payment, port: { number: 8080 } }
+          - path: /api/admin/payouts(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: payment, port: { number: 8080 } }
+          - path: /api/brand/campaigns/[^/]+/offer(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: offer, port: { number: 8080 } }
+          - path: /api/public/offers(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: offer, port: { number: 8080 } }
+          - path: /api/public/claims(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: offer, port: { number: 8080 } }
+          - path: /api/brand/redemptions(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: offer, port: { number: 8080 } }
+          - path: /api/brand/campaigns(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: campaign, port: { number: 8080 } }
+          - path: /api/creator/campaigns(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: campaign, port: { number: 8080 } }
+          - path: /api/me(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: identity, port: { number: 8080 } }
+          - path: /api/public/auth/(login|password-reset|mfa)(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: identity, port: { number: 8080 } }
+          - path: /api/auth/logout(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: identity, port: { number: 8080 } }
+          - path: /api/admin/users(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: identity, port: { number: 8080 } }
+          - path: /api/public/auth/register/creator(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: creator, port: { number: 8080 } }
+          - path: /api/creator/(status|portfolio|social)(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: creator, port: { number: 8080 } }
+          - path: /api/brand/creators(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: creator, port: { number: 8080 } }
+          - path: /api/admin/creators(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: creator, port: { number: 8080 } }
+          - path: /api/public/storefront(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: creator, port: { number: 8080 } }
+          - path: /api/public/auth/register/brand(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: brand, port: { number: 8080 } }
+          - path: /api/brand/(profile|branches|saved-creators)(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: brand, port: { number: 8080 } }
+          - path: /api/creator/brands/search(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: brand, port: { number: 8080 } }
+          - path: /api/notifications(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: notification, port: { number: 8080 } }
+          - path: /(api|actuator|v3|swagger-ui)(/|$)
+            pathType: ImplementationSpecific
+            backend:
+              service: { name: backend, port: { number: 8080 } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: web, port: { number: 8080 } }

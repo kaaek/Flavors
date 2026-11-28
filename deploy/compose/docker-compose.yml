@@ -1,0 +1,364 @@
+# Full local stack for the target microservice architecture (EEC-95). Run from the repository root:
+#
+#   docker compose -f deploy/compose/docker-compose.yml up -d --build
+#   open http://localhost:8088                      # gateway (GATEWAY_PORT to change)
+#   open http://localhost:15672                     # RabbitMQ management UI (flavors / flavors-dev-pw)
+#
+# Always on: one Postgres per service (+ one for the monolith), RabbitMQ, the monolith (`backend`), `web`, `gateway`.
+# The service containers are placeholders behind compose profiles: they stay off until the service exists
+# (its Maven project under services/<name>) and you ask for them:
+#
+#   docker compose -f deploy/compose/docker-compose.yml --profile identity --profile creator up -d --build
+#   docker compose -f deploy/compose/docker-compose.yml --profile services up -d --build     # all of them
+#
+# Then point the gateway route at the service (deploy/gateway/nginx.conf, `set $up_<service>`) and reload it.
+# The root docker-compose.yml (one Postgres for ./mvnw spring-boot:run) is unrelated and unchanged.
+# Every password below is a throwaway local value.
+
+name: flavors
+
+x-postgres: &postgres
+  image: postgres:17-alpine
+  restart: unless-stopped
+
+x-service: &service-defaults
+  restart: unless-stopped
+  environment: &service-env
+    SPRING_PROFILES_ACTIVE: dev
+    SERVER_PORT: "8080"
+    SPRING_RABBITMQ_HOST: rabbitmq
+    SPRING_RABBITMQ_PORT: "5672"
+    SPRING_RABBITMQ_USERNAME: flavors
+    SPRING_RABBITMQ_PASSWORD: flavors-dev-pw
+    FLAVORS_JWT_ISSUER_URI: http://identity:8080
+    FLAVORS_JWT_JWKS_URI: http://identity:8080/.well-known/jwks.json
+    MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  networks: [flavors]
+
+services:
+  identity-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: identity
+      POSTGRES_PASSWORD: identity-dev-pw
+    volumes:
+      - identity-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity -d identity"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  creator-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: creator
+      POSTGRES_USER: creator
+      POSTGRES_PASSWORD: creator-dev-pw
+    volumes:
+      - creator-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U creator -d creator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  brand-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: brand
+      POSTGRES_USER: brand
+      POSTGRES_PASSWORD: brand-dev-pw
+    volumes:
+      - brand-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brand -d brand"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  campaign-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: campaign
+      POSTGRES_USER: campaign
+      POSTGRES_PASSWORD: campaign-dev-pw
+    volumes:
+      - campaign-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campaign -d campaign"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  proof-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: proof
+      POSTGRES_USER: proof
+      POSTGRES_PASSWORD: proof-dev-pw
+    volumes:
+      - proof-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proof -d proof"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  payment-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: payment
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: payment-dev-pw
+    volumes:
+      - payment-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment -d payment"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  offer-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: offer
+      POSTGRES_USER: offer
+      POSTGRES_PASSWORD: offer-dev-pw
+    volumes:
+      - offer-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U offer -d offer"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  notification-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: notification
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: notification-dev-pw
+    volumes:
+      - notification-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notification"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  monolith-db:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: monolith
+      POSTGRES_USER: monolith
+      POSTGRES_PASSWORD: monolith-dev-pw
+    volumes:
+      - monolith-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monolith -d monolith"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [flavors]
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: flavors
+      RABBITMQ_DEFAULT_PASS: flavors-dev-pw
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_UI_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [flavors]
+
+  # The monolith (campaign core, later). Serves every route until its services are cut out.
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      monolith-db: { condition: service_healthy }
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      PGHOST: monolith-db
+      PGPORT: "5432"
+      PGDATABASE: monolith
+      PGUSER: monolith
+      PGPASSWORD: monolith-dev-pw
+      MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+      FLAVORS_PROOF_STORAGE_PATH: /tmp/proof-files
+    networks: [flavors]
+
+  # The React SPA behind nginx (deploy/web). Build context is the repo root; frontend/ is not modified.
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/web/Dockerfile
+    restart: unless-stopped
+    networks: [flavors]
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8088}:80"
+    volumes:
+      - ../gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../gateway/flavors-proxy.conf:/etc/nginx/flavors-proxy.conf:ro
+    depends_on: [backend, web]
+    networks: [flavors]
+
+  # ---- Placeholders: disabled until the service exists. Enable with --profile <name> (or --profile services). ----
+  identity:
+    <<: *service-defaults
+    profiles: ["identity", "services"]
+    image: flavors/identity:dev
+    build:
+      context: ../../services/identity      # does not exist yet (Phase 1)
+    depends_on:
+      identity-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://identity-db:5432/identity
+      SPRING_DATASOURCE_USERNAME: identity
+      SPRING_DATASOURCE_PASSWORD: identity-dev-pw
+
+  creator:
+    <<: *service-defaults
+    profiles: ["creator", "services"]
+    image: flavors/creator:dev
+    build:
+      context: ../../services/creator      # does not exist yet (Phase 1)
+    depends_on:
+      creator-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://creator-db:5432/creator
+      SPRING_DATASOURCE_USERNAME: creator
+      SPRING_DATASOURCE_PASSWORD: creator-dev-pw
+
+  brand:
+    <<: *service-defaults
+    profiles: ["brand", "services"]
+    image: flavors/brand:dev
+    build:
+      context: ../../services/brand      # does not exist yet (Phase 1)
+    depends_on:
+      brand-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://brand-db:5432/brand
+      SPRING_DATASOURCE_USERNAME: brand
+      SPRING_DATASOURCE_PASSWORD: brand-dev-pw
+
+  campaign:
+    <<: *service-defaults
+    profiles: ["campaign", "services"]
+    image: flavors/campaign:dev
+    build:
+      context: ../../services/campaign      # does not exist yet (Phase 1)
+    depends_on:
+      campaign-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://campaign-db:5432/campaign
+      SPRING_DATASOURCE_USERNAME: campaign
+      SPRING_DATASOURCE_PASSWORD: campaign-dev-pw
+
+  proof:
+    <<: *service-defaults
+    profiles: ["proof", "services"]
+    image: flavors/proof:dev
+    build:
+      context: ../../services/proof      # does not exist yet (Phase 1)
+    depends_on:
+      proof-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://proof-db:5432/proof
+      SPRING_DATASOURCE_USERNAME: proof
+      SPRING_DATASOURCE_PASSWORD: proof-dev-pw
+
+  payment:
+    <<: *service-defaults
+    profiles: ["payment", "services"]
+    image: flavors/payment:dev
+    build:
+      context: ../../services/payment      # does not exist yet (Phase 1)
+    depends_on:
+      payment-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://payment-db:5432/payment
+      SPRING_DATASOURCE_USERNAME: payment
+      SPRING_DATASOURCE_PASSWORD: payment-dev-pw
+
+  offer:
+    <<: *service-defaults
+    profiles: ["offer", "services"]
+    image: flavors/offer:dev
+    build:
+      context: ../../services/offer      # does not exist yet (Phase 1)
+    depends_on:
+      offer-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://offer-db:5432/offer
+      SPRING_DATASOURCE_USERNAME: offer
+      SPRING_DATASOURCE_PASSWORD: offer-dev-pw
+
+  notification:
+    <<: *service-defaults
+    profiles: ["notification", "services"]
+    image: flavors/notification:dev
+    build:
+      context: ../../services/notification      # does not exist yet (Phase 1)
+    depends_on:
+      notification-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://notification-db:5432/notification
+      SPRING_DATASOURCE_USERNAME: notification
+      SPRING_DATASOURCE_PASSWORD: notification-dev-pw
+
+networks:
+  flavors:
+
+volumes:
+  identity-db:
+  creator-db:
+  brand-db:
+  campaign-db:
+  proof-db:
+  payment-db:
+  offer-db:
+  notification-db:
+  monolith-db:
+  rabbitmq-data:

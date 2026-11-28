@@ -1,0 +1,14 @@
+# Non-secret settings shared by the services. Per-service database URLs are set on each Deployment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flavors-config
+  namespace: flavors
+data:
+  SPRING_PROFILES_ACTIVE: dev
+  SERVER_PORT: "8080"
+  SPRING_RABBITMQ_HOST: rabbitmq
+  SPRING_RABBITMQ_PORT: "5672"
+  FLAVORS_JWT_ISSUER_URI: http://identity:8080
+  FLAVORS_JWT_JWKS_URI: http://identity:8080/.well-known/jwks.json
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"

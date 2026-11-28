@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - rabbitmq.yaml
+  - backend.yaml
+  - web.yaml
+  - identity.yaml
+  - creator.yaml
+  - brand.yaml
+  - campaign.yaml
+  - proof.yaml
+  - payment.yaml
+  - offer.yaml
+  - notification.yaml
+  - ingress.yaml
