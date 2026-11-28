@@ -1,0 +1,12 @@
+# Local development against the compose stack (deploy/compose). Activate with SPRING_PROFILES_ACTIVE=dev.
+# The database is the monolith's: its defaults match the root docker-compose.yml and the monolith's dev profile.
+spring:
+  datasource:
+    url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:flavors}
+    username: ${PGUSER:flavors}
+    password: ${PGPASSWORD:flavors}
+
+flavors:
+  platform:
+    security:
+      jwks-uri: ${FLAVORS_JWKS_URI:http://localhost:8081/.well-known/jwks.json}

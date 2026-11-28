@@ -110,10 +110,12 @@ spec:
             pathType: ImplementationSpecific
             backend:
               service: { name: creator, port: { number: 8080 } }
+          # Brand registration stays in the monolith until identity's internal user API exists
+          # (docs/Microservices-Brand.md), so this path is not routed to brand yet.
           - path: /api/public/auth/register/brand(/|$)
             pathType: ImplementationSpecific
             backend:
-              service: { name: brand, port: { number: 8080 } }
+              service: { name: backend, port: { number: 8080 } }
           - path: /api/brand/(profile|branches|saved-creators)(/|$)
             pathType: ImplementationSpecific
             backend:

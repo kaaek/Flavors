@@ -8,10 +8,8 @@ metadata:
     app.kubernetes.io/name: brand
     app.kubernetes.io/part-of: flavors
     flavors.io/tier: service
-  annotations:
-    flavors.io/placeholder: "true"   # image not built yet (Phase 1); replicas stay 0 until it is
 spec:
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: brand
@@ -24,7 +22,7 @@ spec:
     spec:
       containers:
         - name: brand
-          image: flavors/brand:placeholder-not-built
+          image: flavors-brand:dev
           ports:
             - name: http
               containerPort: 8080
@@ -32,19 +30,24 @@ spec:
             - configMapRef:
                 name: flavors-config
           env:
-            - name: SPRING_DATASOURCE_URL
-              value: jdbc:postgresql://brand-db:5432/brand
-            - name: SPRING_DATASOURCE_USERNAME
-              value: brand
-            - name: SPRING_DATASOURCE_PASSWORD
+            # Phase 1 of the split: the brand service uses the SAME database as the monolith (it owns the
+            # tables brand, branch and saved_creator; its Flyway is off, the monolith's migrations own the schema).
+            # `brand-db` below is not used until the data-ownership phase.
+            - name: PGHOST
+              value: monolith-db
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: monolith
+            - name: PGUSER
+              value: monolith
+            - name: PGPASSWORD
               valueFrom:
-                secretKeyRef: { name: flavors-secrets, key: brand-db-password }
-            - name: SPRING_RABBITMQ_USERNAME
-              valueFrom:
-                secretKeyRef: { name: flavors-secrets, key: rabbitmq-username }
-            - name: SPRING_RABBITMQ_PASSWORD
-              valueFrom:
-                secretKeyRef: { name: flavors-secrets, key: rabbitmq-password }
+                secretKeyRef: { name: flavors-secrets, key: monolith-db-password }
+            # Identity's public keys (the platform library validates the access token against them).
+            - name: FLAVORS_JWKS_URI
+              value: http://identity:8080/.well-known/jwks.json
+            # FLAVORS_JWT_ISSUER is left unset: the issuer is not checked until identity pins its `iss`.
           resources:
             requests: { cpu: 200m, memory: 512Mi }
             limits: { memory: 1Gi }
@@ -71,9 +74,10 @@ metadata:
     app.kubernetes.io/part-of: flavors
     flavors.io/tier: service
 spec:
-  # STRANGLER: points at the monolith until brand ships. At cutover change this selector to `brand` and set replicas on the Deployment.
+  # STRANGLER: brand has shipped (EEC-95 Phase 1b), so this Service now selects the brand pods.
+  # To roll back, change the selector to `backend` (the monolith keeps no copy of these routes, so also revert the PR).
   selector:
-    app.kubernetes.io/name: backend
+    app.kubernetes.io/name: brand
   ports:
     - name: http
       port: 8080

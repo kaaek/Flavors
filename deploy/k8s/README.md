@@ -36,7 +36,8 @@ minikube -p flavors addons enable ingress
 eval "$(minikube -p flavors docker-env)"          # this shell's `docker` now talks to Minikube
 docker build -t flavors/backend:dev .             # the monolith (root Dockerfile)
 docker build -f deploy/web/Dockerfile -t flavors/web:dev .
-# once a service exists (Phase 1):  docker build -t flavors/identity:dev services/identity
+docker build -f services/brand/Dockerfile -t flavors-brand:dev .      # the brand service (from the repo root)
+# other services, once they exist (Phase 1): same pattern, `-f services/<name>/Dockerfile`
 ```
 
 ## Apply the overlay
